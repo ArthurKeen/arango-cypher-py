@@ -26,12 +26,7 @@ def translate(
     extensions: ExtensionPolicy | None = None,
     params: dict[str, Any] | None = None,
 ) -> TranspiledQuery:
-    """
-    v0.0 scaffold.
-
-    For now we return a clear "not implemented" error in a structured way
-    so the test harness can be wired end-to-end before the translator lands.
-    """
+    """Translate a Cypher query to AQL using the provided schema mapping."""
     if not isinstance(cypher, str) or not cypher.strip():
         raise CoreError("cypher must be a non-empty string", code="INVALID_ARGUMENT")
 

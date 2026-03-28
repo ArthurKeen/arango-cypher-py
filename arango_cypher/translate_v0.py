@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from arango_query_core import AqlQuery, CoreError, ExtensionPolicy, MappingBundle, MappingResolver
@@ -31,9 +31,6 @@ def translate_v0(
     """
     if not mapping:
         raise CoreError("mapping is required", code="INVALID_ARGUMENT")
-
-    opts = options or TranslateOptions()
-    _ = opts  # reserved for near-term extensions
 
     bind_vars: dict[str, Any] = dict(params or {})
     resolver = MappingResolver(mapping)
@@ -378,8 +375,6 @@ def translate_v0(
 
     lines.append("  RETURN " + _compile_return_object(compiled_items))
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
-
-    raise CoreError("Unreachable", code="INTERNAL_ERROR")
 
 
 def _translate_multi_part_query(
@@ -1588,15 +1583,6 @@ def _compile_relationship_pattern_properties(
         expr = _compile_expression(v_ctx, bind_vars)
         out.append(f"({var}.{key} == {expr})")
     return out
-
-
-def _extract_node_var_and_label(node: CypherParser.OC_NodePatternContext, *, default_var: str) -> tuple[str, str]:
-    var, labels = _extract_node_var_and_labels(node, default_var=default_var)
-    if not labels:
-        raise CoreError("A single label is required in v0 subset", code="UNSUPPORTED")
-    if len(labels) != 1:
-        raise CoreError("Exactly one label is required in v0 subset", code="UNSUPPORTED")
-    return var, labels[0]
 
 
 def _relationship_direction(rel_pat: CypherParser.OC_RelationshipPatternContext) -> str:

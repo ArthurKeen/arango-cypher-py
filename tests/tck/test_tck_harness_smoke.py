@@ -23,7 +23,7 @@ def test_tck_runner_smoke_integration():
     if os.environ.get("RUN_TCK") != "1":
         pytest.skip("Set RUN_TCK=1 to run TCK harness integration smoke")
     p = Path(__file__).resolve().parent / "features" / "sample.feature"
-    rep = run_feature(p, db_name="tck_smoke_db", mapping_fixture="cypher_lpg_fixture")
+    rep = run_feature(p, db_name="tck_smoke_db", mapping_fixture="lpg")
     assert rep["feature"]
     assert rep["scenarios"] >= 1
     assert set(rep["counts"].keys()) == {"passed", "skipped", "failed"}

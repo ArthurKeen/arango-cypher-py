@@ -8,14 +8,28 @@ Translates [openCypher](https://opencypher.org/) queries into ArangoDB Query Lan
 
 - **Schema-aware translation** — resolves Cypher labels and relationship types against a conceptual→physical mapping so the generated AQL targets the correct collections and type fields.
 - **Hybrid model support** — handles databases that mix PG (types-as-collections) and LPG (types-as-labels in generic collections) patterns, even within a single query path.
-- **ANTLR-based Cypher parser** — parses Cypher into an AST using the openCypher ANTLR grammar.
+- **ANTLR-based Cypher parser** — parses Cypher into a parse tree using the openCypher ANTLR grammar.
 - **Safe AQL output** — uses bind parameters (`@@collection`, `@param`) throughout; never interpolates user input.
-- **Extension framework** — namespaced `arango.*` functions and procedures for ArangoDB-specific capabilities (full-text search, vector search, geo) behind an explicit policy flag.
-- **Nested document / virtual edge support** — mapping-driven access to embedded objects and foreign-key references as conceptual relationships.
+- **Dot-path property access** — supports nested document property access (e.g. `n.address.zip`) in expressions and projections.
 
 ## Status
 
-> **Early development (v0.0.x)** — the transpiler handles core `MATCH` / `WHERE` / `RETURN` / `WITH` / `ORDER BY` / `LIMIT` patterns and is expanding toward broader openCypher coverage.
+> **Early development (v0.0.x)** — the transpiler handles core `MATCH` / `WHERE` / `RETURN` / `WITH` / `ORDER BY` / `LIMIT` patterns across PG, LPG, and hybrid mappings. See [Supported Cypher subset](#supported-cypher-subset) for details.
+
+## Supported Cypher subset
+
+The v0 translator supports:
+
+- `MATCH` with single or multiple pattern parts, including multi-hop relationships
+- `WHERE` with boolean logic (`AND`, `OR`, `NOT`, `XOR`), comparisons, `IN`, `IS NULL` / `IS NOT NULL`
+- `RETURN` with projections, aliases, `DISTINCT`, `ORDER BY`, `SKIP`, `LIMIT`
+- `WITH` for aggregation (`count`, `avg`, `sum`, `min`, `max`, `collect`) and pipeline stages
+- `WITH ... MATCH` (tail match after aggregation/filtering)
+- Functions: `size`, `toLower`, `toUpper`, `coalesce`, `type(r)`
+- Inline pattern properties: `(n:User {id: "u1"})`, `-[:ACTED_IN {role: "Forrest"}]->`
+- Named parameters: `$paramName`
+
+**Not yet supported:** `OPTIONAL MATCH`, `UNION`, `UNWIND`, variable-length paths (`*1..N`), multiple relationship types (`[:A|B]`), arithmetic expressions, write clauses (`CREATE`/`MERGE`/`SET`/`DELETE`), `arango.*` extension functions.
 
 ## Quick start
 
@@ -27,11 +41,9 @@ Translates [openCypher](https://opencypher.org/) queries into ArangoDB Query Lan
 ### Install
 
 ```bash
-# Clone the repo
-git clone https://github.com/<your-org>/arango-cypher-py.git
+git clone https://github.com/ArthurKeen/arango-cypher-py.git
 cd arango-cypher-py
 
-# Create a virtualenv and install in editable mode
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -43,8 +55,17 @@ pip install -e ".[dev]"
 from arango_cypher import translate
 from arango_query_core import MappingBundle
 
-# Build or load a mapping bundle describing your schema
-mapping = MappingBundle(...)
+mapping = MappingBundle(
+    conceptual_schema={"entityTypes": ["Person"], "relationshipTypes": ["KNOWS"]},
+    physical_mapping={
+        "entities": {
+            "Person": {"style": "COLLECTION", "collectionName": "persons"}
+        },
+        "relationships": {
+            "KNOWS": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "knows"}
+        },
+    },
+)
 
 result = translate("MATCH (n:Person) RETURN n.name", mapping=mapping)
 print(result.aql)        # generated AQL
@@ -56,8 +77,8 @@ print(result.bind_vars)  # bind parameters
 ```
 arango_cypher/          # Cypher parser + translate API
   _antlr/              # ANTLR-generated lexer/parser/visitor
-  parser.py            # Parse Cypher → AST
-  translate_v0.py      # AST → AQL translation engine
+  parser.py            # Parse Cypher → parse tree
+  translate_v0.py      # Parse tree → AQL translation engine
   api.py               # Public translate() entry point
 
 arango_query_core/      # Shared AQL building blocks
@@ -79,7 +100,7 @@ pytest -m "not integration and not tck"
 
 # Integration tests (requires ArangoDB — see docker-compose.yml)
 docker compose up -d
-pytest -m integration
+RUN_INTEGRATION=1 pytest -m integration
 
 # All tests
 pytest
@@ -90,9 +111,8 @@ pytest
 The transpiler follows a layered pipeline:
 
 1. **Parse** — Cypher source → ANTLR parse tree
-2. **Normalize** — parse tree → internal AST (pydantic/dataclass models)
-3. **Resolve** — labels, relationship types, and properties against the conceptual→physical mapping
-4. **Emit** — AST + resolved mapping → AQL string + bind variables
+2. **Resolve** — labels, relationship types, and properties against the conceptual→physical mapping
+3. **Emit** — parse tree + resolved mapping → AQL string + bind variables
 
 The mapping layer supports three physical model styles:
 
@@ -104,8 +124,8 @@ The mapping layer supports three physical model styles:
 
 ## Related projects
 
-- [arango-cypher](https://github.com/<your-org>/arango-cypher) — Foxx/JS implementation (runs inside ArangoDB coordinators)
-- [arangodb-schema-analyzer](https://github.com/<your-org>/arangodb-schema-analyzer) — schema detection and conceptual→physical mapping
+- [arango-cypher](https://github.com/ArthurKeen/arango-cypher) — Foxx/JS implementation (runs inside ArangoDB coordinators)
+- [arangodb-schema-analyzer](https://github.com/ArthurKeen/arangodb-schema-analyzer) — schema detection and conceptual→physical mapping
 
 ## License
 
