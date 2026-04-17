@@ -874,6 +874,226 @@ and fix translator bugs until the pass rate reaches 40%.
 
 ---
 
+## Wave 5 prompts — pre-WP-25 cleanup + unblock Wave 4a (parallel, ~½ day total)
+
+**Goal:** knock out three small interlocking items so that (a) the implementation plan and PRD stop contradicting themselves, (b) product scope is unambiguous in the PRD, and (c) the `PromptBuilder` refactor that gates Wave 4a is in place. All three agents work on disjoint files and can run concurrently.
+
+**Orchestration:** Launch S1, S2, S3 in parallel on separate branches off `main`. Merge order (alphabetical is fine — no true dependency): S1 → S2 → S3 → run full unit suite → commit. Wave 4a becomes launchable immediately afterward.
+
+| Sub-agent | Files touched | Estimate |
+|-----------|---------------|---------|
+| S1 — plan hygiene | `docs/implementation_plan.md` | ~30 min |
+| S2 — PRD product-scope edits | `docs/python_prd.md` | ~1 h |
+| S3 — PromptBuilder refactor (≡ Wave 4-pre for WP-25) | `arango_cypher/nl2cypher.py`, `tests/test_nl2cypher_prompt_builder.py` | ~0.5 day |
+
+---
+
+### S1 — Implementation plan hygiene
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+
+## Your task: S1 — Reconcile WP-19 duplicate and WP-20 stale status in the implementation plan
+
+### Problem
+`docs/implementation_plan.md` has two WP-level inconsistencies that pre-date the
+WP-25 scoping commit:
+
+1. **WP-19 duplicate.** The body of the plan (around line 584) has a full WP-19
+   block titled "Arango Platform deployment enablement" that landed on
+   2026-04-17. The status table at the bottom of the plan still has a row
+   `| WP-19 | Translation caching | v0.4 | **Done** | 2026-04-13 |` from the
+   earlier v0.4 sprint. Two different things share the number.
+
+2. **WP-20 stale status.** The status table has
+   `| WP-20 | Filter pushdown into traversals | v0.4 | Not started | |` but
+   the 2026-04-15 "WS-F/G sprint" changelog in `docs/python_prd.md` explicitly
+   records `Filter pushdown into traversals (PRUNE for variable-length,
+   conservative rules)` as shipped, and PRD §7.7 / §7.8 / line ~1779 confirm
+   it as **Done**.
+
+### What to do
+
+1. Reconcile WP-19:
+   - The body-level WP-19 ("Arango Platform deployment enablement", PRD §15)
+     is authoritative and must retain the number **WP-19** (PRD §15
+     references it by that number in the 2026-04-17 changelog — grep to
+     confirm before editing).
+   - The pre-existing "Translation caching" entry needs a new home. Inspect
+     `git log -- docs/implementation_plan.md` to see what number the original
+     Translation caching WP held before it was displaced. If the git history
+     shows it truly was WP-19 originally, renumber it to **WP-26** in the
+     status table (next free number after WP-25 which we just added) and
+     mark it **Done** with the original 2026-04-13 date and a short note
+     referencing the 2026-04-13 changelog entry in the PRD. Do NOT alter
+     the shipped code — this is purely a numbering-hygiene fix.
+
+2. Fix WP-20 status:
+   - Update the status row to `| WP-20 | Filter pushdown into traversals |
+     v0.4 | **Done** | 2026-04-15 | (WS-F/G sprint — PRUNE for variable-length,
+     conservative rules) |` — match the date and note style of nearby rows.
+   - Double-check by reading PRD §7.7 / §7.8 / the v0.4 status line (~line
+     1779) to confirm the feature is in fact shipped. If there's any doubt,
+     stop and ask.
+
+3. Grep for any other stale references:
+   - `rg -n 'WP-19' docs/ arango_cypher/ arango_query_core/ tests/`
+   - `rg -n 'WP-20' docs/ arango_cypher/ arango_query_core/ tests/`
+   - Any prose that still says "WP-19 Translation caching" or "WP-20 not
+     started" needs the same reconciliation.
+
+4. Add a one-line note at the top of the status table (or in an adjacent
+   comment) recording the reconciliation date (today) so future agents don't
+   re-open the question.
+
+### Constraints
+
+- No code changes. Documentation only.
+- No PRD changes (S2 owns the PRD). If you notice a PRD inconsistency while
+  grepping, leave a `TODO(S2):` marker and move on.
+- `ruff check .` is not applicable to pure markdown, but ensure no markdown
+  linter complaints (`markdownlint-cli` if available; otherwise eyeball the
+  table alignment).
+
+### Acceptance
+
+- `rg -c '^\| WP-19 \|' docs/implementation_plan.md` returns 1 (exactly one
+  row for WP-19 in the status table, and it's the deployment one).
+- `rg '^\| WP-20 \|' docs/implementation_plan.md` returns a row marked **Done**.
+- No prose anywhere in the repo still calls WP-19 "Translation caching" or
+  WP-20 "Not started".
+- Diff touches only `docs/implementation_plan.md`.
+```
+
+---
+
+### S2 — PRD product-scope edits
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+
+## Your task: S2 — Make the service-is-product / UI-is-debug-and-demo scope explicit in the PRD
+
+### Background
+The user has explicitly clarified (see 2026-04-17 conversation history):
+
+> The objective of this project is to provide a Cypher to AQL conversion
+> service and a natural language to cypher to aql service. The UI serves
+> 2 purposes, debugging and demoing.
+
+The current PRD was written before this scoping clarification and treats the
+Cypher Workbench UI on roughly the same footing as the library / CLI / HTTP
+service. It needs four targeted edits to make the scope unambiguous.
+
+### What to edit (in `docs/python_prd.md`)
+
+1. **Executive summary (§line 27).** After the existing "Key decisions" bullet
+   list, add (or modify the nearest appropriate bullet) a sentence along the
+   lines of:
+
+   > **Product scope.** The deliverable is the Cypher→AQL conversion service
+   > (§4.3) and the NL→Cypher→AQL / NL→AQL pipelines (§1.2, §1.3) that run
+   > inside it. The Cypher Workbench UI (§4.4) exists to **debug** the
+   > service (visualize translations, replay activity, inspect schema
+   > mappings) and to **demo** it to prospects. It is not a full-featured
+   > multi-user workbench and is **not part of the default deployable
+   > surface** (see §15).
+
+2. **§2 Goals / non-goals (§line 313).** Under `### Goals`, add a final bullet:
+
+   > - **Primary product**: a deployable conversion service (library, CLI,
+   >   HTTP) with a deterministic Cypher→AQL transpiler and an LLM-driven
+   >   NL→Cypher pipeline. The UI (§4.4) is a debug/demo surface, not a
+   >   separately supported product.
+
+   Under `### Non-goals`, add a bullet:
+
+   > - The UI is not intended as a production multi-user workbench
+   >   (authn/authz, collaboration, persistence, multi-tenant isolation are
+   >   explicitly out of scope).
+
+3. **§4.4 Cypher Workbench UI (§line 399).** Insert a scope banner immediately
+   under the section heading, before any existing subsection:
+
+   > **Scope note.** The Workbench UI is a **debug and demo surface** for
+   > the conversion service (§4.3). It is optimized for single-operator use
+   > (developer debugging a translation, salesperson demoing to a prospect)
+   > and does not target multi-user production use. Authentication is
+   > deliberately minimal (§4.4.5), persistence is browser-local
+   > (`localStorage` + corrections DB), and the UI is not deployed by
+   > default alongside the service (§15).
+
+4. **§15 Packaging and deployment (§line 1966).** Find the scope / "what this
+   repo ships" paragraph near the top of §15 and add a short note:
+
+   > The default deployable artifact is the conversion service (library +
+   > HTTP surface). The Workbench UI (§4.4) is packaged separately and
+   > deployed only when a debug/demo surface is desired. Most service
+   > deployments run headless.
+
+   If §15 already has a subsection about deployed artifacts, add the UI
+   carve-out there instead of repeating.
+
+5. **Changelog entry** at the top of the PRD:
+
+   > | 2026-04-17 | **Product scope clarified.** The conversion service
+   > (§4.3) + NL pipelines (§1.2, §1.3) are the product; the Cypher
+   > Workbench UI (§4.4) is a debug/demo surface, not part of the default
+   > deployable surface (§15). Edits to Executive summary, §2 Goals /
+   > Non-goals, §4.4 scope banner, §15 packaging. |
+
+### Constraints
+
+- Don't rewrite §4.4's existing subsections — only add the scope banner at
+  the top. The UI spec remains accurate for when the UI IS deployed.
+- Don't remove any existing content. This is an additive clarification, not
+  a redesign.
+- Preserve existing markdown table alignment and heading numbering.
+
+### Acceptance
+
+- `rg -n 'debug and demo' docs/python_prd.md` returns at least 3 hits
+  (executive summary, §4.4 banner, one more).
+- `rg -n 'not deployed by default' docs/python_prd.md` returns at least one
+  hit in §4.4 and one in §15.
+- Changelog entry appears at the top of the date-ordered list.
+- Diff touches only `docs/python_prd.md`.
+```
+
+---
+
+### S3 — WP-25 Wave 4-pre: PromptBuilder refactor
+
+```
+This prompt is **identical to the Wave 4-pre prompt already present in this
+document** under "Wave 4 prompts — WP-25: NL→Cypher pipeline hardening".
+Paste that prompt verbatim. Summary of what it does:
+
+- Turn the monolithic `_SYSTEM_PROMPT` + ad-hoc retry-prompt construction in
+  `arango_cypher/nl2cypher.py` into a composable `PromptBuilder` class with
+  sections `schema_summary`, `few_shot_examples`, `resolved_entities`,
+  `retry_context`.
+- Preserve behaviour BYTE-FOR-BYTE in the zero-shot case (empty few-shot
+  and empty resolved-entities).
+- Add `tests/test_nl2cypher_prompt_builder.py` with a golden-shape test
+  proving the zero-shot prompt is character-identical to pre-refactor.
+- Do NOT introduce any new feature behaviour — few-shot and entity
+  resolution are Wave 4a's job.
+
+See the Wave 4-pre prompt earlier in this document for the full scope,
+acceptance criteria, and constraints.
+
+### Why this is bundled into Wave 5 rather than waiting for Wave 4
+
+Landing it now (a) unblocks Wave 4a at any future moment without needing a
+separate pre-step session, (b) is genuinely independent from the other two
+Wave 5 items (different files, different concerns), and (c) is the smallest
+possible footprint for the WP-25 work — lands cleanly alone if Wave 4a
+gets deprioritized.
+```
+
+---
+
 ## Wave 4 prompts — WP-25: NL→Cypher pipeline hardening
 
 **Source of truth:** `docs/implementation_plan.md` WP-25, `docs/python_prd.md` §1.2.1, research notes in `docs/research/nl2cypher.md` and `docs/research/nl2cypher2aql_analysis.md`.
@@ -1500,6 +1720,15 @@ Use this checklist when running the waves:
 - [ ] Update implementation_plan.md tracking table
 - [ ] Update pyproject.toml version to 0.2.0
 - [ ] Tag release: `git tag v0.2.0`
+
+### Wave 5 (pre-WP-25 cleanup + unblock Wave 4a)
+- [ ] Launch S1 (plan hygiene), S2 (PRD product-scope edits), S3 (PromptBuilder refactor ≡ Wave 4-pre) in parallel on separate branches.
+- [ ] Review S1: WP-19 and WP-20 status rows consistent; no stale prose anywhere.
+- [ ] Review S2: scope banner visible in §4.4; "not deployed by default" in §15; changelog entry present.
+- [ ] Review S3: zero-shot prompt is bit-identical to pre-refactor; `pytest -m "not integration and not tck"` all green.
+- [ ] Merge all three; commit as a single logical split ("Wave 5 cleanup: plan hygiene, PRD scope, PromptBuilder refactor") or three sequential commits if cleaner diffs help review.
+- [ ] Dual-push to `ArthurKeen/arango-cypher-py` and `arango-solutions/arango-cypher`.
+- [ ] Wave 4a is now launchable at any time. Wave 4-pre step is satisfied by S3.
 
 ### Wave 4 (WP-25 — NL→Cypher hardening, separate release band)
 - [ ] **Wave 4-pre**: land PromptBuilder refactor on `main` (1 agent, sequential). Verify `pytest -m "not integration and not tck"` is bit-identical green.
