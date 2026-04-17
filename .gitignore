@@ -50,3 +50,8 @@ htmlcov/
 *.log
 ui/node_modules/
 ui/dist/
+
+# Local runtime state (corrections learning SQLite DB + WAL)
+corrections.db
+corrections.db-shm
+corrections.db-wal
