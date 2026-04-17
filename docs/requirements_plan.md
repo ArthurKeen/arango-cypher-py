@@ -1,4 +1,4 @@
-> **Superseded:** This document is **historical context** only. The authoritative **product requirements, completeness strategy, and gap-closing roadmap** live in **[`python_prd.md`](./python_prd.md)** (see §2A and §10A). Prefer editing `python_prd.md` for planning changes.
+> **Superseded:** This document is **historical context** only. The authoritative **product requirements** live in **[`python_prd.md`](./python_prd.md)** (see §10 for the unified roadmap). The **detailed implementation plan** with work packages and dependencies lives in **[`implementation_plan.md`](./implementation_plan.md)**. Prefer editing those documents for planning changes.
 
 ---
 
