@@ -69,6 +69,7 @@ oC_UpdatingClause
  | oC_Delete
  | oC_Set
  | oC_Remove
+ | oC_Foreach
  ;
 
 oC_ReadingClause
@@ -109,7 +110,7 @@ oC_Create
  : CREATE SP? oC_Pattern ;
 
 oC_Set
- : SET SP? oC_SetItem ( ',' oC_SetItem )* ;
+ : SET SP? oC_SetItem ( SP? ',' SP? oC_SetItem )* ;
 
 SET : ( 'S' | 's' ) ( 'E' | 'e' ) ( 'T' | 't' ) ;
 
@@ -136,6 +137,11 @@ oC_RemoveItem
  : ( oC_Variable oC_NodeLabels )
  | oC_PropertyExpression
  ;
+
+oC_Foreach
+ : FOREACH SP? '(' SP? oC_Variable SP IN SP oC_Expression SP? '|' SP? oC_UpdatingClause ( SP? oC_UpdatingClause )* SP? ')' ;
+
+FOREACH : ( 'F' | 'f' ) ( 'O' | 'o' ) ( 'R' | 'r' ) ( 'E' | 'e' ) ( 'A' | 'a' ) ( 'C' | 'c' ) ( 'H' | 'h' ) ;
 
 oC_InQueryCall
  : CALL SP oC_ExplicitProcedureInvocation ( SP? YIELD SP oC_YieldItems )? ;
@@ -316,7 +322,9 @@ oC_ListOperatorExpression
 IN : ( 'I' | 'i' ) ( 'N' | 'n' ) ;
 
 oC_StringOperatorExpression
- : ( ( SP STARTS SP WITH ) | ( SP ENDS SP WITH ) | ( SP CONTAINS ) ) SP? oC_PropertyOrLabelsExpression ;
+ : ( ( SP STARTS SP WITH ) | ( SP ENDS SP WITH ) | ( SP CONTAINS ) ) SP? oC_PropertyOrLabelsExpression
+ | ( SP? '=~' SP? oC_PropertyOrLabelsExpression )
+ ;
 
 STARTS : ( 'S' | 's' ) ( 'T' | 't' ) ( 'A' | 'a' ) ( 'R' | 'r' ) ( 'T' | 't' ) ( 'S' | 's' ) ;
 
@@ -340,6 +348,8 @@ oC_Atom
  : oC_Literal
  | oC_Parameter
  | oC_CaseExpression
+ | oC_ExistsSubquery
+ | oC_CountSubquery
  | ( COUNT SP? '(' SP? '*' SP? ')' )
  | oC_ListComprehension
  | oC_PatternComprehension
@@ -352,6 +362,15 @@ oC_Atom
  | oC_FunctionInvocation
  | oC_Variable
  ;
+
+oC_ExistsSubquery
+ : EXISTS SP? '{' SP? oC_SubqueryBody SP? '}' ;
+
+oC_CountSubquery
+ : COUNT SP? '{' SP? oC_SubqueryBody SP? '}' ;
+
+oC_SubqueryBody
+ : ( oC_ReadingClause SP? )+ ( oC_Return )? ;
 
 COUNT : ( 'C' | 'c' ) ( 'O' | 'o' ) ( 'U' | 'u' ) ( 'N' | 'n' ) ( 'T' | 't' ) ;
 
@@ -606,6 +625,7 @@ oC_ReservedWord
  | THEN
  | ELSE
  | END
+ | FOREACH
  | MANDATORY
  | SCALAR
  | OF

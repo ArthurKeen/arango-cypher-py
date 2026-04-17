@@ -109,6 +109,11 @@ class CypherVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by CypherParser#oC_Foreach.
+    def visitOC_Foreach(self, ctx:CypherParser.OC_ForeachContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by CypherParser#oC_InQueryCall.
     def visitOC_InQueryCall(self, ctx:CypherParser.OC_InQueryCallContext):
         return self.visitChildren(ctx)
@@ -331,6 +336,21 @@ class CypherVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by CypherParser#oC_Atom.
     def visitOC_Atom(self, ctx:CypherParser.OC_AtomContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by CypherParser#oC_ExistsSubquery.
+    def visitOC_ExistsSubquery(self, ctx:CypherParser.OC_ExistsSubqueryContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by CypherParser#oC_CountSubquery.
+    def visitOC_CountSubquery(self, ctx:CypherParser.OC_CountSubqueryContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by CypherParser#oC_SubqueryBody.
+    def visitOC_SubqueryBody(self, ctx:CypherParser.OC_SubqueryBodyContext):
         return self.visitChildren(ctx)
 
 
