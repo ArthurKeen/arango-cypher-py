@@ -31,4 +31,5 @@ class AqlQuery:
     text: str
     bind_vars: dict[str, Any]
     debug: dict[str, Any] | None = None
+    warnings: tuple[str, ...] = ()
 

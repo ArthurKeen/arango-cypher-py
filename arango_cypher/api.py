@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +12,35 @@ from arango_query_core.exec import AqlExecutor
 from .parser import parse_cypher
 from .profile import build_cypher_profile
 from .translate_v0 import TranslateOptions, translate_v0
+
+_CACHE_MAX = 256
+_translate_cache: OrderedDict[str, TranspiledQuery] = OrderedDict()
+
+
+def _cache_key(
+    cypher: str,
+    mapping: MappingBundle,
+    params: dict[str, Any] | None,
+    extensions: ExtensionPolicy | None = None,
+    registry: ExtensionRegistry | None = None,
+) -> str:
+    """Build a deterministic cache key from inputs."""
+    h = hashlib.sha256()
+    h.update(cypher.encode())
+    h.update(json.dumps(mapping.physical_mapping, sort_keys=True, default=str).encode())
+    h.update(json.dumps(mapping.conceptual_schema, sort_keys=True, default=str).encode())
+    if params:
+        h.update(json.dumps(params, sort_keys=True, default=str).encode())
+    h.update(str(extensions.enabled if extensions else False).encode())
+    h.update(str(id(registry) if registry else 0).encode())
+    return h.hexdigest()
+
+
+def clear_translate_cache() -> int:
+    """Clear the translation cache. Returns the number of evicted entries."""
+    n = len(_translate_cache)
+    _translate_cache.clear()
+    return n
 
 
 @dataclass(frozen=True)
@@ -102,13 +134,26 @@ def translate(
     if mapping is None:
         raise CoreError("mapping is required", code="INVALID_ARGUMENT")
 
+    key = _cache_key(cypher, mapping, params, extensions, registry)
+    cached = _translate_cache.get(key)
+    if cached is not None:
+        _translate_cache.move_to_end(key)
+        return cached
+
     options = TranslateOptions(
         extensions=(extensions or ExtensionPolicy(enabled=False)),
         registry=registry,
     )
     q = translate_v0(cypher, mapping=mapping, params=params, options=options)
 
-    return TranspiledQuery(aql=q.text, bind_vars=q.bind_vars, warnings=[], debug=q.debug)
+    w: list[dict[str, Any]] = [{"message": m} for m in q.warnings] if q.warnings else []
+    result = TranspiledQuery(aql=q.text, bind_vars=q.bind_vars, warnings=w, debug=q.debug)
+
+    _translate_cache[key] = result
+    if len(_translate_cache) > _CACHE_MAX:
+        _translate_cache.popitem(last=False)
+
+    return result
 
 
 def execute(

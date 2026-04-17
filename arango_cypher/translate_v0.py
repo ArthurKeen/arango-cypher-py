@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from arango_query_core import (
@@ -10,6 +10,7 @@ from arango_query_core import (
     CoreError,
     ExtensionPolicy,
     ExtensionRegistry,
+    IndexInfo,
     MappingBundle,
     MappingResolver,
 )
@@ -20,12 +21,264 @@ from .parser import parse_cypher
 _active_registry: ContextVar[ExtensionRegistry | None] = ContextVar(
     "_active_registry", default=None,
 )
+_active_resolver: ContextVar[MappingResolver | None] = ContextVar(
+    "_active_resolver", default=None,
+)
+_active_warnings: ContextVar[list[str]] = ContextVar(
+    "_active_warnings", default=[],
+)
+_active_path_vars: ContextVar[dict[str, tuple[list[str], list[str]]]] = ContextVar(
+    "_active_path_vars", default={},
+)
+
+
+@dataclass
+class _HopMeta:
+    """Pre-processed metadata for a single hop in a relationship chain."""
+    v_var: str
+    v_trav: str
+    v_labels: list[str]
+    v_primary: str | None
+    v_map: dict[str, Any] | None
+    v_bound: bool
+    v_prop_filters: list[str]
+    rel_type: str | None
+    rel_var: str
+    rel_range: tuple[int, int]
+    rel_named: bool
+    r_prop_filters: list[str]
+    direction: str
+    r_map: dict[str, Any]
+    r_style: str
+    edge_collection: str
+    edge_key: str
+    r_type_field: str | None
+    r_type_value: str | None
+
+
+def _warn_multi_label_collection(labels: list[str], primary: str) -> None:
+    """Emit a warning when multi-label matching is used with COLLECTION style."""
+    warnings = _active_warnings.get()
+    others = [lb for lb in labels if lb != primary]
+    msg = (
+        f"Multi-label pattern {labels} uses COLLECTION-style mapping. "
+        f"Using primary label '{primary}'; additional labels {others} "
+        f"cannot be verified (documents exist in exactly one collection)."
+    )
+    if msg not in warnings:
+        warnings.append(msg)
+
+
+def _warn_missing_vci(resolver: MappingResolver, rel_type: str, r_map: dict) -> None:
+    """Emit a warning if a GENERIC_WITH_TYPE relationship lacks VCI."""
+    if r_map.get("style") != "GENERIC_WITH_TYPE":
+        return
+    if resolver.has_vci(rel_type):
+        return
+    edge_coll = r_map.get("edgeCollectionName", "?")
+    type_field = r_map.get("typeField", "type")
+    warnings = _active_warnings.get()
+    msg = (
+        f"Edge collection '{edge_coll}' uses GENERIC_WITH_TYPE for '{rel_type}' "
+        f"but has no VCI on field '{type_field}'. "
+        f"Traversal performance may be degraded."
+    )
+    if msg not in warnings:
+        warnings.append(msg)
+
+
+def _build_vci_options(
+    hops: list["_HopMeta"],
+    resolver: MappingResolver,
+) -> str | None:
+    """Build an OPTIONS { indexHint: ... } clause for traversal VCI hints.
+
+    Returns the OPTIONS string (e.g. ``OPTIONS { indexHint: { ... } }``)
+    or ``None`` if no VCI indexes apply.
+    """
+    hints: dict[str, dict[str, str]] = {}  # edgeColl -> {direction -> indexName}
+    for h in hops:
+        if h.r_style != "GENERIC_WITH_TYPE" or h.rel_type is None:
+            continue
+        indexes = resolver.resolve_indexes(h.rel_type)
+        vci_indexes = [idx for idx in indexes if idx.vci and idx.name]
+        if not vci_indexes:
+            continue
+        edge_coll = h.r_map.get("edgeCollectionName") or h.r_map.get("collectionName", "")
+        if not edge_coll:
+            continue
+        direction_key = h.direction.lower() if h.direction in ("OUTBOUND", "INBOUND") else "outbound"
+        idx_name = vci_indexes[0].name
+        hints.setdefault(edge_coll, {})[direction_key] = idx_name
+
+    if not hints:
+        return None
+
+    inner_parts: list[str] = []
+    for coll, dirs in hints.items():
+        dir_parts = ", ".join(f'"{d}": {{\"base\": "{name}"}}' for d, name in dirs.items())
+        inner_parts.append(f'"{coll}": {{{dir_parts}}}')
+    return "OPTIONS {indexHint: {" + ", ".join(inner_parts) + "}}"
+
+
+def _build_collection_index_hint(
+    label: str,
+    prop_filters: list[str],
+    resolver: MappingResolver,
+) -> str | None:
+    """Build an ``OPTIONS {indexHint: "name"}`` for a FOR-collection loop.
+
+    Checks whether any property referenced in *prop_filters* has a matching
+    index (via ``resolve_indexes``).  Returns the OPTIONS string when a named
+    index covers at least one filtered field, or ``None`` otherwise.  When
+    ``PropertyInfo.indexed`` is set but no named index exists, a warning is
+    emitted so the user knows the optimiser may still pick an index.
+    """
+    if not label or not prop_filters:
+        return None
+
+    indexes = resolver.resolve_indexes(label)
+    props = resolver.resolve_properties(label)
+
+    filtered_fields: set[str] = set()
+    for pf in prop_filters:
+        for name, info in props.items():
+            if f".{name} " in pf or f".{name})" in pf or f".{info.field} " in pf or f".{info.field})" in pf:
+                filtered_fields.add(info.field)
+
+    if not filtered_fields:
+        return None
+
+    best_idx: IndexInfo | None = None
+    best_overlap = 0
+    for idx in indexes:
+        if not idx.name or idx.vci:
+            continue
+        overlap = len(set(idx.fields) & filtered_fields)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_idx = idx
+
+    if best_idx:
+        return f'OPTIONS {{indexHint: "{best_idx.name}", forceIndexHint: false}}'
+
+    indexed_fields = [f for f in filtered_fields if any(p.field == f and p.indexed for p in props.values())]
+    if indexed_fields:
+        warnings = _active_warnings.get()
+        msg = (
+            f"Filtered field(s) {indexed_fields} on '{label}' are marked indexed "
+            f"but no named index found in the mapping — the ArangoDB optimiser "
+            f"may still select an appropriate index automatically."
+        )
+        if msg not in warnings:
+            warnings.append(msg)
+
+    return None
 
 
 @dataclass(frozen=True)
 class TranslateOptions:
     extensions: ExtensionPolicy = ExtensionPolicy(enabled=False)
     registry: ExtensionRegistry | None = None
+
+
+def _prepend_with_collections(result: AqlQuery, resolver: MappingResolver) -> AqlQuery:
+    """Prepend ``WITH coll1, coll2, ...`` listing all vertex collections.
+
+    ArangoDB requires a leading ``WITH`` declaration of all vertex collections
+    accessed during graph traversals.  This is mandatory in cluster deployments
+    and harmless in single-server mode.  Edge collections are excluded — they
+    are referenced directly in the traversal syntax.
+    """
+    has_traversal = re.search(
+        r"\b(?:OUTBOUND|INBOUND|ANY|SHORTEST_PATH|ALL_SHORTEST_PATHS)\b",
+        result.text,
+    )
+    if not has_traversal:
+        return result
+
+    edge_collections: set[str] = set()
+    rels = resolver.bundle.physical_mapping.get("relationships", {})
+    if isinstance(rels, dict):
+        for rmap in rels.values():
+            ec = rmap.get("edgeCollectionName") or rmap.get("collectionName")
+            if isinstance(ec, str) and ec:
+                edge_collections.add(ec)
+
+    vertex_collections: set[str] = set()
+
+    # Collect from bind vars (@@collection references)
+    for key, val in result.bind_vars.items():
+        if key.startswith("@") and isinstance(val, str) and val:
+            if val not in edge_collections:
+                vertex_collections.add(val)
+
+    # Also include entity collections from the mapping that appear as
+    # traversal endpoints — these may not be in bind vars when
+    # IS_SAME_COLLECTION filters are optimized away.
+    entities = resolver.bundle.physical_mapping.get("entities", {})
+    if isinstance(entities, dict):
+        for emap in entities.values():
+            coll = emap.get("collectionName")
+            if isinstance(coll, str) and coll and coll not in edge_collections:
+                vertex_collections.add(coll)
+
+    if not vertex_collections:
+        return result
+
+    with_line = "WITH " + ", ".join(sorted(vertex_collections))
+    return AqlQuery(
+        text=with_line + "\n" + result.text,
+        bind_vars=result.bind_vars,
+        debug=result.debug,
+        warnings=result.warnings,
+    )
+
+
+_INDENT = "  "
+_FOR_RE = re.compile(r"^\s*FOR\b")
+_BLOCK_OPEN_RE = re.compile(r"^\s*(?:FOR|LET\s+\w+\s*=\s*\()")
+_TERMINAL_RE = re.compile(r"^\s*(?:RETURN|SORT|LIMIT|COLLECT)\b")
+_FILTER_LET_RE = re.compile(r"^\s*(?:FILTER|LET|PRUNE)\b")
+
+
+def _reindent_aql(text: str) -> str:
+    """Re-indent AQL to reflect the nesting structure of FOR loops.
+
+    Each ``FOR`` increases the indent depth by one level.  All body
+    statements (``FILTER``, ``LET``, ``SORT``, ``LIMIT``, ``RETURN``,
+    ``COLLECT``) sit inside the innermost ``FOR`` scope.
+    """
+    raw_lines = text.split("\n")
+    out: list[str] = []
+    depth = 0
+    first_for_depth = -1
+
+    for raw in raw_lines:
+        stripped = raw.strip()
+        if not stripped:
+            out.append("")
+            continue
+
+        if stripped.startswith("WITH "):
+            out.append(stripped)
+            continue
+
+        if _FOR_RE.match(stripped):
+            indent = _INDENT * depth
+            out.append(indent + stripped)
+            if first_for_depth < 0:
+                first_for_depth = depth
+            depth += 1
+        elif _TERMINAL_RE.match(stripped):
+            # SORT/LIMIT/RETURN/COLLECT belong inside the innermost FOR scope
+            out.append(_INDENT * depth + stripped)
+        elif _FILTER_LET_RE.match(stripped):
+            out.append(_INDENT * depth + stripped)
+        else:
+            out.append(_INDENT * depth + stripped)
+
+    return "\n".join(out)
 
 
 def translate_v0(
@@ -47,14 +300,31 @@ def translate_v0(
 
     opts = options or TranslateOptions()
     registry = opts.registry
-    token = _active_registry.set(registry)
+    reg_token = _active_registry.set(registry)
+    resolver = MappingResolver(mapping)
+    res_token = _active_resolver.set(resolver)
+    warnings: list[str] = []
+    warn_token = _active_warnings.set(warnings)
+    path_vars: dict[str, tuple[list[str], list[str]]] = {}
+    path_token = _active_path_vars.set(path_vars)
 
     try:
-        return _translate_v0_inner(
+        result = _translate_v0_inner(
             cypher, mapping=mapping, params=params,
         )
+        result = _prepend_with_collections(result, resolver)
+        result = AqlQuery(
+            text=_reindent_aql(result.text),
+            bind_vars=result.bind_vars,
+            debug=result.debug,
+            warnings=tuple(warnings) if warnings else result.warnings,
+        )
+        return result
     finally:
-        _active_registry.reset(token)
+        _active_path_vars.reset(path_token)
+        _active_warnings.reset(warn_token)
+        _active_resolver.reset(res_token)
+        _active_registry.reset(reg_token)
 
 
 def _translate_v0_inner(
@@ -109,9 +379,54 @@ def _translate_single_query(
             code="UNSUPPORTED",
         )
 
-    # Fail fast on any updating clause (SET/CREATE/DELETE/etc). v0 is read-only.
-    if spq.oC_UpdatingClause():
-        raise CoreError("Updating clauses are not supported in v0", code="UNSUPPORTED")
+    updating_clauses = spq.oC_UpdatingClause() or []
+    if updating_clauses:
+        create_clauses: list[CypherParser.OC_CreateContext] = []
+        set_clauses: list[CypherParser.OC_SetContext] = []
+        delete_clauses: list[CypherParser.OC_DeleteContext] = []
+        remove_clauses: list[Any] = []
+        merge_clauses: list[CypherParser.OC_MergeContext] = []
+        foreach_clauses: list[CypherParser.OC_ForeachContext] = []
+        for uc in updating_clauses:
+            if uc.oC_Create() is not None:
+                create_clauses.append(uc.oC_Create())
+            elif uc.oC_Set() is not None:
+                set_clauses.append(uc.oC_Set())
+            elif uc.oC_Delete() is not None:
+                delete_clauses.append(uc.oC_Delete())
+            elif uc.oC_Remove() is not None:
+                remove_clauses.append(uc.oC_Remove())
+            elif uc.oC_Merge() is not None:
+                merge_clauses.append(uc.oC_Merge())
+            elif uc.oC_Foreach() is not None:
+                foreach_clauses.append(uc.oC_Foreach())
+            else:
+                raise CoreError("Unsupported updating clause", code="UNSUPPORTED")
+
+        if foreach_clauses:
+            return _translate_foreach_query(
+                spq, foreach_clauses=foreach_clauses,
+                resolver=resolver, bind_vars=bind_vars,
+            )
+
+        if merge_clauses:
+            return _translate_merge_query(
+                spq, merge_clauses=merge_clauses,
+                resolver=resolver, bind_vars=bind_vars,
+            )
+
+        if create_clauses and not set_clauses and not delete_clauses and not remove_clauses:
+            return _translate_create_query(
+                spq, create_clauses=create_clauses,
+                resolver=resolver, bind_vars=bind_vars,
+            )
+
+        if set_clauses or delete_clauses or remove_clauses:
+            return _translate_mutating_query(
+                spq, set_clauses=set_clauses, delete_clauses=delete_clauses,
+                remove_clauses=remove_clauses,
+                resolver=resolver, bind_vars=bind_vars,
+            )
 
     # Gather reading clauses and return.
     reading_clauses = spq.oC_ReadingClause() or []
@@ -163,11 +478,6 @@ def _translate_single_query(
 
     sole_optional = False
     if not mandatory_matches:
-        if len(optional_matches) > 1:
-            raise CoreError(
-                "Multiple OPTIONAL MATCH without a leading MATCH is not yet supported",
-                code="NOT_IMPLEMENTED",
-            )
         mandatory_matches.append(optional_matches.pop(0))
         sole_optional = True
 
@@ -453,6 +763,352 @@ def _inject_in_query_calls(
     return AqlQuery(text="\n".join(final_lines), bind_vars=result.bind_vars)
 
 
+def _emit_single_hop(
+    h: _HopMeta,
+    *,
+    current_var: str,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    rel_type_exprs: dict[str, str],
+    resolver: MappingResolver,
+) -> None:
+    """Emit AQL for a single relationship hop (the original per-chain logic)."""
+    if h.r_style == "EMBEDDED":
+        embedded_path = h.r_map.get("embeddedPath")
+        if not embedded_path:
+            raise CoreError(
+                f"EMBEDDED relationship '{h.rel_type}' must declare 'embeddedPath'",
+                code="INVALID_MAPPING",
+            )
+        is_array = h.r_map.get("embeddedArray", False)
+        if is_array:
+            lines.append(f"  FOR {h.v_trav} IN TO_ARRAY({current_var}.{embedded_path})")
+        else:
+            lines.append(f"  LET {h.v_trav} = {current_var}.{embedded_path}")
+        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type)
+        for f in h.v_prop_filters:
+            lines.append(f"    FILTER {f}")
+        return
+
+    v_filters: list[str] = []
+    if h.v_map is None:
+        if not h.v_bound:
+            vcoll_key = _pick_bind_key("vCollection", bind_vars)
+            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+    else:
+        skip_coll_filter = (
+            h.v_primary is not None
+            and h.rel_type is not None
+            and resolver.edge_constrains_target(h.rel_type, h.v_primary, h.direction)
+        )
+        if not skip_coll_filter:
+            vcoll_key = _pick_bind_key("vCollection", bind_vars)
+            bind_vars[vcoll_key] = h.v_map.get("collectionName")
+            if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
+                raise CoreError(f"Invalid entity mapping collectionName for: {h.v_primary}", code="INVALID_MAPPING")
+            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+
+    rmin, rmax = h.rel_range
+    trav_line = f"  FOR {h.v_trav}, {h.rel_var} IN {rmin}..{rmax} {h.direction} {current_var} {_aql_collection_ref(h.edge_key)}"
+    vci_opts = _build_vci_options([h], resolver)
+    if vci_opts:
+        trav_line += f" {vci_opts}"
+    lines.append(trav_line)
+
+    if h.v_bound:
+        lines.append(f"    FILTER {h.v_trav}._id == {h.v_var}._id")
+
+    if h.v_map is not None and h.v_primary is not None:
+        v_style = h.v_map.get("style")
+        if v_style == "LABEL":
+            vtf_key = _pick_bind_key("vTypeField", bind_vars)
+            vtv_key = _pick_bind_key("vTypeValue", bind_vars)
+            bind_vars[vtf_key] = h.v_map.get("typeField")
+            bind_vars[vtv_key] = h.v_map.get("typeValue")
+            v_filters.append(f"{h.v_trav}[@{vtf_key}] == @{vtv_key}")
+            v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary))
+        elif v_style != "COLLECTION":
+            raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
+        elif len(h.v_labels) > 1:
+            _warn_multi_label_collection(h.v_labels, h.v_primary)
+
+    r_filters: list[str] = []
+    if h.r_style == "GENERIC_WITH_TYPE":
+        rtf_key = _pick_bind_key("relTypeField", bind_vars)
+        rtv_key = _pick_bind_key("relTypeValue", bind_vars)
+        bind_vars[rtf_key] = h.r_map.get("typeField")
+        bind_vars[rtv_key] = h.r_map.get("typeValue")
+        r_filters.append(f"{h.rel_var}[@{rtf_key}] == @{rtv_key}")
+        rel_type_exprs[h.rel_var] = f"{h.rel_var}[@{rtf_key}]"
+        if h.rel_type is not None:
+            _warn_missing_vci(resolver, h.rel_type, h.r_map)
+    elif h.r_style == "DEDICATED_COLLECTION":
+        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type)
+    else:
+        raise CoreError(f"Unsupported relationship mapping style: {h.r_style}", code="INVALID_MAPPING")
+
+    for f in v_filters + r_filters:
+        lines.append(f"    FILTER {f}")
+    for f in h.r_prop_filters:
+        lines.append(f"    FILTER {f}")
+    for f in h.v_prop_filters:
+        lines.append(f"    FILTER {f}")
+
+
+def _emit_merged_hops(
+    hops: list[_HopMeta],
+    *,
+    current_var: str,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    rel_type_exprs: dict[str, str],
+    resolver: MappingResolver,
+    forbidden_vars: set[str],
+    path_node_vars: list[str],
+    path_edge_vars: list[str],
+) -> None:
+    """Emit a single multi-hop AQL traversal for N consecutive mergeable hops.
+
+    Instead of N nested ``FOR ... IN 1..1`` traversals, emits one
+    ``FOR v, e, p IN N..N`` and extracts intermediate vertices/edges
+    from the path variable.
+
+    LET bindings for intermediate vertices/edges are only emitted when
+    they are needed for filters (labels, properties).  Edge type
+    discriminator filters reference the path directly to avoid
+    unnecessary bindings.  Any remaining unused LETs are cleaned up by
+    ``_eliminate_dead_lets`` at the end of query assembly.
+    """
+    n = len(hops)
+    last = hops[-1]
+    path_var = _pick_fresh_var("_path", forbidden_vars=forbidden_vars)
+
+    edge_key = hops[0].edge_key
+    for h in hops[1:]:
+        if h.edge_key != edge_key and h.edge_key in bind_vars:
+            del bind_vars[h.edge_key]
+
+    trav_line = (
+        f"  FOR {last.v_trav}, {last.rel_var}, {path_var}"
+        f" IN {n}..{n} {last.direction} {current_var}"
+        f" {_aql_collection_ref(edge_key)}"
+    )
+    vci_opts = _build_vci_options(hops, resolver)
+    if vci_opts:
+        trav_line += f" {vci_opts}"
+    lines.append(trav_line)
+
+    for idx, h in enumerate(hops[:-1]):
+        vertex_idx = idx + 1
+        edge_ref = f"{path_var}.edges[{idx}]"
+        vertex_ref = f"{path_var}.vertices[{vertex_idx}]"
+
+        # Only emit LET for the vertex if it has filters that need it,
+        # or unconditionally so downstream WHERE/RETURN can reference it.
+        # _eliminate_dead_lets will clean up if truly unused.
+        lines.append(f"    LET {h.v_trav} = {vertex_ref}")
+        path_node_vars.append(h.v_trav)
+
+        # Use path expression directly for edge type filters;
+        # only create a LET if the edge has property filters or was
+        # explicitly named by the user.
+        needs_edge_let = h.r_prop_filters or h.rel_named
+        if needs_edge_let:
+            lines.append(f"    LET {h.rel_var} = {edge_ref}")
+            edge_filter_ref = h.rel_var
+        else:
+            edge_filter_ref = edge_ref
+        path_edge_vars.append(h.rel_var)
+
+        _emit_vertex_filters_for_hop(h, lines=lines, bind_vars=bind_vars, resolver=resolver)
+        _emit_edge_type_filters_for_hop(h, lines=lines, bind_vars=bind_vars,
+                                        rel_type_exprs=rel_type_exprs, resolver=resolver,
+                                        edge_ref_override=edge_filter_ref)
+        for f in h.v_prop_filters:
+            lines.append(f"    FILTER {f}")
+        for f in h.r_prop_filters:
+            lines.append(f"    FILTER {f}")
+
+    _emit_vertex_filters_for_hop(last, lines=lines, bind_vars=bind_vars, resolver=resolver)
+    _emit_edge_type_filters_for_hop(last, lines=lines, bind_vars=bind_vars,
+                                    rel_type_exprs=rel_type_exprs, resolver=resolver)
+    for f in last.v_prop_filters:
+        lines.append(f"    FILTER {f}")
+    for f in last.r_prop_filters:
+        lines.append(f"    FILTER {f}")
+
+    path_node_vars.append(last.v_trav)
+    path_edge_vars.append(last.rel_var)
+
+
+def _emit_vertex_filters_for_hop(
+    h: _HopMeta,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    resolver: MappingResolver,
+) -> None:
+    """Emit FILTER lines for a hop's target vertex (label/collection checks)."""
+    if h.v_map is None:
+        if not h.v_bound:
+            vcoll_key = _pick_bind_key("vCollection", bind_vars)
+            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+            lines.append(f"    FILTER IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+        return
+
+    skip_coll_filter = (
+        h.v_primary is not None
+        and h.rel_type is not None
+        and resolver.edge_constrains_target(h.rel_type, h.v_primary, h.direction)
+    )
+    if not skip_coll_filter:
+        vcoll_key = _pick_bind_key("vCollection", bind_vars)
+        bind_vars[vcoll_key] = h.v_map.get("collectionName")
+        if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
+            raise CoreError(f"Invalid entity mapping collectionName for: {h.v_primary}", code="INVALID_MAPPING")
+        lines.append(f"    FILTER IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+
+    if h.v_primary is not None:
+        v_style = h.v_map.get("style")
+        if v_style == "LABEL":
+            vtf_key = _pick_bind_key("vTypeField", bind_vars)
+            vtv_key = _pick_bind_key("vTypeValue", bind_vars)
+            bind_vars[vtf_key] = h.v_map.get("typeField")
+            bind_vars[vtv_key] = h.v_map.get("typeValue")
+            lines.append(f"    FILTER {h.v_trav}[@{vtf_key}] == @{vtv_key}")
+            for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary):
+                lines.append(f"    FILTER {f}")
+        elif v_style != "COLLECTION":
+            raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
+        elif len(h.v_labels) > 1:
+            _warn_multi_label_collection(h.v_labels, h.v_primary)
+
+
+def _emit_edge_type_filters_for_hop(
+    h: _HopMeta,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    rel_type_exprs: dict[str, str],
+    resolver: MappingResolver,
+    edge_ref_override: str | None = None,
+) -> None:
+    """Emit FILTER lines for a hop's edge type discriminator.
+
+    *edge_ref_override*, when provided, is used in the FILTER expression
+    instead of the hop's ``rel_var``.  This allows merged traversals to
+    reference path edges directly (e.g. ``_path.edges[0]``) without
+    creating a LET binding.
+    """
+    ref = edge_ref_override or h.rel_var
+    if h.r_style == "GENERIC_WITH_TYPE":
+        rtf_key = _pick_bind_key("relTypeField", bind_vars)
+        rtv_key = _pick_bind_key("relTypeValue", bind_vars)
+        bind_vars[rtf_key] = h.r_map.get("typeField")
+        bind_vars[rtv_key] = h.r_map.get("typeValue")
+        lines.append(f"    FILTER {ref}[@{rtf_key}] == @{rtv_key}")
+        rel_type_exprs[h.rel_var] = f"{ref}[@{rtf_key}]"
+        if h.rel_type is not None:
+            _warn_missing_vci(resolver, h.rel_type, h.r_map)
+    elif h.r_style == "DEDICATED_COLLECTION":
+        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type)
+    else:
+        raise CoreError(f"Unsupported relationship mapping style: {h.r_style}", code="INVALID_MAPPING")
+
+
+_LET_PATTERN = re.compile(r"^\s*LET\s+(\w+)\s*=")
+
+
+def _eliminate_dead_lets(lines: list[str]) -> list[str]:
+    """Remove LET bindings whose variable is not referenced elsewhere in the query."""
+    result: list[str] = []
+    for i, line in enumerate(lines):
+        m = _LET_PATTERN.match(line)
+        if m:
+            var = m.group(1)
+            var_re = re.compile(r"\b" + re.escape(var) + r"\b")
+            used = any(var_re.search(other) for j, other in enumerate(lines) if j != i)
+            if not used:
+                continue
+        result.append(line)
+    return result
+
+
+_SIMPLE_CMP_RE = re.compile(
+    r"^\(?\s*(\w+(?:\.\w+(?:\[.*?\])?)*)\s*(==|!=|<|>|<=|>=)\s*(.+?)\s*\)?$"
+)
+
+
+def _is_prunable_condition(
+    filter_expr: str, trav_var: str, all_vars: set[str],
+) -> bool:
+    """Return True if *filter_expr* is a simple comparison referencing only *trav_var*.
+
+    We are conservative: only ``==``, ``!=``, ``<``, ``>``, ``<=``, ``>=``
+    on a single property access of the traversal target variable qualify.
+    """
+    stripped = filter_expr.strip()
+    if stripped.startswith("(") and stripped.endswith(")"):
+        stripped = stripped[1:-1].strip()
+    upper = stripped.upper()
+    if " AND " in upper or " OR " in upper or upper.startswith("NOT "):
+        return False
+
+    m = _SIMPLE_CMP_RE.match(stripped)
+    if not m:
+        return False
+    lhs = m.group(1)
+    if not lhs.startswith(f"{trav_var}."):
+        return False
+    for v in all_vars:
+        if v == trav_var:
+            continue
+        if re.search(r"\b" + re.escape(v) + r"\b", stripped):
+            return False
+    return True
+
+
+def _emit_relationship_uniqueness(
+    named_rel_vars: list[str],
+    lines: list[str],
+    indent: str = "    ",
+) -> None:
+    """Emit FILTER to enforce Cypher's relationship uniqueness guarantee.
+
+    When a pattern contains 2+ explicitly named relationship variables,
+    Cypher guarantees no edge appears in more than one binding.  ArangoDB
+    handles this within a single traversal but NOT across multiple
+    relationship variables in the same pattern.
+    """
+    if len(named_rel_vars) < 2:
+        return
+    for i in range(len(named_rel_vars)):
+        for j in range(i + 1, len(named_rel_vars)):
+            lines.append(
+                f"{indent}FILTER {named_rel_vars[i]}._id != {named_rel_vars[j]}._id"
+            )
+
+
+def _emit_prune_and_filter(
+    filter_expr: str,
+    trav_var: str,
+    all_vars: set[str],
+    is_varlen: bool,
+    lines: list[str],
+    indent: str = "    ",
+) -> None:
+    """Emit PRUNE (for variable-length traversals) and FILTER lines.
+
+    For variable-length traversals with simple, single-variable conditions,
+    a ``PRUNE`` is emitted before the ``FILTER`` to let ArangoDB terminate
+    branches early.
+    """
+    if is_varlen and _is_prunable_condition(filter_expr, trav_var, all_vars):
+        lines.append(f"{indent}PRUNE NOT ({filter_expr})")
+    lines.append(f"{indent}FILTER {filter_expr}")
+
+
 def _translate_match_body(
     match_ctxs: list[CypherParser.OC_MatchContext],
     *,
@@ -521,7 +1177,7 @@ def _translate_match_body(
             entity_style = entity_mapping.get("style")
             if entity_style == "COLLECTION":
                 if len(labels) > 1:
-                    raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+                    _warn_multi_label_collection(labels, primary)
                 bind_vars["@collection"] = entity_mapping["collectionName"]
                 for_line = f"FOR {var} IN @@collection"
             elif entity_style == "LABEL":
@@ -543,6 +1199,10 @@ def _translate_match_body(
 
         # Build AQL
         lines: list[str] = [for_line]
+        if labels:
+            idx_hint = _build_collection_index_hint(primary, prop_filters, resolver)
+            if idx_hint:
+                lines.append(f"  {idx_hint}")
         for f in filters:
             lines.append(f"  FILTER {f}")
 
@@ -557,52 +1217,17 @@ def _translate_match_body(
         ret = spq.oC_Return()
         if ret is None:
             raise CoreError("RETURN is required in v0 subset", code="UNSUPPORTED")
-
-        proj = ret.oC_ProjectionBody()
-        distinct = proj.DISTINCT() is not None
-        order_ctx = proj.oC_Order()
-
-        skip_value, limit_value = _parse_skip_limit(proj)
-
-        items_ctx = proj.oC_ProjectionItems()
-        items = items_ctx.oC_ProjectionItem()
-        if not items:
-            raise CoreError("RETURN items required", code="UNSUPPORTED")
-
-        compiled_items: list[tuple[str | None, str]] = []
-        for it in items:
-            expr_ctx = it.oC_Expression()
-            expr = _compile_expression(expr_ctx, bind_vars)
-            if opt_var_env:
-                expr = _rewrite_vars(expr, opt_var_env)
-            alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
-            compiled_items.append((alias, expr))
-
-        if distinct:
-            if len(compiled_items) != 1:
-                raise CoreError("DISTINCT only supported for single expression in v0", code="UNSUPPORTED")
-            alias, expr = compiled_items[0]
-            col_var = alias or _infer_key(expr) or "value"
-            lines.append(f"  COLLECT {col_var} = {expr}")
-            if order_ctx is not None:
-                # After COLLECT, original vars may be out of scope.
-                # In the v0 subset we only support ordering by the distinct value.
-                lines.append(f"  SORT {col_var}")
-            _append_skip_limit(lines, skip_value, limit_value)
-            lines.append(f"  RETURN {col_var}")
-            return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
-
-        if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars))
-        _append_skip_limit(lines, skip_value, limit_value)
-
-        if len(compiled_items) == 1 and compiled_items[0][0] is None:
-            lines.append(f"  RETURN {compiled_items[0][1]}")
-            return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
-
-        # Multi-item or aliased single-item: return an object.
-        lines.append("  RETURN " + _compile_return_object(compiled_items))
+        _append_return(
+            ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars,
+            var_env=opt_var_env,
+        )
         return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+    # Check for named path: p = (a)-[:REL]->(b)
+    path_var_name: str | None = None
+    pp_var_ctx = all_parts[0].oC_Variable()
+    if pp_var_ctx is not None:
+        path_var_name = pp_var_ctx.getText().strip()
 
     # Case B: relationship pattern (1+ hops)
     u_var, u_labels = _extract_node_var_and_labels(node, default_var="u")
@@ -627,7 +1252,7 @@ def _translate_match_body(
         elif u_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {u_style}", code="INVALID_MAPPING")
         elif len(u_labels) > 1:
-            raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+            _warn_multi_label_collection(u_labels, u_primary)
 
     lines = [f"FOR {u_var} IN @@uCollection"]
     for f in u_filters:
@@ -638,23 +1263,22 @@ def _translate_match_body(
     forbidden_vars: set[str] = {u_var}
     rel_type_exprs: dict[str, str] = {}
     current_var = u_var
+    path_node_vars: list[str] = [u_var]
+    path_edge_vars: list[str] = []
 
+    # --- Phase 1: pre-process chains into _HopMeta list ---
+    hops: list[_HopMeta] = []
     for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
         v_node = chain.oC_NodePattern()
         if rel_pat is None or v_node is None:
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
-        # Next node
         v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
-
-        # If a named node var is already bound, traverse into a temp and constrain equality by _id.
         v_bound = v_node.oC_Variable() is not None and v_var in forbidden_vars
         v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden_vars)
-
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
 
-        # Relationship (type + var + range)
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
         detail = rel_pat.oC_RelationshipDetail()
         rel_named = detail is not None and detail.oC_Variable() is not None
@@ -667,7 +1291,11 @@ def _translate_match_body(
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
         direction = _relationship_direction(rel_pat)
 
-        # Map v + relationship
+        if direction == "ANY" and rel_type:
+            stats_dir = resolver.preferred_traversal_direction(rel_type)
+            if stats_dir:
+                direction = stats_dir
+
         v_primary: str | None = None
         v_map: dict[str, Any] | None = None
         if v_labels:
@@ -676,89 +1304,124 @@ def _translate_match_body(
         r_map = resolver.resolve_relationship(rel_type)
         r_style = r_map.get("style")
 
-        if r_style == "EMBEDDED":
-            embedded_path = r_map.get("embeddedPath")
-            if not embedded_path:
-                raise CoreError(
-                    f"EMBEDDED relationship '{rel_type}' must declare 'embeddedPath'",
-                    code="INVALID_MAPPING",
-                )
-            is_array = r_map.get("embeddedArray", False)
-            if is_array:
-                lines.append(f"  FOR {v_trav} IN TO_ARRAY({current_var}.{embedded_path})")
-            else:
-                lines.append(f"  LET {v_trav} = {current_var}.{embedded_path}")
-            rel_type_exprs[rel_var] = _aql_string_literal(rel_type)
-            for f in v_prop_filters:
-                lines.append(f"    FILTER {f}")
-        else:
+        edge_collection = ""
+        edge_key = ""
+        r_type_field: str | None = None
+        r_type_value: str | None = None
+
+        if r_style != "EMBEDDED":
             edge_key = _pick_bind_key("@edgeCollection", bind_vars)
-            bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+            edge_collection = r_map.get("edgeCollectionName") or r_map.get("collectionName") or ""
+            bind_vars[edge_key] = edge_collection
             if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
                 raise CoreError(f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING")
+            r_type_field = r_map.get("typeField")
+            r_type_value = r_map.get("typeValue")
 
-            v_filters: list[str] = []
-            if v_map is None:
-                if not v_bound:
-                    vcoll_key = _pick_bind_key("vCollection", bind_vars)
-                    bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-                    v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})")
-            else:
-                vcoll_key = _pick_bind_key("vCollection", bind_vars)
-                bind_vars[vcoll_key] = v_map.get("collectionName")
-                if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                    raise CoreError(f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING")
-                v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})")
+        hops.append(_HopMeta(
+            v_var=v_var, v_trav=v_trav, v_labels=v_labels, v_primary=v_primary,
+            v_map=v_map, v_bound=v_bound, v_prop_filters=v_prop_filters,
+            rel_type=rel_type, rel_var=rel_var, rel_range=rel_range,
+            rel_named=rel_named, r_prop_filters=r_prop_filters,
+            direction=direction, r_map=r_map, r_style=r_style,
+            edge_collection=edge_collection, edge_key=edge_key,
+            r_type_field=r_type_field, r_type_value=r_type_value,
+        ))
 
-            rmin, rmax = rel_range
-            lines.append(f"  FOR {v_trav}, {rel_var} IN {rmin}..{rmax} {direction} {current_var} {_aql_collection_ref(edge_key)}")
-
-            if v_bound:
-                lines.append(f"    FILTER {v_trav}._id == {v_var}._id")
-
-            if v_map is not None and v_primary is not None:
-                v_style = v_map.get("style")
-                if v_style == "LABEL":
-                    vtf_key = _pick_bind_key("vTypeField", bind_vars)
-                    vtv_key = _pick_bind_key("vTypeValue", bind_vars)
-                    bind_vars[vtf_key] = v_map.get("typeField")
-                    bind_vars[vtv_key] = v_map.get("typeValue")
-                    v_filters.append(f"{v_trav}[@{vtf_key}] == @{vtv_key}")
-                    v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary))
-                elif v_style != "COLLECTION":
-                    raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
-                elif len(v_labels) > 1:
-                    raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
-
-            r_filters: list[str] = []
-            if r_style == "GENERIC_WITH_TYPE":
-                rtf_key = _pick_bind_key("relTypeField", bind_vars)
-                rtv_key = _pick_bind_key("relTypeValue", bind_vars)
-                bind_vars[rtf_key] = r_map.get("typeField")
-                bind_vars[rtv_key] = r_map.get("typeValue")
-                r_filters.append(f"{rel_var}[@{rtf_key}] == @{rtv_key}")
-                rel_type_exprs[rel_var] = f"{rel_var}[@{rtf_key}]"
-            elif r_style == "DEDICATED_COLLECTION":
-                rel_type_exprs[rel_var] = _aql_string_literal(rel_type)
-            else:
-                raise CoreError(f"Unsupported relationship mapping style: {r_style}", code="INVALID_MAPPING")
-
-            for f in v_filters + r_filters:
-                lines.append(f"    FILTER {f}")
-            for f in r_prop_filters:
-                lines.append(f"    FILTER {f}")
-            for f in v_prop_filters:
-                lines.append(f"    FILTER {f}")
-
-        # Advance current traversal variable.
-        current_var = v_trav
         if not v_bound:
             forbidden_vars.add(v_var)
+
+    # --- Phase 2: group consecutive mergeable hops ---
+    groups: list[list[int]] = []
+    for i, h in enumerate(hops):
+        if not groups:
+            groups.append([i])
+            continue
+        prev = hops[groups[-1][-1]]
+        mergeable = (
+            h.r_style != "EMBEDDED" and prev.r_style != "EMBEDDED"
+            and h.edge_collection == prev.edge_collection
+            and h.direction == prev.direction
+            and h.rel_range == (1, 1) and prev.rel_range == (1, 1)
+            and not h.v_bound and not prev.v_bound
+            and h.r_type_field == prev.r_type_field
+            and h.r_type_value == prev.r_type_value
+            and not prev.r_prop_filters
+        )
+        if mergeable:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+
+    # --- Phase 3: emit AQL for each group ---
+    for group in groups:
+        if len(group) == 1:
+            _emit_single_hop(hops[group[0]], current_var=current_var,
+                             lines=lines, bind_vars=bind_vars,
+                             rel_type_exprs=rel_type_exprs, resolver=resolver)
+            h = hops[group[0]]
+            current_var = h.v_trav
+            path_node_vars.append(h.v_trav)
+            path_edge_vars.append(h.rel_var)
+        else:
+            _emit_merged_hops([hops[i] for i in group], current_var=current_var,
+                              lines=lines, bind_vars=bind_vars,
+                              rel_type_exprs=rel_type_exprs, resolver=resolver,
+                              forbidden_vars=forbidden_vars,
+                              path_node_vars=path_node_vars,
+                              path_edge_vars=path_edge_vars)
+            last = hops[group[-1]]
+            current_var = last.v_trav
+
+    # Cypher's relationship-uniqueness rule states that no edge may bind
+    # to two relationship slots in the same MATCH pattern, regardless of
+    # whether the user assigned a variable.  AQL traversals enforce this
+    # within a single FOR/IN, so explicit filters are only needed across
+    # *separate* traversal groups.  Within merged groups the engine
+    # already prevents repeated edges.
+    if len(groups) > 1:
+        cross_group_rels: list[str] = []
+        for gi, group in enumerate(groups):
+            if len(group) != 1:
+                # Merged group: intermediate edges may not have a stable
+                # binding.  Skip cross-uniqueness emission for now; the
+                # last hop's edge is still bound but enforcing partial
+                # uniqueness would risk referencing absent LETs.
+                continue
+            h = hops[group[0]]
+            if h.r_style == "EMBEDDED":
+                continue
+            if h.rel_range != (1, 1):
+                # Variable-length traversals bind ``rel_var`` to only the
+                # final edge; a strict cross-pattern check would need a
+                # path-level NOT-IN comparison.  Skip for now.
+                continue
+            cross_group_rels.append(h.rel_var)
+        _emit_relationship_uniqueness(cross_group_rels, lines)
+    else:
+        # Single group: only named rels need cross-checks if any exist
+        # (merged groups already enforce uniqueness internally).
+        named_rels = [h.rel_var for h in hops if h.rel_named]
+        _emit_relationship_uniqueness(named_rels, lines)
+
+    # Emit named path LET if a path variable was declared
+    if path_var_name is not None:
+        nodes_arr = "[" + ", ".join(path_node_vars) + "]"
+        edges_arr = "[" + ", ".join(path_edge_vars) + "]"
+        lines.append(f"    LET {path_var_name} = {{nodes: {nodes_arr}, edges: {edges_arr}}}")
+        forbidden_vars.add(path_var_name)
+        pvars = _active_path_vars.get()
+        pvars[path_var_name] = (path_node_vars, path_edge_vars)
+
+    is_varlen_trav = any(h.rel_range[0] != h.rel_range[1] for h in hops)
 
     where_ctx = match_ctx.oC_Where()
     user_filter = _compile_where(where_ctx.oC_Expression(), bind_vars) if where_ctx is not None else None
     if user_filter:
-        lines.append(f"    FILTER {user_filter}")
+        _emit_prune_and_filter(
+            user_filter, current_var, forbidden_vars,
+            is_varlen=is_varlen_trav, lines=lines,
+        )
 
     opt_var_env_rel: dict[str, str] = {}
     if optional_matches:
@@ -767,60 +1430,299 @@ def _translate_match_body(
             forbidden_vars=forbidden_vars, lines=lines,
         )
 
-    # RETURN clause (with special-casing for type(r))
     ret = spq.oC_Return()
     if ret is None:
         raise CoreError("RETURN is required in v0 subset", code="UNSUPPORTED")
+    _append_return(
+        ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars,
+        var_env=opt_var_env_rel,
+        rel_type_exprs=rel_type_exprs,
+    )
+    lines = _eliminate_dead_lets(lines)
+    return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
-    proj = ret.oC_ProjectionBody()
-    distinct = proj.DISTINCT() is not None
-    order_ctx = proj.oC_Order()
 
-    skip_value, limit_value = _parse_skip_limit(proj)
+def _translate_foreach_query(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    foreach_clauses: list[CypherParser.OC_ForeachContext],
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """Translate ``MATCH ... FOREACH (x IN list | SET ...)`` to AQL.
 
-    items_ctx = proj.oC_ProjectionItems()
-    items = items_ctx.oC_ProjectionItem()
-    if not items:
-        raise CoreError("RETURN items required", code="UNSUPPORTED")
+    ``FOREACH (x IN list | SET x.prop = val)``
+    becomes:
+    ``FOR x IN list UPDATE x WITH {prop: val} IN @@collection``
+    """
+    reading_clauses = spq.oC_ReadingClause() or []
 
-    compiled_items: list[tuple[str | None, str]] = []
-    for it in items:
-        expr_ctx = it.oC_Expression()
-        alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
-        expr_txt = expr_ctx.getText().strip()
-        if expr_txt.lower().startswith("type(") and expr_txt.endswith(")"):
-            inner = expr_txt[5:-1].strip()
-            if inner in rel_type_exprs:
-                compiled_items.append((alias or "type", rel_type_exprs[inner]))
-                continue
-        expr = _compile_expression(expr_ctx, bind_vars)
-        if opt_var_env_rel:
-            expr = _rewrite_vars(expr, opt_var_env_rel)
-        compiled_items.append((alias, expr))
+    lines: list[str] = []
 
-    if distinct:
-        if len(compiled_items) != 1:
-            raise CoreError("DISTINCT only supported for single expression in v0", code="UNSUPPORTED")
-        alias, expr = compiled_items[0]
-        col_var = alias or _infer_key(expr) or "value"
-        lines.append(f"  COLLECT {col_var} = {expr}")
-        if order_ctx is not None:
-            # After COLLECT, original vars may be out of scope.
-            # In the v0 subset we only support ordering by the distinct value.
-            lines.append(f"  SORT {col_var}")
-        _append_skip_limit(lines, skip_value, limit_value)
-        lines.append(f"  RETURN {col_var}")
-        return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+    if reading_clauses:
+        match_ctxs: list[CypherParser.OC_MatchContext] = []
+        for rc in reading_clauses:
+            m = rc.oC_Match()
+            if m is not None:
+                match_ctxs.append(m)
 
-    if order_ctx is not None:
-        lines.append("  " + _compile_order_by(order_ctx, bind_vars))
-    _append_skip_limit(lines, skip_value, limit_value)
+        if match_ctxs:
+            if len(match_ctxs) == 1:
+                match_lines, _ = _compile_match_pipeline(
+                    match_ctxs[0], resolver=resolver, bind_vars=bind_vars,
+                )
+            else:
+                all_parts = []
+                extra_wheres = []
+                for mc_item in match_ctxs:
+                    pattern = mc_item.oC_Pattern()
+                    all_parts.extend(pattern.oC_PatternPart() or [])
+                    w = mc_item.oC_Where()
+                    if w is not None:
+                        extra_wheres.append(w)
+                match_lines, _ = _compile_match_multi_parts_from_parts(
+                    all_parts, extra_wheres=extra_wheres,
+                    resolver=resolver, bind_vars=bind_vars,
+                )
+            lines.extend(match_lines)
 
-    if len(compiled_items) == 1 and compiled_items[0][0] is None:
-        lines.append(f"  RETURN {compiled_items[0][1]}")
-        return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+    for fe in foreach_clauses:
+        var_name = fe.oC_Variable().getText().strip()
+        list_expr = _compile_expression(fe.oC_Expression(), bind_vars)
 
-    lines.append("  RETURN " + _compile_return_object(compiled_items))
+        lines.append(f"FOR {var_name} IN {list_expr}")
+
+        inner_updating = fe.oC_UpdatingClause() or []
+        for uc in inner_updating:
+            if uc.oC_Set() is not None:
+                sc = uc.oC_Set()
+                set_items = sc.oC_SetItem() or []
+                update_fields: dict[str, dict[str, str]] = {}
+                for si in set_items:
+                    prop_expr = si.oC_PropertyExpression()
+                    if prop_expr is not None:
+                        atom = prop_expr.oC_Atom()
+                        target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var_name
+                        lookups = prop_expr.oC_PropertyLookup() or []
+                        if not lookups:
+                            raise CoreError("SET requires a property expression", code="UNSUPPORTED")
+                        prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+                        val = _compile_expression(si.oC_Expression(), bind_vars)
+                        update_fields.setdefault(target_var, {})[prop_name] = val
+
+                for target_var, fields in update_fields.items():
+                    pairs = ", ".join(f"{k}: {v}" for k, v in fields.items())
+                    if "@collection" in bind_vars:
+                        coll_ref = "@@collection"
+                    else:
+                        coll_key = _pick_bind_key("@feCollection", bind_vars)
+                        all_labels = resolver.all_entity_labels()
+                        if all_labels:
+                            e_map = resolver.resolve_entity(all_labels[0])
+                            bind_vars[coll_key] = e_map.get("collectionName")
+                        else:
+                            bind_vars[coll_key] = "unknown"
+                        coll_ref = _aql_collection_ref(coll_key)
+                    lines.append(f"  UPDATE {target_var} WITH {{{pairs}}} IN {coll_ref}")
+            elif uc.oC_Create() is not None:
+                raise CoreError("CREATE inside FOREACH not yet supported", code="NOT_IMPLEMENTED")
+            elif uc.oC_Delete() is not None:
+                raise CoreError("DELETE inside FOREACH not yet supported", code="NOT_IMPLEMENTED")
+            else:
+                raise CoreError("Unsupported clause inside FOREACH", code="UNSUPPORTED")
+
+    return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _translate_mutating_query(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    set_clauses: list[CypherParser.OC_SetContext],
+    delete_clauses: list[CypherParser.OC_DeleteContext],
+    remove_clauses: list,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """Translate MATCH ... SET / DELETE / REMOVE queries to AQL.
+
+    SET n.prop = val  →  UPDATE n WITH {prop: val} IN @@collection
+    DELETE n          →  REMOVE n IN @@collection
+    DETACH DELETE n   →  (remove edges first, then REMOVE node)
+    REMOVE n.prop     →  UPDATE n WITH {} IN @@collection ... (UNSET)
+    """
+    reading_clauses = spq.oC_ReadingClause() or []
+    match_ctxs: list[CypherParser.OC_MatchContext] = []
+    for rc in reading_clauses:
+        m = rc.oC_Match()
+        if m is not None:
+            match_ctxs.append(m)
+
+    if not match_ctxs:
+        raise CoreError("MATCH is required before SET/DELETE", code="UNSUPPORTED")
+
+    # Compile the MATCH body into FOR/FILTER lines
+    mc = match_ctxs[0]
+    pattern = mc.oC_Pattern()
+    parts = pattern.oC_PatternPart() or []
+    if not parts:
+        raise CoreError("MATCH pattern is required", code="UNSUPPORTED")
+
+    anon = parts[0].oC_AnonymousPatternPart()
+    elem = anon.oC_PatternElement()
+    start_node = elem.oC_NodePattern()
+    if start_node is None:
+        raise CoreError("MATCH requires a node pattern", code="UNSUPPORTED")
+
+    chains = elem.oC_PatternElementChain() or []
+    var, labels = _extract_node_var_and_labels(start_node, default_var="n")
+    prop_filters = _compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars)
+
+    if not labels:
+        raise CoreError("SET/DELETE requires labeled node in v0", code="UNSUPPORTED")
+
+    primary = _pick_primary_entity_label(labels, resolver)
+    entity_mapping = resolver.resolve_entity(primary)
+    coll_key = "@collection"
+    bind_vars[coll_key] = entity_mapping["collectionName"]
+
+    lines: list[str] = [f"FOR {var} IN @@collection"]
+
+    style = entity_mapping.get("style")
+    if style == "LABEL":
+        bind_vars["typeField"] = entity_mapping["typeField"]
+        bind_vars["typeValue"] = entity_mapping["typeValue"]
+        lines.append(f"  FILTER {var}[@typeField] == @typeValue")
+
+    for f in prop_filters:
+        lines.append(f"  FILTER {f}")
+
+    # Handle relationship chain if present
+    trav_vars: dict[str, str] = {var: var}
+    forbidden: set[str] = {var}
+    current = var
+    for chain in chains:
+        rel_pat = chain.oC_RelationshipPattern()
+        v_node = chain.oC_NodePattern()
+        if rel_pat is None or v_node is None:
+            raise CoreError("Invalid pattern in SET/DELETE", code="UNSUPPORTED")
+
+        v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
+        rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
+        direction = _relationship_direction(rel_pat)
+
+        r_map = resolver.resolve_relationship(rel_type)
+        edge_key = _pick_bind_key("@edgeCollection", bind_vars)
+        bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+
+        rmin, rmax = rel_range
+        edge_ref = _aql_collection_ref(edge_key)
+        lines.append(f"  FOR {v_var}, {rel_var} IN {rmin}..{rmax} {direction} {current} {edge_ref}")
+
+        if v_labels:
+            v_primary = _pick_primary_entity_label(v_labels, resolver)
+            v_map = resolver.resolve_entity(v_primary)
+            v_style = v_map.get("style")
+            if v_style == "LABEL":
+                vtf = _pick_bind_key("vTypeField", bind_vars)
+                vtv = _pick_bind_key("vTypeValue", bind_vars)
+                bind_vars[vtf] = v_map.get("typeField")
+                bind_vars[vtv] = v_map.get("typeValue")
+                lines.append(f"    FILTER {v_var}[@{vtf}] == @{vtv}")
+
+        r_style = r_map.get("style")
+        if r_style == "GENERIC_WITH_TYPE":
+            rtf = _pick_bind_key("relTypeField", bind_vars)
+            rtv = _pick_bind_key("relTypeValue", bind_vars)
+            bind_vars[rtf] = r_map.get("typeField")
+            bind_vars[rtv] = r_map.get("typeValue")
+            lines.append(f"    FILTER {rel_var}[@{rtf}] == @{rtv}")
+
+        current = v_var
+        trav_vars[v_var] = v_var
+        trav_vars[rel_var] = rel_var
+        forbidden.add(v_var)
+        forbidden.add(rel_var)
+
+    where_ctx = mc.oC_Where()
+    if where_ctx is not None:
+        wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
+        lines.append(f"  FILTER {wf}")
+
+    # Compile SET items
+    for sc in set_clauses:
+        set_items = sc.oC_SetItem() or []
+        update_fields: dict[str, dict[str, str]] = {}
+        for si in set_items:
+            prop_expr = si.oC_PropertyExpression()
+            if prop_expr is not None:
+                # n.prop = val
+                atom = prop_expr.oC_Atom()
+                target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
+                lookups = prop_expr.oC_PropertyLookup() or []
+                if not lookups:
+                    raise CoreError("SET requires a property expression", code="UNSUPPORTED")
+                prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+                val = _compile_expression(si.oC_Expression(), bind_vars)
+                update_fields.setdefault(target_var, {})[prop_name] = val
+            else:
+                si_var = si.oC_Variable()
+                if si_var is not None:
+                    target_var = si_var.getText().strip()
+                    val = _compile_expression(si.oC_Expression(), bind_vars)
+                    txt = si.getText()
+                    if "+=" in txt:
+                        lines.append(f"  UPDATE {target_var} WITH MERGE({target_var}, {val}) IN @@collection")
+                    else:
+                        lines.append(f"  REPLACE {target_var} WITH {val} IN @@collection")
+
+        for target_var, fields in update_fields.items():
+            pairs = ", ".join(f"{k}: {v}" for k, v in fields.items())
+            target_coll = f"@@collection"
+            if target_var != var and target_var in trav_vars:
+                tc_key = _pick_bind_key("@setCollection", bind_vars)
+                # Determine collection from traversal context
+                bind_vars[tc_key] = bind_vars.get("@collection", "")
+                target_coll = f"@{tc_key}"
+            lines.append(f"  UPDATE {target_var} WITH {{{pairs}}} IN {target_coll}")
+
+    # Compile DELETE
+    for dc in delete_clauses:
+        is_detach = dc.DETACH() is not None
+        del_exprs = dc.oC_Expression() or []
+        for de in del_exprs:
+            del_var = _compile_expression(de, bind_vars)
+            if is_detach:
+                edge_colls = resolver.all_edge_collections()
+                for idx, ec in enumerate(edge_colls):
+                    ec_key = _pick_bind_key("@detachEdge", bind_vars)
+                    bind_vars[ec_key] = ec
+                    ec_ref = _aql_collection_ref(ec_key)
+                    de_var = f"_de{idx}"
+                    lines.append(
+                        f"  LET _edgeRm{idx} = (FOR {de_var} IN 1..1 ANY {del_var} {ec_ref} REMOVE {de_var} IN {ec_ref})"
+                    )
+            lines.append(f"  REMOVE {del_var} IN @@collection")
+
+    # Compile REMOVE (property removal)
+    for rc in remove_clauses:
+        rm_items = rc.oC_RemoveItem() or []
+        for ri in rm_items:
+            prop_expr = ri.oC_PropertyExpression()
+            if prop_expr is not None:
+                atom = prop_expr.oC_Atom()
+                target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
+                lookups = prop_expr.oC_PropertyLookup() or []
+                if lookups:
+                    prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+                    lines.append(f'  UPDATE {target_var} WITH {{}} IN @@collection OPTIONS {{keepNull: false}}')
+                    # Use UNSET approach
+                    lines[-1] = f'  UPDATE {target_var} WITH UNSET({target_var}, "{prop_name}") IN @@collection'
+
+    # Optional RETURN
+    ret = spq.oC_Return()
+    if ret is not None:
+        _append_return(ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars)
+
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
 
@@ -892,6 +1794,635 @@ def _merge_bind_vars(
             target[k] = v
 
 
+def _translate_create_query(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    create_clauses: list[CypherParser.OC_CreateContext],
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """Translate a single-part query containing CREATE clause(s)."""
+    reading_clauses = spq.oC_ReadingClause() or []
+    ret = spq.oC_Return()
+
+    lines: list[str] = []
+    var_env: dict[str, str] = {}
+    indent = ""
+
+    match_clauses: list[CypherParser.OC_MatchContext] = []
+    for rc in reading_clauses:
+        m = rc.oC_Match()
+        if m is not None:
+            match_clauses.append(m)
+        else:
+            raise CoreError(
+                "Only MATCH reading clauses are supported with CREATE",
+                code="NOT_IMPLEMENTED",
+            )
+
+    if match_clauses:
+        all_parts: list = []
+        extra_wheres: list[CypherParser.OC_WhereContext] = []
+        for mc in match_clauses:
+            pattern = mc.oC_Pattern()
+            pp = pattern.oC_PatternPart() or []
+            all_parts.extend(pp)
+            wc = mc.oC_Where()
+            if wc is not None:
+                extra_wheres.append(wc)
+
+        if len(all_parts) == 1 and len(match_clauses) == 1:
+            match_lines, forbidden = _compile_match_pipeline(
+                match_clauses[0], resolver=resolver, bind_vars=bind_vars,
+            )
+        else:
+            match_lines, forbidden = _compile_match_multi_parts_from_parts(
+                all_parts, extra_wheres=extra_wheres,
+                resolver=resolver, bind_vars=bind_vars,
+            )
+        lines.extend(match_lines)
+        var_env = {v: v for v in forbidden}
+        indent = "  "
+
+    num_creates = len(create_clauses)
+    for ci, cc in enumerate(create_clauses):
+        force_let = ci < num_creates - 1
+        _compile_create(
+            cc, resolver=resolver, bind_vars=bind_vars,
+            var_env=var_env, lines=lines, indent=indent,
+            has_return=ret is not None or force_let,
+        )
+
+    if ret is not None:
+        _compile_return_for_create(
+            ret.oC_ProjectionBody(),
+            lines=lines, bind_vars=bind_vars, indent=indent,
+        )
+
+    return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _compile_create(
+    create_ctx: CypherParser.OC_CreateContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    var_env: dict[str, str],
+    lines: list[str],
+    indent: str,
+    has_return: bool,
+) -> None:
+    """Compile a single CREATE clause into AQL INSERT lines."""
+    pattern = create_ctx.oC_Pattern()
+    parts = pattern.oC_PatternPart() or []
+
+    @dataclass
+    class _CreateOp:
+        kind: str  # "node" or "rel"
+        var: str
+        labels: list[str] | None = None
+        node_ctx: Any = None
+        rel_pat: Any = None
+        from_var: str = ""
+        to_var: str = ""
+
+    ops: list[_CreateOp] = []
+    create_counter = 0
+    anon_counter = 0
+
+    def _unique_anon(var: str) -> str:
+        nonlocal anon_counter
+        if var != "_anon" or var not in var_env:
+            return var
+        while f"_anon{anon_counter}" in var_env:
+            anon_counter += 1
+        result = f"_anon{anon_counter}"
+        anon_counter += 1
+        return result
+
+    for part in parts:
+        anon = part.oC_AnonymousPatternPart()
+        elem = anon.oC_PatternElement()
+        node = elem.oC_NodePattern()
+        chains = elem.oC_PatternElementChain() or []
+
+        start_var, start_labels = _extract_node_var_and_labels(node, default_var="_anon")
+        start_var = _unique_anon(start_var)
+
+        if start_var not in var_env:
+            ops.append(_CreateOp(kind="node", var=start_var, labels=start_labels, node_ctx=node))
+            var_env[start_var] = start_var
+
+        current_var = start_var
+        for chain in chains:
+            rel_pat = chain.oC_RelationshipPattern()
+            end_node = chain.oC_NodePattern()
+            if rel_pat is None or end_node is None:
+                raise CoreError("Invalid CREATE pattern", code="UNSUPPORTED")
+
+            end_var, end_labels = _extract_node_var_and_labels(end_node, default_var="_anon")
+            end_var = _unique_anon(end_var)
+
+            if end_var not in var_env:
+                ops.append(_CreateOp(kind="node", var=end_var, labels=end_labels, node_ctx=end_node))
+                var_env[end_var] = end_var
+
+            detail = rel_pat.oC_RelationshipDetail()
+            rel_var_name = ""
+            if detail is not None and detail.oC_Variable() is not None:
+                rel_var_name = detail.oC_Variable().getText().strip()
+            if not rel_var_name:
+                rel_var_name = f"_c{create_counter}"
+                create_counter += 1
+
+            direction = _relationship_direction(rel_pat)
+            if direction == "INBOUND":
+                from_v, to_v = end_var, current_var
+            else:
+                from_v, to_v = current_var, end_var
+
+            ops.append(_CreateOp(
+                kind="rel", var=rel_var_name,
+                rel_pat=rel_pat, from_var=from_v, to_var=to_v,
+            ))
+
+            current_var = end_var
+
+    for i, op in enumerate(ops):
+        is_last = i == len(ops) - 1
+        needs_let = has_return or not is_last
+
+        if op.kind == "node":
+            _compile_create_node(
+                op.var, op.labels or [], op.node_ctx,
+                resolver=resolver, bind_vars=bind_vars,
+                lines=lines, indent=indent, needs_let=needs_let,
+            )
+        elif op.kind == "rel":
+            _compile_create_rel(
+                op.var, op.rel_pat, op.from_var, op.to_var,
+                resolver=resolver, bind_vars=bind_vars,
+                lines=lines, indent=indent, needs_let=needs_let,
+            )
+
+
+def _find_or_create_collection_bind_key(
+    base: str,
+    collection_name: str,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Reuse an existing bind key if it already points to the same collection."""
+    if base in bind_vars and bind_vars[base] == collection_name:
+        return base
+    i = 2
+    while f"{base}{i}" in bind_vars:
+        if bind_vars[f"{base}{i}"] == collection_name:
+            return f"{base}{i}"
+        i += 1
+    key = _pick_bind_key(base, bind_vars)
+    bind_vars[key] = collection_name
+    return key
+
+
+def _compile_create_node(
+    var: str,
+    labels: list[str],
+    node_ctx: CypherParser.OC_NodePatternContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    lines: list[str],
+    indent: str,
+    needs_let: bool,
+) -> None:
+    """Compile a single node INSERT."""
+    props = _compile_create_props(node_ctx.oC_Properties(), bind_vars)
+    extra_fields: list[str] = []
+
+    if not labels:
+        coll_name = _infer_unlabeled_collection(resolver)
+        coll_key = _find_or_create_collection_bind_key("@collection", coll_name, bind_vars)
+    else:
+        primary = _pick_primary_entity_label(labels, resolver)
+        entity_mapping = resolver.resolve_entity(primary)
+        style = entity_mapping.get("style")
+
+        coll_key = _find_or_create_collection_bind_key(
+            "@collection", entity_mapping["collectionName"], bind_vars,
+        )
+
+        if style == "LABEL":
+            type_field = entity_mapping.get("typeField", "type")
+            tv_key = _pick_bind_key("typeValue", bind_vars)
+            bind_vars[tv_key] = entity_mapping.get("typeValue")
+            extra_fields.append(f"{type_field}: @{tv_key}")
+        elif style != "COLLECTION":
+            raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
+
+    doc = _build_insert_doc(props, extra_fields)
+    coll_ref = _aql_collection_ref(coll_key)
+
+    if needs_let:
+        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
+    else:
+        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+
+
+def _compile_create_rel(
+    var: str,
+    rel_pat: CypherParser.OC_RelationshipPatternContext,
+    from_var: str,
+    to_var: str,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    lines: list[str],
+    indent: str,
+    needs_let: bool,
+) -> None:
+    """Compile a single relationship INSERT."""
+    detail = rel_pat.oC_RelationshipDetail()
+    if detail is None:
+        raise CoreError("Relationship type is required for CREATE", code="UNSUPPORTED")
+    types_ctx = detail.oC_RelationshipTypes()
+    if types_ctx is None:
+        raise CoreError("Relationship type is required for CREATE", code="UNSUPPORTED")
+    types = types_ctx.oC_RelTypeName()
+    if not types or len(types) != 1:
+        raise CoreError("Exactly one relationship type is required for CREATE", code="UNSUPPORTED")
+    rel_type = types[0].getText().strip()
+
+    r_map = resolver.resolve_relationship(rel_type)
+    r_style = r_map.get("style")
+
+    edge_coll_name = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+    if not isinstance(edge_coll_name, str) or not edge_coll_name:
+        raise CoreError(
+            f"Invalid relationship mapping collection for: {rel_type}",
+            code="INVALID_MAPPING",
+        )
+
+    edge_coll_key = _find_or_create_collection_bind_key(
+        "@edgeCollection", edge_coll_name, bind_vars,
+    )
+
+    extra_fields = [f"_from: {from_var}._id", f"_to: {to_var}._id"]
+
+    if r_style == "GENERIC_WITH_TYPE":
+        type_field = r_map.get("typeField", "type")
+        rtv_key = _pick_bind_key("relTypeValue", bind_vars)
+        bind_vars[rtv_key] = r_map.get("typeValue")
+        extra_fields.append(f"{type_field}: @{rtv_key}")
+    elif r_style == "EMBEDDED":
+        raise CoreError(
+            "EMBEDDED relationships are not supported for CREATE",
+            code="UNSUPPORTED",
+        )
+    elif r_style != "DEDICATED_COLLECTION":
+        raise CoreError(
+            f"Unsupported relationship mapping style for CREATE: {r_style}",
+            code="INVALID_MAPPING",
+        )
+
+    props = _compile_create_rel_props(rel_pat, bind_vars)
+    doc = _build_insert_doc(props, extra_fields)
+    coll_ref = _aql_collection_ref(edge_coll_key)
+
+    if needs_let:
+        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
+    else:
+        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+
+
+def _compile_create_props(
+    props_ctx: CypherParser.OC_PropertiesContext | None,
+    bind_vars: dict[str, Any],
+) -> list[tuple[str, str]]:
+    """Extract property key-value pairs from a pattern's properties for INSERT."""
+    if props_ctx is None:
+        return []
+    if props_ctx.oC_Parameter() is not None:
+        raise CoreError(
+            "Parameterized properties are not supported in CREATE",
+            code="NOT_IMPLEMENTED",
+        )
+    m = props_ctx.oC_MapLiteral()
+    if m is None:
+        return []
+    keys = m.oC_PropertyKeyName() or []
+    vals = m.oC_Expression() or []
+    if len(keys) != len(vals):
+        raise CoreError("Invalid properties map in CREATE", code="UNSUPPORTED")
+    out: list[tuple[str, str]] = []
+    for k_ctx, v_ctx in zip(keys, vals, strict=False):
+        key = k_ctx.getText().strip()
+        if not key:
+            raise CoreError("Invalid property key in CREATE", code="UNSUPPORTED")
+        expr = _compile_expression(v_ctx, bind_vars)
+        out.append((key, expr))
+    return out
+
+
+def _compile_create_rel_props(
+    rel_pat: CypherParser.OC_RelationshipPatternContext,
+    bind_vars: dict[str, Any],
+) -> list[tuple[str, str]]:
+    """Extract properties from a relationship pattern for CREATE."""
+    detail = rel_pat.oC_RelationshipDetail()
+    if detail is None:
+        return []
+    return _compile_create_props(detail.oC_Properties(), bind_vars)
+
+
+def _build_insert_doc(
+    props: list[tuple[str, str]],
+    extra_fields: list[str] | None = None,
+) -> str:
+    """Build an AQL object literal for INSERT."""
+    fields: list[str] = list(extra_fields or [])
+    fields.extend(f"{k}: {v}" for k, v in props)
+    if not fields:
+        return "{}"
+    return "{" + ", ".join(fields) + "}"
+
+
+def _compile_return_for_create(
+    proj: CypherParser.OC_ProjectionBodyContext,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    indent: str = "",
+) -> None:
+    """Compile a RETURN clause for a CREATE query (respects indent level)."""
+    items_ctx = proj.oC_ProjectionItems()
+    items = items_ctx.oC_ProjectionItem()
+    if not items:
+        raise CoreError("RETURN items required", code="UNSUPPORTED")
+
+    compiled_items: list[tuple[str | None, str]] = []
+    for it in items:
+        expr = _compile_expression(it.oC_Expression(), bind_vars)
+        alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        compiled_items.append((alias, expr))
+
+    if len(compiled_items) == 1 and compiled_items[0][0] is None:
+        lines.append(f"{indent}RETURN {compiled_items[0][1]}")
+    else:
+        lines.append(f"{indent}RETURN " + _compile_return_object(compiled_items))
+
+
+def _translate_merge_query(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    merge_clauses: list[CypherParser.OC_MergeContext],
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """Translate MERGE clause(s) into AQL UPSERT."""
+    if len(merge_clauses) != 1:
+        raise CoreError(
+            "Only a single MERGE clause is supported",
+            code="NOT_IMPLEMENTED",
+        )
+    merge_ctx = merge_clauses[0]
+    pattern_part = merge_ctx.oC_PatternPart()
+    anon = pattern_part.oC_AnonymousPatternPart()
+    elem = anon.oC_PatternElement()
+    node = elem.oC_NodePattern()
+    chains = elem.oC_PatternElementChain() or []
+
+    if chains:
+        return _translate_merge_relationship(
+            spq, merge_ctx=merge_ctx, node=node, chains=chains,
+            resolver=resolver, bind_vars=bind_vars,
+        )
+
+    var, labels = _extract_node_var_and_labels(node, default_var="n")
+    if not labels:
+        raise CoreError("MERGE requires a labeled node", code="UNSUPPORTED")
+
+    primary = _pick_primary_entity_label(labels, resolver)
+    entity_mapping = resolver.resolve_entity(primary)
+    coll_key = _find_or_create_collection_bind_key(
+        "@collection", entity_mapping["collectionName"], bind_vars,
+    )
+    coll_ref = _aql_collection_ref(coll_key)
+
+    props = _compile_create_props(node.oC_Properties(), bind_vars)
+    extra_fields: list[str] = []
+    style = entity_mapping.get("style")
+    if style == "LABEL":
+        type_field = entity_mapping.get("typeField", "type")
+        tv_key = _pick_bind_key("typeValue", bind_vars)
+        bind_vars[tv_key] = entity_mapping.get("typeValue")
+        extra_fields.append(f"{type_field}: @{tv_key}")
+
+    search_doc = _build_insert_doc(props, extra_fields)
+    insert_doc = search_doc
+
+    on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+
+    if on_create_fields:
+        all_insert_fields = list(extra_fields)
+        all_insert_fields.extend(f"{k}: {v}" for k, v in props)
+        all_insert_fields.extend(on_create_fields)
+        insert_doc = "{" + ", ".join(all_insert_fields) + "}" if all_insert_fields else "{}"
+
+    update_doc = "{" + ", ".join(on_match_fields) + "}" if on_match_fields else "{}"
+
+    lines: list[str] = []
+    _compile_merge_reading_clauses(spq, resolver=resolver, bind_vars=bind_vars, lines=lines)
+
+    lines.append(f"UPSERT {search_doc}")
+    lines.append(f"INSERT {insert_doc}")
+    lines.append(f"UPDATE {update_doc}")
+    lines.append(f"IN {coll_ref}")
+
+    ret = spq.oC_Return()
+    if ret is not None:
+        ret_var = var
+        lines.append(f"LET {ret_var} = NEW")
+        _compile_return_for_create(
+            ret.oC_ProjectionBody(),
+            lines=lines, bind_vars=bind_vars,
+        )
+
+    return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _compile_merge_reading_clauses(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    lines: list[str],
+) -> None:
+    """Compile preceding MATCH clauses for a MERGE statement."""
+    reading_clauses = spq.oC_ReadingClause() or []
+    if not reading_clauses:
+        return
+    all_parts: list = []
+    extra_wheres: list = []
+    for rc in reading_clauses:
+        m = rc.oC_Match()
+        if m is None:
+            continue
+        pattern = m.oC_Pattern()
+        pp = pattern.oC_PatternPart() or []
+        all_parts.extend(pp)
+        wc = m.oC_Where()
+        if wc is not None:
+            extra_wheres.append(wc)
+    if not all_parts:
+        return
+    if len(all_parts) == 1 and not extra_wheres:
+        match_lines, _ = _compile_match_pipeline(
+            reading_clauses[0].oC_Match(), resolver=resolver, bind_vars=bind_vars,
+        )
+    else:
+        match_lines, _ = _compile_match_multi_parts_from_parts(
+            all_parts, extra_wheres=extra_wheres,
+            resolver=resolver, bind_vars=bind_vars,
+        )
+    lines.extend(match_lines)
+
+
+def _extract_merge_actions(
+    merge_ctx: CypherParser.OC_MergeContext,
+    bind_vars: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Extract ON CREATE SET / ON MATCH SET fields from a MERGE clause."""
+    on_create_fields: list[str] = []
+    on_match_fields: list[str] = []
+
+    merge_actions = merge_ctx.oC_MergeAction() or []
+    for action in merge_actions:
+        is_on_create = action.CREATE() is not None
+        set_ctx = action.oC_Set()
+        if set_ctx is None:
+            continue
+        set_items = set_ctx.oC_SetItem() or []
+        for si in set_items:
+            prop_expr = si.oC_PropertyExpression()
+            if prop_expr is not None:
+                lookups = prop_expr.oC_PropertyLookup() or []
+                if not lookups:
+                    continue
+                prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+                val = _compile_expression(si.oC_Expression(), bind_vars)
+                if is_on_create:
+                    on_create_fields.append(f"{prop_name}: {val}")
+                else:
+                    on_match_fields.append(f"{prop_name}: {val}")
+
+    return on_create_fields, on_match_fields
+
+
+def _translate_merge_relationship(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    merge_ctx: CypherParser.OC_MergeContext,
+    node: CypherParser.OC_NodePatternContext,
+    chains: list,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """Translate ``MERGE (a)-[:REL {props}]->(b)`` into AQL UPSERT on an edge collection."""
+    if len(chains) != 1:
+        raise CoreError(
+            "Only single-hop relationship MERGE is supported",
+            code="NOT_IMPLEMENTED",
+        )
+
+    chain = chains[0]
+    rel_pat = chain.oC_RelationshipPattern()
+    target_node = chain.oC_NodePattern()
+    if rel_pat is None or target_node is None:
+        raise CoreError("Invalid relationship MERGE pattern", code="UNSUPPORTED")
+
+    start_var, _ = _extract_node_var_and_labels(node, default_var="a")
+    end_var, _ = _extract_node_var_and_labels(target_node, default_var="b")
+
+    detail = rel_pat.oC_RelationshipDetail()
+    if detail is None:
+        raise CoreError("Relationship type is required for MERGE", code="UNSUPPORTED")
+    types_ctx = detail.oC_RelationshipTypes()
+    if types_ctx is None:
+        raise CoreError("Relationship type is required for MERGE", code="UNSUPPORTED")
+    type_names = types_ctx.oC_RelTypeName()
+    if not type_names or len(type_names) != 1:
+        raise CoreError("Exactly one relationship type is required for MERGE", code="UNSUPPORTED")
+    rel_type = type_names[0].getText().strip()
+
+    direction = _relationship_direction(rel_pat)
+    if direction == "INBOUND":
+        from_var, to_var = end_var, start_var
+    else:
+        from_var, to_var = start_var, end_var
+
+    r_map = resolver.resolve_relationship(rel_type)
+    r_style = r_map.get("style")
+    edge_coll_name = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+    if not isinstance(edge_coll_name, str) or not edge_coll_name:
+        raise CoreError(
+            f"Invalid relationship mapping collection for: {rel_type}",
+            code="INVALID_MAPPING",
+        )
+    edge_coll_key = _find_or_create_collection_bind_key(
+        "@edgeCollection", edge_coll_name, bind_vars,
+    )
+    edge_coll_ref = _aql_collection_ref(edge_coll_key)
+
+    search_fields = [f"_from: {from_var}._id", f"_to: {to_var}._id"]
+    insert_fields = [f"_from: {from_var}._id", f"_to: {to_var}._id"]
+
+    if r_style == "GENERIC_WITH_TYPE":
+        type_field = r_map.get("typeField", "type")
+        rtv_key = _pick_bind_key("relTypeValue", bind_vars)
+        bind_vars[rtv_key] = r_map.get("typeValue")
+        search_fields.append(f"{type_field}: @{rtv_key}")
+        insert_fields.append(f"{type_field}: @{rtv_key}")
+
+    rel_props = _compile_create_rel_props(rel_pat, bind_vars)
+    for k, v in rel_props:
+        insert_fields.append(f"{k}: {v}")
+
+    on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+
+    search_doc = "{" + ", ".join(search_fields) + "}"
+
+    if on_create_fields:
+        all_insert = list(insert_fields) + on_create_fields
+        insert_doc = "{" + ", ".join(all_insert) + "}"
+    else:
+        insert_doc = "{" + ", ".join(insert_fields) + "}"
+
+    update_doc = "{" + ", ".join(on_match_fields) + "}" if on_match_fields else "{}"
+
+    lines: list[str] = []
+    _compile_merge_reading_clauses(spq, resolver=resolver, bind_vars=bind_vars, lines=lines)
+
+    lines.append(f"UPSERT {search_doc}")
+    lines.append(f"INSERT {insert_doc}")
+    lines.append(f"UPDATE {update_doc}")
+    lines.append(f"IN {edge_coll_ref}")
+
+    ret = spq.oC_Return()
+    if ret is not None:
+        rel_var_name = ""
+        if detail.oC_Variable() is not None:
+            rel_var_name = detail.oC_Variable().getText().strip()
+        if not rel_var_name:
+            rel_var_name = "r"
+        lines.append(f"LET {rel_var_name} = NEW")
+        _compile_return_for_create(
+            ret.oC_ProjectionBody(),
+            lines=lines, bind_vars=bind_vars,
+        )
+
+    return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
 def _translate_multi_part_query(
     mpq: CypherParser.OC_MultiPartQueryContext,
     *,
@@ -912,17 +2443,26 @@ def _translate_multi_part_query(
     if not reading_clauses:
         raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
 
-    match_ctx: CypherParser.OC_MatchContext | None = None
+    match_ctxs: list[CypherParser.OC_MatchContext] = []
     for rc in reading_clauses:
         m = rc.oC_Match()
         if m is not None:
-            if match_ctx is not None:
-                raise CoreError("Multiple MATCH clauses not supported yet", code="UNSUPPORTED")
-            match_ctx = m
-    if match_ctx is None:
+            match_ctxs.append(m)
+    if not match_ctxs:
         raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
 
-    lines, forbidden_vars = _compile_match_pipeline(match_ctx, resolver=resolver, bind_vars=bind_vars)
+    lines, forbidden_vars = _compile_match_pipeline(match_ctxs[0], resolver=resolver, bind_vars=bind_vars)
+
+    for extra_match in match_ctxs[1:]:
+        extra_var_env, _ = _compile_match_from_bound(
+            extra_match,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            var_env={v: v for v in forbidden_vars},
+            lines=lines,
+        )
+        forbidden_vars.update(extra_var_env.keys())
 
     # Apply all WITH stages
     var_env: dict[str, str] = {v: v for v in forbidden_vars}
@@ -949,23 +2489,22 @@ def _translate_multi_part_query(
     tail_reading = tail.oC_ReadingClause() or []
     rel_type_exprs: dict[str, str] = {}
     if tail_reading:
-        match_ctx: CypherParser.OC_MatchContext | None = None
+        tail_match_ctxs: list[CypherParser.OC_MatchContext] = []
         for rc in tail_reading:
             m = rc.oC_Match()
             if m is not None:
-                if match_ctx is not None:
-                    raise CoreError("Multiple MATCH clauses not supported yet", code="UNSUPPORTED")
-                match_ctx = m
-        if match_ctx is None:
+                tail_match_ctxs.append(m)
+        if not tail_match_ctxs:
             raise CoreError("Only MATCH is supported after WITH in v0 subset", code="NOT_IMPLEMENTED")
-        var_env, rel_type_exprs = _compile_match_from_bound(
-            match_ctx,
-            resolver=resolver,
-            bind_vars=bind_vars,
-            forbidden_vars=forbidden_vars,
-            var_env=var_env,
-            lines=lines,
-        )
+        for tm in tail_match_ctxs:
+            var_env, rel_type_exprs = _compile_match_from_bound(
+                tm,
+                resolver=resolver,
+                bind_vars=bind_vars,
+                forbidden_vars=forbidden_vars,
+                var_env=var_env,
+                lines=lines,
+            )
 
     ret = tail.oC_Return()
     if ret is None:
@@ -989,46 +2528,137 @@ def _compile_optional_matches(
     forbidden_vars: set[str],
     lines: list[str],
 ) -> dict[str, str]:
-    """
-    Compile OPTIONAL MATCH clauses into LET + subquery (FIRST) pattern.
+    """Compile OPTIONAL MATCH clauses into LET + subquery (FIRST) pattern.
 
-    Each OPTIONAL MATCH must be a relationship pattern starting from an
-    already-bound variable.  The target node is exposed via LET.
+    Supports:
+    - Single-hop: ``OPTIONAL MATCH (a)-[:REL]->(b)``
+    - Multi-segment: ``OPTIONAL MATCH (a)-[:R1]->(b)-[:R2]->(c)``
+    - Node-only: ``OPTIONAL MATCH (n:Person {name: "Nobody"})``
     """
     extra_env: dict[str, str] = {}
     for om in opt_matches:
         pattern = om.oC_Pattern()
         om_parts = pattern.oC_PatternPart()
-        if not om_parts or len(om_parts) != 1:
+        if not om_parts:
             raise CoreError(
-                "OPTIONAL MATCH supports a single pattern part",
-                code="UNSUPPORTED",
-            )
-        anon = om_parts[0].oC_AnonymousPatternPart()
-        elem = anon.oC_PatternElement()
-        start_node = elem.oC_NodePattern()
-        if start_node is None:
-            raise CoreError("OPTIONAL MATCH requires a node pattern", code="UNSUPPORTED")
-        chains = elem.oC_PatternElementChain() or []
-        if not chains:
-            raise CoreError(
-                "OPTIONAL MATCH without a relationship pattern is not supported",
-                code="UNSUPPORTED",
-            )
-        if len(chains) != 1:
-            raise CoreError(
-                "OPTIONAL MATCH supports single-hop patterns only",
-                code="NOT_IMPLEMENTED",
-            )
-
-        u_var, _ = _extract_node_var_and_labels(start_node, default_var="n")
-        if u_var not in forbidden_vars:
-            raise CoreError(
-                f"OPTIONAL MATCH start variable '{u_var}' is not bound",
+                "OPTIONAL MATCH requires at least one pattern part",
                 code="UNSUPPORTED",
             )
 
-        chain = chains[0]
+        for part in om_parts:
+            anon = part.oC_AnonymousPatternPart()
+            elem = anon.oC_PatternElement()
+            start_node = elem.oC_NodePattern()
+            if start_node is None:
+                raise CoreError("OPTIONAL MATCH requires a node pattern", code="UNSUPPORTED")
+            chains = elem.oC_PatternElementChain() or []
+
+            if not chains:
+                _compile_optional_node_only(
+                    om, start_node, resolver=resolver, bind_vars=bind_vars,
+                    forbidden_vars=forbidden_vars, lines=lines, extra_env=extra_env,
+                )
+                continue
+
+            _compile_optional_with_chains(
+                om, start_node, chains, resolver=resolver, bind_vars=bind_vars,
+                forbidden_vars=forbidden_vars, lines=lines, extra_env=extra_env,
+            )
+
+    return extra_env
+
+
+def _compile_optional_node_only(
+    om: CypherParser.OC_MatchContext,
+    start_node: Any,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    lines: list[str],
+    extra_env: dict[str, str],
+) -> None:
+    """Compile node-only OPTIONAL MATCH: ``OPTIONAL MATCH (n:Label {prop: val})``."""
+    u_var, u_labels = _extract_node_var_and_labels(start_node, default_var="n")
+    if not u_labels:
+        raise CoreError(
+            "Node-only OPTIONAL MATCH requires at least one label",
+            code="UNSUPPORTED",
+        )
+
+    primary = _pick_primary_entity_label(u_labels, resolver)
+    emap = resolver.resolve_entity(primary)
+    coll_key = _pick_bind_key("@optCollection", bind_vars)
+    bind_vars[coll_key] = emap.get("collectionName")
+
+    inner_var = _pick_fresh_var(f"{u_var}_0", forbidden_vars=forbidden_vars)
+    sub_filters: list[str] = []
+
+    style = emap.get("style")
+    if style == "LABEL":
+        tf_key = _pick_bind_key("optTF", bind_vars)
+        tv_key = _pick_bind_key("optTV", bind_vars)
+        bind_vars[tf_key] = emap.get("typeField")
+        bind_vars[tv_key] = emap.get("typeValue")
+        sub_filters.append(f"{inner_var}[@{tf_key}] == @{tv_key}")
+
+    props = start_node.oC_Properties()
+    if props is not None:
+        map_lit = props.oC_MapLiteral()
+        if map_lit is not None:
+            keys = map_lit.oC_PropertyKeyName() or []
+            vals = map_lit.oC_Expression() or []
+            for k_ctx, v_ctx in zip(keys, vals):
+                k = k_ctx.getText().strip()
+                val = _compile_expression(v_ctx, bind_vars)
+                sub_filters.append(f"{inner_var}.{k} == {val}")
+
+    where_ctx = om.oC_Where()
+    if where_ctx is not None:
+        wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
+        wf = re.sub(rf"\b{re.escape(u_var)}\b", inner_var, wf)
+        sub_filters.append(wf)
+
+    coll_ref = _aql_collection_ref(coll_key)
+    sub_lines = [f"FOR {inner_var} IN {coll_ref}"]
+    for sf in sub_filters:
+        sub_lines.append(f"  FILTER {sf}")
+    sub_lines.append(f"  LIMIT 1")
+    sub_lines.append(f"  RETURN {inner_var}")
+    subquery = "\n    ".join(sub_lines)
+
+    let_var = _pick_fresh_var(u_var, forbidden_vars=forbidden_vars)
+    lines.append(f"  LET {let_var} = FIRST(\n    {subquery}\n  )")
+    extra_env[u_var] = let_var
+
+
+def _compile_optional_with_chains(
+    om: CypherParser.OC_MatchContext,
+    start_node: Any,
+    chains: list[Any],
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    lines: list[str],
+    extra_env: dict[str, str],
+) -> None:
+    """Compile OPTIONAL MATCH with one or more relationship chains."""
+    u_var, _ = _extract_node_var_and_labels(start_node, default_var="n")
+    if u_var not in forbidden_vars:
+        raise CoreError(
+            f"OPTIONAL MATCH start variable '{u_var}' is not bound",
+            code="UNSUPPORTED",
+        )
+
+    # For multi-segment, we chain traversals inside the subquery
+    current_start = u_var
+    sub_lines: list[str] = []
+    all_filters: list[str] = []
+    all_target_vars: list[tuple[str, str]] = []  # (cypher_var, inner_var)
+    all_rel_vars: list[tuple[str, str, Any]] = []  # (cypher_var, inner_var, rel_pat)
+
+    for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
         v_node = chain.oC_NodePattern()
         if rel_pat is None or v_node is None:
@@ -1052,21 +2682,22 @@ def _compile_optional_matches(
                 code="INVALID_MAPPING",
             )
 
-        sub_filters: list[str] = []
-
+        hop_filters: list[str] = []
         if v_labels:
             v_primary = _pick_primary_entity_label(v_labels, resolver)
             v_map = resolver.resolve_entity(v_primary)
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
-            bind_vars[vcoll_key] = v_map.get("collectionName")
-            sub_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {inner_v})")
+            skip_coll_filter = resolver.edge_constrains_target(rel_type, v_primary, direction)
+            if not skip_coll_filter:
+                vcoll_key = _pick_bind_key("vCollection", bind_vars)
+                bind_vars[vcoll_key] = v_map.get("collectionName")
+                hop_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {inner_v})")
             v_style = v_map.get("style")
             if v_style == "LABEL":
                 vtf_key = _pick_bind_key("vTypeField", bind_vars)
                 vtv_key = _pick_bind_key("vTypeValue", bind_vars)
                 bind_vars[vtf_key] = v_map.get("typeField")
                 bind_vars[vtv_key] = v_map.get("typeValue")
-                sub_filters.append(f"{inner_v}[@{vtf_key}] == @{vtv_key}")
+                hop_filters.append(f"{inner_v}[@{vtf_key}] == @{vtv_key}")
 
         r_style = r_map.get("style")
         if r_style == "GENERIC_WITH_TYPE":
@@ -1074,41 +2705,82 @@ def _compile_optional_matches(
             rtv_key = _pick_bind_key("relTypeValue", bind_vars)
             bind_vars[rtf_key] = r_map.get("typeField")
             bind_vars[rtv_key] = r_map.get("typeValue")
-            sub_filters.append(f"{inner_r}[@{rtf_key}] == @{rtv_key}")
+            hop_filters.append(f"{inner_r}[@{rtf_key}] == @{rtv_key}")
 
-        where_ctx = om.oC_Where()
-        if where_ctx is not None:
-            wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
-            wf = re.sub(rf"\b{re.escape(v_var)}\b", inner_v, wf)
-            sub_filters.append(wf)
+        # Inline property filters on target node
+        props = v_node.oC_Properties()
+        if props is not None:
+            map_lit = props.oC_MapLiteral()
+            if map_lit is not None:
+                keys = map_lit.oC_PropertyKeyName() or []
+                vals = map_lit.oC_Expression() or []
+                for k_ctx, v_ctx in zip(keys, vals):
+                    k = k_ctx.getText().strip()
+                    val = _compile_expression(v_ctx, bind_vars)
+                    hop_filters.append(f"{inner_v}.{k} == {val}")
 
         rmin, rmax = rel_range
         edge_ref = _aql_collection_ref(edge_key)
-        sub_lines = [f"FOR {inner_v}, {inner_r} IN {rmin}..{rmax} {direction} {u_var} {edge_ref}"]
-        for sf in sub_filters:
-            sub_lines.append(f"  FILTER {sf}")
-        sub_lines.append(f"  RETURN {inner_v}")
-        subquery = "\n    ".join(sub_lines)
+        indent = "  " * len(all_target_vars)
+        sub_lines.append(f"{indent}FOR {inner_v}, {inner_r} IN {rmin}..{rmax} {direction} {current_start} {edge_ref}")
+        for hf in hop_filters:
+            sub_lines.append(f"{indent}  FILTER {hf}")
 
-        let_var = _pick_fresh_var(v_var, forbidden_vars=forbidden_vars)
-        lines.append(f"  LET {let_var} = FIRST(\n    {subquery}\n  )")
+        current_start = inner_v
+        all_target_vars.append((v_var, inner_v))
 
-        # Also LET the relationship var if it was explicitly named
         detail = rel_pat.oC_RelationshipDetail()
         if detail is not None and detail.oC_Variable() is not None:
-            rel_let = _pick_fresh_var(rel_var, forbidden_vars=forbidden_vars)
-            edge_ref2 = _aql_collection_ref(edge_key)
-            r_sub = [f"FOR {inner_v}, {inner_r} IN {rmin}..{rmax} {direction} {u_var} {edge_ref2}"]
-            for sf in sub_filters:
-                r_sub.append(f"  FILTER {sf}")
-            r_sub.append(f"  RETURN {inner_r}")
+            all_rel_vars.append((rel_var, inner_r, rel_pat))
+
+    where_ctx = om.oC_Where()
+    if where_ctx is not None:
+        wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
+        for cv, iv in all_target_vars:
+            wf = re.sub(rf"\b{re.escape(cv)}\b", iv, wf)
+        all_filters.append(wf)
+
+    final_indent = "  " * len(all_target_vars)
+    for af in all_filters:
+        sub_lines.append(f"{final_indent}  FILTER {af}")
+
+    # Build the return object with all target vars
+    if len(all_target_vars) == 1:
+        sub_lines.append(f"{final_indent}  RETURN {all_target_vars[0][1]}")
+    else:
+        ret_fields = ", ".join(f"{cv}: {iv}" for cv, iv in all_target_vars)
+        for cv, iv, _ in all_rel_vars:
+            ret_fields += f", {cv}: {iv}"
+        sub_lines.append(f"{final_indent}  RETURN {{{ret_fields}}}")
+
+    subquery = "\n    ".join(sub_lines)
+
+    if len(all_target_vars) == 1:
+        cv, _ = all_target_vars[0]
+        let_var = _pick_fresh_var(cv, forbidden_vars=forbidden_vars)
+        lines.append(f"  LET {let_var} = FIRST(\n    {subquery}\n  )")
+        extra_env[cv] = let_var
+
+        # Expose relationship var
+        for rel_cv, rel_iv, rel_p in all_rel_vars:
+            rel_let = _pick_fresh_var(rel_cv, forbidden_vars=forbidden_vars)
+            # Re-emit the traversal to get the edge
+            r_sub = list(sub_lines)
+            r_sub[-1] = f"{final_indent}  RETURN {rel_iv}"
             r_subquery = "\n    ".join(r_sub)
             lines.append(f"  LET {rel_let} = FIRST(\n    {r_subquery}\n  )")
-            extra_env[rel_var] = rel_let
-
-        extra_env[v_var] = let_var
-
-    return extra_env
+            extra_env[rel_cv] = rel_let
+    else:
+        combo_var = _pick_fresh_var("_opt_combo", forbidden_vars=forbidden_vars)
+        lines.append(f"  LET {combo_var} = FIRST(\n    {subquery}\n  )")
+        for cv, _ in all_target_vars:
+            let_var = _pick_fresh_var(cv, forbidden_vars=forbidden_vars)
+            lines.append(f"  LET {let_var} = {combo_var}.{cv}")
+            extra_env[cv] = let_var
+        for rel_cv, _, _ in all_rel_vars:
+            rel_let = _pick_fresh_var(rel_cv, forbidden_vars=forbidden_vars)
+            lines.append(f"  LET {rel_let} = {combo_var}.{rel_cv}")
+            extra_env[rel_cv] = rel_let
 
 
 def _pick_fresh_var(name: str, *, forbidden_vars: set[str]) -> str:
@@ -1192,7 +2864,13 @@ def _compile_match_multi_parts_from_parts(
     def add_filter(expr: str) -> None:
         lines.append(f"{indent_filter_line()}FILTER {expr}")
 
-    def emit_entity_filters(var: str, labels: list[str] | None) -> None:
+    def emit_entity_filters(
+        var: str,
+        labels: list[str] | None,
+        *,
+        via_edge: str | None = None,
+        edge_direction: str | None = None,
+    ) -> None:
         if not labels:
             return
         primary = _pick_primary_entity_label(labels, resolver)
@@ -1201,13 +2879,17 @@ def _compile_match_multi_parts_from_parts(
         entity_mapping = resolver.resolve_entity(primary)
         entity_style = entity_mapping.get("style")
 
-        coll_key = _pick_bind_key(f"{var}Collection", bind_vars)
-        bind_vars[coll_key] = entity_mapping.get("collectionName")
-        if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
-            raise CoreError(f"Invalid entity mapping collectionName for: {primary}", code="INVALID_MAPPING")
-
-        # Always assert collection membership; helps both COLLECTION and LABEL styles.
-        add_filter(f"IS_SAME_COLLECTION(@{coll_key}, {var})")
+        skip_coll_filter = (
+            via_edge is not None
+            and edge_direction is not None
+            and resolver.edge_constrains_target(via_edge, primary, edge_direction)
+        )
+        if not skip_coll_filter:
+            coll_key = _pick_bind_key(f"{var}Collection", bind_vars)
+            bind_vars[coll_key] = entity_mapping.get("collectionName")
+            if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
+                raise CoreError(f"Invalid entity mapping collectionName for: {primary}", code="INVALID_MAPPING")
+            add_filter(f"IS_SAME_COLLECTION(@{coll_key}, {var})")
 
         if entity_style == "LABEL":
             tf_key = _pick_bind_key(f"{var}TypeField", bind_vars)
@@ -1220,7 +2902,7 @@ def _compile_match_multi_parts_from_parts(
         elif entity_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
         elif len(labels) > 1:
-            raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+            _warn_multi_label_collection(labels, primary)
         bound_labels[var] = primary
 
     def emit_rel_type_filter(rel_var: str, rel_type: str) -> str | None:
@@ -1253,6 +2935,7 @@ def _compile_match_multi_parts_from_parts(
         return var, labels
 
     rel_part_i = 0
+    all_named_rel_vars: list[str] = []
     for idx, part in enumerate(parts):
         anon = part.oC_AnonymousPatternPart()
         if anon is None:
@@ -1300,7 +2983,7 @@ def _compile_match_multi_parts_from_parts(
                 elif entity_style != "COLLECTION":
                     raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
                 elif len(labels) > 1:
-                    raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+                    _warn_multi_label_collection(labels, primary)
 
             for f in prop_filters:
                 add_filter(f)
@@ -1343,7 +3026,7 @@ def _compile_match_multi_parts_from_parts(
                 elif u_style != "COLLECTION":
                     raise CoreError(f"Unsupported entity mapping style: {u_style}", code="INVALID_MAPPING")
                 elif len(u_labels) > 1:
-                    raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+                    _warn_multi_label_collection(u_labels, u_primary)
             for f in u_prop_filters:
                 add_filter(f)
             forbidden.add(u_var)
@@ -1367,6 +3050,8 @@ def _compile_match_multi_parts_from_parts(
             rel_default = "r" if rel_part_i == 0 else f"r{rel_part_i+1}"
             rel_part_i += 1
             rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var=rel_default)
+            detail = rel_pat.oC_RelationshipDetail()
+            rel_is_named = detail is not None and detail.oC_Variable() is not None
             r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
 
             if rel_var in forbidden:
@@ -1391,7 +3076,7 @@ def _compile_match_multi_parts_from_parts(
                 add_filter(f"{v_trav}._id == {v_var}._id")
 
             if v_labels:
-                emit_entity_filters(v_trav, v_labels)
+                emit_entity_filters(v_trav, v_labels, via_edge=rel_type, edge_direction=direction)
             elif not v_bound:
                 vcoll_key = _pick_bind_key(f"{v_trav}Collection", bind_vars)
                 bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
@@ -1406,12 +3091,16 @@ def _compile_match_multi_parts_from_parts(
                 add_filter(f)
 
             forbidden.add(rel_var)
+            if rel_is_named:
+                all_named_rel_vars.append(rel_var)
             if not v_bound:
                 forbidden.add(v_var)
                 if v_labels:
                     bound_labels[v_var] = _pick_primary_entity_label(v_labels, resolver)
 
             current_u = v_trav
+
+    _emit_relationship_uniqueness(all_named_rel_vars, lines, indent=indent_filter_line())
 
     for wc in (extra_wheres or []):
         f = _compile_where(wc.oC_Expression(), bind_vars)
@@ -1537,21 +3226,30 @@ def _compile_match_from_bound(
         r_map = resolver.resolve_relationship(rel_type)
 
         edge_key = _pick_bind_key("@edgeCollection", bind_vars)
-        vcoll_key = _pick_bind_key("vCollection", bind_vars)
         bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
         if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
             raise CoreError(f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING")
-        if v_map is None:
-            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-        else:
-            bind_vars[vcoll_key] = v_map.get("collectionName")
-            if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                raise CoreError(f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING")
+
+        skip_coll_filter = (
+            v_primary is not None
+            and rel_type is not None
+            and resolver.edge_constrains_target(rel_type, v_primary, direction)
+        )
+        if not skip_coll_filter:
+            vcoll_key = _pick_bind_key("vCollection", bind_vars)
+            if v_map is None:
+                bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+            else:
+                bind_vars[vcoll_key] = v_map.get("collectionName")
+                if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
+                    raise CoreError(f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING")
 
         rmin, rmax = rel_range
         lines.append(f"  FOR {v_aql}, {r_aql} IN {rmin}..{rmax} {direction} {current_aql} {_aql_collection_ref(edge_key)}")
 
-        v_filters: list[str] = [f"IS_SAME_COLLECTION(@{vcoll_key}, {v_aql})"]
+        v_filters: list[str] = []
+        if not skip_coll_filter:
+            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_aql})")
         if v_map is not None and v_primary is not None:
             v_style = v_map.get("style")
             if v_style == "LABEL":
@@ -1636,7 +3334,7 @@ def _compile_match_pipeline(
             entity_style = entity_mapping.get("style")
             if entity_style == "COLLECTION":
                 if len(labels) > 1:
-                    raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+                    _warn_multi_label_collection(labels, primary)
                 bind_vars["@collection"] = entity_mapping["collectionName"]
                 lines = [f"FOR {var} IN @@collection"]
             elif entity_style == "LABEL":
@@ -1655,6 +3353,10 @@ def _compile_match_pipeline(
         if user_filter:
             filters.append(user_filter)
         filters.extend(prop_filters)
+        if labels:
+            idx_hint = _build_collection_index_hint(primary, prop_filters, resolver)
+            if idx_hint:
+                lines.append(f"  {idx_hint}")
         for f in filters:
             lines.append(f"  FILTER {f}")
         return lines, {var}
@@ -1692,6 +3394,7 @@ def _compile_match_pipeline(
     forbidden: set[str] = {u_var}
     current_var = u_var
     last_indent = "    "
+    has_varlen = False
 
     for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
@@ -1715,6 +3418,11 @@ def _compile_match_pipeline(
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
         direction = _relationship_direction(rel_pat)
 
+        if direction == "ANY" and rel_type:
+            stats_dir = resolver.preferred_traversal_direction(rel_type)
+            if stats_dir:
+                direction = stats_dir
+
         v_primary: str | None = None
         v_map: dict[str, Any] | None = None
         if v_labels:
@@ -1727,18 +3435,28 @@ def _compile_match_pipeline(
         if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
             raise CoreError(f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING")
 
-        vcoll_key = _pick_bind_key("vCollection", bind_vars)
-        if v_map is None:
-            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-        else:
-            bind_vars[vcoll_key] = v_map.get("collectionName")
-            if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                raise CoreError(f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING")
+        skip_coll_filter = (
+            v_primary is not None
+            and rel_type is not None
+            and resolver.edge_constrains_target(rel_type, v_primary, direction)
+        )
+        if not skip_coll_filter:
+            vcoll_key = _pick_bind_key("vCollection", bind_vars)
+            if v_map is None:
+                bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+            else:
+                bind_vars[vcoll_key] = v_map.get("collectionName")
+                if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
+                    raise CoreError(f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING")
 
         rmin, rmax = rel_range
+        if rmin != rmax:
+            has_varlen = True
         lines.append(f"  FOR {v_var}, {rel_var} IN {rmin}..{rmax} {direction} {current_var} {_aql_collection_ref(edge_key)}")
 
-        v_filters: list[str] = [f"IS_SAME_COLLECTION(@{vcoll_key}, {v_var})"]
+        v_filters: list[str] = []
+        if not skip_coll_filter:
+            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_var})")
         if v_map is not None and v_primary is not None:
             v_style = v_map.get("style")
             if v_style == "LABEL":
@@ -1751,7 +3469,7 @@ def _compile_match_pipeline(
             elif v_style != "COLLECTION":
                 raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
             elif len(v_labels) > 1:
-                raise CoreError("Multi-label node patterns require LABEL-style mappings in v0", code="NOT_IMPLEMENTED")
+                _warn_multi_label_collection(v_labels, v_primary)
 
         r_filters: list[str] = []
         r_style = r_map.get("style")
@@ -1779,7 +3497,10 @@ def _compile_match_pipeline(
     where_ctx = match_ctx.oC_Where()
     user_filter = _compile_where(where_ctx.oC_Expression(), bind_vars) if where_ctx is not None else None
     if user_filter:
-        lines.append(f"{last_indent}FILTER {user_filter}")
+        _emit_prune_and_filter(
+            user_filter, current_var, forbidden,
+            is_varlen=has_varlen, lines=lines, indent=last_indent,
+        )
 
     return lines, forbidden
 
@@ -1897,7 +3618,7 @@ def _apply_with(
     with_filter_raw = _compile_where(where_ctx.oC_Expression(), bind_vars) if where_ctx is not None else None
 
     order_ctx = proj.oC_Order()
-    skip_value, limit_value = _parse_skip_limit(proj)
+    skip_value, limit_value = _parse_skip_limit(proj, bind_vars)
 
     env: dict[str, str] = {cy: aql for cy, aql, _ in compiled_nonagg}
     env.update({cy: aql for cy, aql, _ in compiled_agg})
@@ -1990,13 +3711,32 @@ def _append_return(
     distinct = proj.DISTINCT() is not None
     order_ctx = proj.oC_Order()
 
-    skip_value, limit_value = _parse_skip_limit(proj)
+    skip_value, limit_value = _parse_skip_limit(proj, bind_vars)
 
     items_ctx = proj.oC_ProjectionItems()
     items = items_ctx.oC_ProjectionItem()
     if not items:
         raise CoreError("RETURN items required", code="UNSUPPORTED")
 
+    # --- Aggregation detection ---
+    has_agg = False
+    for it in items:
+        expr_txt = it.oC_Expression().getText().strip()
+        if var_env:
+            expr_txt = _rewrite_vars(expr_txt, var_env)
+        if _compile_agg_expr(expr_txt) is not None:
+            has_agg = True
+            break
+
+    if has_agg:
+        _append_return_aggregation(
+            items, lines=lines, bind_vars=bind_vars,
+            var_env=var_env, order_ctx=order_ctx,
+            skip_value=skip_value, limit_value=limit_value,
+        )
+        return
+
+    # --- Non-aggregation path ---
     compiled_items: list[tuple[str | None, str]] = []
     for it in items:
         expr_ctx = it.oC_Expression()
@@ -2014,17 +3754,19 @@ def _append_return(
         compiled_items.append((alias, expr))
 
     if distinct:
-        if len(compiled_items) != 1:
-            raise CoreError("DISTINCT only supported for single expression in v0", code="UNSUPPORTED")
-        alias, expr = compiled_items[0]
-        col_var = alias or _infer_key(expr) or "value"
-        lines.append(f"  COLLECT {col_var} = {expr}")
-        if order_ctx is not None:
-            # After COLLECT, the original variables used by `expr` may be out of scope.
-            # In the v0 subset we only support ordering by the distinct value.
-            lines.append(f"  SORT {col_var}")
-        _append_skip_limit(lines, skip_value, limit_value)
-        lines.append(f"  RETURN {col_var}")
+        if len(compiled_items) == 1:
+            alias, expr = compiled_items[0]
+            col_var = alias or _infer_key(expr) or "value"
+            lines.append(f"  COLLECT {col_var} = {expr}")
+            if order_ctx is not None:
+                lines.append(f"  SORT {col_var}")
+            _append_skip_limit(lines, skip_value, limit_value)
+            lines.append(f"  RETURN {col_var}")
+        else:
+            if order_ctx is not None:
+                lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=var_env))
+            _append_skip_limit(lines, skip_value, limit_value)
+            lines.append("  RETURN DISTINCT " + _compile_return_object(compiled_items))
         return
 
     if order_ctx is not None:
@@ -2036,6 +3778,97 @@ def _append_return(
         return
 
     lines.append("  RETURN " + _compile_return_object(compiled_items))
+
+
+def _append_return_aggregation(
+    items: list,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    var_env: dict[str, str] | None = None,
+    order_ctx: Any = None,
+    skip_value: str | None = None,
+    limit_value: str | None = None,
+) -> None:
+    compiled_nonagg: list[tuple[str, str]] = []
+    compiled_agg: list[tuple[str, str]] = []
+    compiled_into: tuple[str, str] | None = None
+
+    for it in items:
+        expr_ctx = it.oC_Expression()
+        alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        expr_txt = expr_ctx.getText().strip()
+        if var_env:
+            expr_txt = _rewrite_vars(expr_txt, var_env)
+
+        agg = _compile_agg_expr(expr_txt)
+        if agg is not None:
+            kind, agg_expr = agg
+            if kind == "into":
+                fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
+                fn_key = fn_match.group(1).lower() if fn_match else None
+                idx = len(compiled_nonagg) + len(compiled_agg) + 1
+                var_name = alias or fn_key or f"expr{idx}"
+                if compiled_into is not None:
+                    raise CoreError("Only one collect() is supported in RETURN", code="NOT_IMPLEMENTED")
+                compiled_into = (var_name, agg_expr)
+                continue
+            fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
+            fn_key = fn_match.group(1).lower() if fn_match else None
+            idx = len(compiled_nonagg) + len(compiled_agg) + 1
+            var_name = alias or fn_key or f"expr{idx}"
+            compiled_agg.append((var_name, agg_expr))
+            continue
+
+        expr = _compile_expression(expr_ctx, bind_vars)
+        if var_env:
+            expr = _rewrite_vars(expr, var_env)
+        var_name = alias or _infer_key(expr) or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}"
+        compiled_nonagg.append((var_name, expr))
+
+    group_parts = ", ".join(f"{v} = {e}" for v, e in compiled_nonagg)
+    agg_parts = ", ".join(f"{v} = {e}" for v, e in compiled_agg)
+
+    if compiled_into is not None:
+        if compiled_agg:
+            raise CoreError("collect() cannot be mixed with other aggregates in RETURN", code="NOT_IMPLEMENTED")
+        into_var, into_expr = compiled_into
+        if group_parts:
+            lines.append(f"  COLLECT {group_parts} INTO {into_var} = {into_expr}")
+        else:
+            lines.append(f"  COLLECT INTO {into_var} = {into_expr}")
+    elif group_parts and agg_parts:
+        lines.append(f"  COLLECT {group_parts} AGGREGATE {agg_parts}")
+    elif agg_parts:
+        lines.append(f"  COLLECT AGGREGATE {agg_parts}")
+    else:
+        lines.append(f"  COLLECT {group_parts}")
+
+    agg_env = {v: v for v, _ in compiled_nonagg}
+    agg_env.update({v: v for v, _ in compiled_agg})
+    if compiled_into is not None:
+        agg_env[compiled_into[0]] = compiled_into[0]
+
+    # Map each grouped Cypher expression (e.g. ``p.name``) to its COLLECT
+    # alias.  After ``COLLECT name = p.name`` the original Cypher variable
+    # ``p`` is out of scope in AQL, so a Cypher ORDER BY referring to
+    # ``p.name`` must be rewritten to the alias ``name``.
+    for var_name, expr in compiled_nonagg:
+        if expr not in agg_env:
+            agg_env[expr] = var_name
+
+    if order_ctx is not None:
+        lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=agg_env))
+    _append_skip_limit(lines, skip_value, limit_value)
+
+    all_items = compiled_nonagg + compiled_agg
+    if compiled_into is not None:
+        all_items.append(compiled_into)
+    if len(all_items) == 1:
+        lines.append(f"  RETURN {all_items[0][0]}")
+    else:
+        parts = ", ".join(f"{v}: {v}" for v, _ in all_items)
+        lines.append(f"  RETURN {{{parts}}}")
 
 
 def _infer_key(expr: str) -> str | None:
@@ -2088,28 +3921,25 @@ def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
     return out
 
 
-def _parse_skip_limit(proj: CypherParser.OC_ProjectionBodyContext) -> tuple[int | None, int | None]:
+def _parse_skip_limit(
+    proj: CypherParser.OC_ProjectionBodyContext,
+    bind_vars: dict[str, Any],
+) -> tuple[str | None, str | None]:
     skip_expr_ctx = proj.oC_Skip().oC_Expression() if proj.oC_Skip() is not None else None
     limit_expr_ctx = proj.oC_Limit().oC_Expression() if proj.oC_Limit() is not None else None
 
-    skip_value: int | None = None
+    skip_value: str | None = None
     if skip_expr_ctx is not None:
-        txt = skip_expr_ctx.getText().strip()
-        if not txt.isdigit():
-            raise CoreError("SKIP only supports integer literal in v0", code="UNSUPPORTED")
-        skip_value = int(txt)
+        skip_value = _compile_expression(skip_expr_ctx, bind_vars)
 
-    limit_value: int | None = None
+    limit_value: str | None = None
     if limit_expr_ctx is not None:
-        txt = limit_expr_ctx.getText().strip()
-        if not txt.isdigit():
-            raise CoreError("LIMIT only supports integer literal in v0", code="UNSUPPORTED")
-        limit_value = int(txt)
+        limit_value = _compile_expression(limit_expr_ctx, bind_vars)
 
     return skip_value, limit_value
 
 
-def _append_skip_limit(lines: list[str], skip_value: int | None, limit_value: int | None) -> None:
+def _append_skip_limit(lines: list[str], skip_value: str | None, limit_value: str | None) -> None:
     if skip_value is None and limit_value is None:
         return
     if skip_value is not None and limit_value is not None:
@@ -2142,22 +3972,40 @@ def _extract_node_var_and_labels(
 
 
 def _pick_primary_entity_label(labels: list[str], resolver: MappingResolver) -> str:
+    """For multi-label nodes, pick a primary label that exists in the mapping.
+
+    When cardinality statistics are available, prefer the label with the
+    smallest estimated count (most selective).  Otherwise fall back to
+    right-to-left ordering to align with common Neo4j conventions.
     """
-    For multi-label nodes, pick a primary label that exists in the mapping.
-    We try from right-to-left to better align with common Neo4j conventions.
-    """
+    valid: list[str] = []
     last_err: CoreError | None = None
-    for lab in reversed(labels):
+    for lab in labels:
         try:
             resolver.resolve_entity(lab)
-            return lab
+            valid.append(lab)
         except CoreError as e:
             last_err = e
             if e.code != "MAPPING_NOT_FOUND":
                 raise
-    if last_err is not None:
-        raise last_err
-    raise CoreError("A single label is required in v0 subset", code="UNSUPPORTED")
+    if not valid:
+        if last_err is not None:
+            raise last_err
+        raise CoreError("A single label is required in v0 subset", code="UNSUPPORTED")
+    if len(valid) == 1:
+        return valid[0]
+
+    best: str | None = None
+    best_count: int | None = None
+    for lab in valid:
+        cnt = resolver.estimated_count(lab)
+        if cnt is not None:
+            if best_count is None or cnt < best_count:
+                best = lab
+                best_count = cnt
+    if best is not None:
+        return best
+    return valid[-1]
 
 
 def _extra_label_filters(var: str, labels: list[str], primary: str) -> list[str]:
@@ -2212,7 +4060,11 @@ def _compile_node_pattern_properties(
         if not key:
             raise CoreError("Invalid node properties map", code="UNSUPPORTED")
         expr = _compile_expression(v_ctx, bind_vars)
-        out.append(f"({var}.{key} == {expr})")
+        # Use case-insensitive comparison for string literals
+        if expr.startswith('"') or expr.startswith("'"):
+            out.append(f"(LOWER({var}.{key}) == LOWER({expr}))")
+        else:
+            out.append(f"({var}.{key} == {expr})")
     return out
 
 
@@ -2354,6 +4206,30 @@ def _extract_interleaved_op(ctx: Any, term_index: int, valid_ops: set[str]) -> s
     return next(iter(valid_ops))
 
 
+_OBVIOUS_NON_NULL_RE = re.compile(
+    r"""
+    ^\s*
+    (?:
+        -?\d+(?:\.\d+)?           # numeric literal
+        | "(?:[^"\\]|\\.)*"       # double-quoted string literal
+        | '(?:[^'\\]|\\.)*'       # single-quoted string literal
+        | true | false            # booleans (non-null)
+    )
+    \s*$
+    """,
+    re.VERBOSE,
+)
+
+
+def _is_obvious_non_null(expr: str) -> bool:
+    """True when *expr* is a textual form that AQL evaluates as non-null.
+
+    Used to suppress redundant ``!= null`` guards on comparison operands
+    that are clearly numeric/string/boolean literals.
+    """
+    return bool(_OBVIOUS_NON_NULL_RE.match(expr))
+
+
 def _aql_string_literal(value: str) -> str:
     # Minimal safe string literal for AQL (double-quoted).
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -2370,6 +4246,320 @@ def _compile_type_of_relationship(rel_type: str, rel_var: str, rel_style: str | 
 
 def _compile_where(expr_ctx: CypherParser.OC_ExpressionContext, bind_vars: dict[str, Any]) -> str:
     return _compile_expression(expr_ctx, bind_vars)
+
+
+def _compile_subquery_body(
+    sq_ctx: CypherParser.OC_SubqueryBodyContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile the inner SubqueryBody of an EXISTS{} or COUNT{} subquery to AQL.
+
+    The inner query is expected to contain MATCH clauses with a relationship
+    pattern.  We compile it into an AQL subquery expression (the FOR ...
+    RETURN part, without the outer LENGTH wrapper).
+    """
+    resolver = _active_resolver.get()
+    if resolver is None:
+        raise CoreError("Subquery requires a mapping resolver", code="UNSUPPORTED")
+
+    reading_clauses = sq_ctx.oC_ReadingClause() or []
+    if not reading_clauses:
+        raise CoreError("EXISTS/COUNT subquery must contain a MATCH clause", code="UNSUPPORTED")
+
+    match_clauses: list[CypherParser.OC_MatchContext] = []
+    for rc in reading_clauses:
+        m = rc.oC_Match()
+        if m is not None:
+            match_clauses.append(m)
+
+    if not match_clauses:
+        raise CoreError("EXISTS/COUNT subquery must contain a MATCH clause", code="UNSUPPORTED")
+
+    match_ctx = match_clauses[0]
+    pattern = match_ctx.oC_Pattern()
+    parts = pattern.oC_PatternPart() or []
+    if not parts:
+        raise CoreError("Empty MATCH pattern in subquery", code="UNSUPPORTED")
+
+    pp = parts[0]
+    anon = pp.oC_AnonymousPatternPart()
+    if anon is None:
+        raise CoreError("Named patterns not supported in subquery", code="NOT_IMPLEMENTED")
+    pe = anon.oC_PatternElement()
+
+    start_node = pe.oC_NodePattern()
+    chains = pe.oC_PatternElementChain() or []
+    if not chains:
+        raise CoreError("Subquery MATCH requires a relationship pattern", code="UNSUPPORTED")
+
+    start_var, start_labels = _extract_node_var_and_labels(start_node, default_var="_sq_start")
+    chain = chains[0]
+    rel_pat = chain.oC_RelationshipPattern()
+    target_node = chain.oC_NodePattern()
+    if rel_pat is None:
+        raise CoreError("Invalid subquery pattern", code="UNSUPPORTED")
+
+    rel_type, _, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_sq_r")
+    direction = _relationship_direction(rel_pat)
+
+    r_map = resolver.resolve_relationship(rel_type)
+    edge_key = _pick_bind_key("@sqEdge", bind_vars)
+    bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+
+    sq_v = "_sq_v"
+    sq_e = "_sq_e"
+    target_var, t_labels = _extract_node_var_and_labels(target_node, default_var="_sq_t")
+    if target_var != "_sq_t":
+        sq_v = target_var
+
+    filters: list[str] = []
+
+    r_style = r_map.get("style")
+    if r_style == "GENERIC_WITH_TYPE":
+        rtf = _pick_bind_key("sqRelTF", bind_vars)
+        rtv = _pick_bind_key("sqRelTV", bind_vars)
+        bind_vars[rtf] = r_map.get("typeField")
+        bind_vars[rtv] = r_map.get("typeValue")
+        filters.append(f"{sq_e}[@{rtf}] == @{rtv}")
+
+    if t_labels:
+        t_primary = _pick_primary_entity_label(t_labels, resolver)
+        try:
+            t_map = resolver.resolve_entity(t_primary)
+            if t_map.get("style") == "LABEL":
+                ttf = _pick_bind_key("sqTTF", bind_vars)
+                ttv = _pick_bind_key("sqTTV", bind_vars)
+                bind_vars[ttf] = t_map.get("typeField")
+                bind_vars[ttv] = t_map.get("typeValue")
+                filters.append(f"{sq_v}[@{ttf}] == @{ttv}")
+        except CoreError:
+            pass
+
+    where_ctx = match_ctx.oC_Where()
+    if where_ctx is not None:
+        where_cond = _compile_expression(where_ctx.oC_Expression(), bind_vars)
+        filters.append(where_cond)
+
+    rmin, rmax = rel_range
+    edge_ref = _aql_collection_ref(edge_key)
+    sub = f"FOR {sq_v}, {sq_e} IN {rmin}..{rmax} {direction} {start_var} {edge_ref}"
+    for f in filters:
+        sub += f" FILTER {f}"
+    sub += " RETURN 1"
+
+    return sub
+
+
+def _compile_exists_subquery(
+    ctx: CypherParser.OC_ExistsSubqueryContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile ``EXISTS { MATCH ... }`` to ``LENGTH(FOR ... RETURN 1) > 0``."""
+    sq = ctx.oC_SubqueryBody()
+    sub = _compile_subquery_body(sq, bind_vars)
+    return f"(LENGTH({sub}) > 0)"
+
+
+def _compile_count_subquery(
+    ctx: CypherParser.OC_CountSubqueryContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile ``COUNT { MATCH ... }`` to ``LENGTH(FOR ... RETURN 1)``."""
+    sq = ctx.oC_SubqueryBody()
+    sub = _compile_subquery_body(sq, bind_vars)
+    return f"LENGTH({sub})"
+
+
+def _compile_pattern_predicate(
+    ctx: CypherParser.OC_RelationshipsPatternContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile a pattern predicate like ``(n)-[:KNOWS]->()`` to an AQL
+    existence subquery.
+
+    Generates::
+
+        LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND n @@edge
+                 FILTER ... RETURN 1) > 0
+    """
+    start_node = ctx.oC_NodePattern()
+    chains = ctx.oC_PatternElementChain() or []
+    if not chains:
+        raise CoreError("Pattern predicate requires at least one relationship", code="UNSUPPORTED")
+
+    start_var, _ = _extract_node_var_and_labels(start_node, default_var="_pp_start")
+    chain = chains[0]
+    rel_pat = chain.oC_RelationshipPattern()
+    target_node = chain.oC_NodePattern()
+    if rel_pat is None:
+        raise CoreError("Invalid pattern predicate", code="UNSUPPORTED")
+
+    rel_type, _, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_pp_r")
+    direction = _relationship_direction(rel_pat)
+
+    resolver = _active_resolver.get()
+    if resolver is None:
+        raise CoreError("Pattern predicates require a mapping resolver", code="UNSUPPORTED")
+
+    r_map = resolver.resolve_relationship(rel_type)
+    edge_key = _pick_bind_key("@ppEdge", bind_vars)
+    bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+
+    pp_v = "_pp_v"
+    pp_e = "_pp_e"
+    filters: list[str] = []
+
+    r_style = r_map.get("style")
+    if r_style == "GENERIC_WITH_TYPE":
+        rtf = _pick_bind_key("ppRelTF", bind_vars)
+        rtv = _pick_bind_key("ppRelTV", bind_vars)
+        bind_vars[rtf] = r_map.get("typeField")
+        bind_vars[rtv] = r_map.get("typeValue")
+        filters.append(f"{pp_e}[@{rtf}] == @{rtv}")
+
+    if target_node is not None:
+        _, t_labels = _extract_node_var_and_labels(target_node, default_var="_pp_t")
+        if t_labels:
+            t_primary = _pick_primary_entity_label(t_labels, resolver)
+            t_map = resolver.resolve_entity(t_primary)
+            t_style = t_map.get("style")
+            if t_style == "LABEL":
+                ttf = _pick_bind_key("ppTTF", bind_vars)
+                ttv = _pick_bind_key("ppTTV", bind_vars)
+                bind_vars[ttf] = t_map.get("typeField")
+                bind_vars[ttv] = t_map.get("typeValue")
+                filters.append(f"{pp_v}[@{ttf}] == @{ttv}")
+
+    rmin, rmax = rel_range
+    edge_ref = _aql_collection_ref(edge_key)
+    sub = f"FOR {pp_v}, {pp_e} IN {rmin}..{rmax} {direction} {start_var} {edge_ref}"
+    for f in filters:
+        sub += f" FILTER {f}"
+    sub += " LIMIT 1 RETURN 1"
+
+    return f"(LENGTH({sub}) > 0)"
+
+
+def _compile_list_comprehension(
+    ctx: CypherParser.OC_ListComprehensionContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile ``[x IN list WHERE cond | expr]`` to AQL subquery.
+
+    Generates::
+        (FOR x IN list FILTER cond RETURN expr)
+    """
+    filt_expr = ctx.oC_FilterExpression()
+    id_in_coll = filt_expr.oC_IdInColl()
+    var_name = id_in_coll.oC_Variable().getText().strip()
+    list_expr = _compile_expression(id_in_coll.oC_Expression(), bind_vars)
+
+    where = filt_expr.oC_Where()
+    filter_clause = ""
+    if where is not None:
+        cond = _compile_expression(where.oC_Expression(), bind_vars)
+        filter_clause = f" FILTER {cond}"
+
+    map_expr = ctx.oC_Expression()
+    if map_expr is not None:
+        projection = _compile_expression(map_expr, bind_vars)
+    else:
+        projection = var_name
+
+    return f"(FOR {var_name} IN {list_expr}{filter_clause} RETURN {projection})"
+
+
+def _compile_pattern_comprehension(
+    ctx: CypherParser.OC_PatternComprehensionContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile ``[(a)-[:REL]->(b) WHERE cond | expr]`` to AQL subquery.
+
+    Generates::
+        (FOR _pc_v, _pc_e IN 1..1 OUTBOUND a @@edge
+            FILTER ... RETURN expr)
+    """
+    rel_pattern = ctx.oC_RelationshipsPattern()
+    start_node = rel_pattern.oC_NodePattern()
+    chains = rel_pattern.oC_PatternElementChain() or []
+    if not chains:
+        raise CoreError("Pattern comprehension requires a relationship", code="UNSUPPORTED")
+
+    start_var, _ = _extract_node_var_and_labels(start_node, default_var="_pc_start")
+    chain = chains[0]
+    rel_pat = chain.oC_RelationshipPattern()
+    target_node = chain.oC_NodePattern()
+    if rel_pat is None:
+        raise CoreError("Invalid pattern comprehension", code="UNSUPPORTED")
+
+    rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_pc_r")
+    direction = _relationship_direction(rel_pat)
+
+    resolver = _active_resolver.get()
+    if resolver is None:
+        raise CoreError("Pattern comprehension requires a mapping resolver", code="UNSUPPORTED")
+
+    r_map = resolver.resolve_relationship(rel_type)
+    edge_key = _pick_bind_key("@pcEdge", bind_vars)
+    bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
+
+    target_var, t_labels = _extract_node_var_and_labels(target_node, default_var="_pc_v")
+    pc_v = target_var if target_var != "_pc_v" else "_pc_v"
+    pc_e = rel_var if rel_var != "_pc_r" else "_pc_e"
+    filters: list[str] = []
+
+    r_style = r_map.get("style")
+    if r_style == "GENERIC_WITH_TYPE":
+        rtf = _pick_bind_key("pcRelTF", bind_vars)
+        rtv = _pick_bind_key("pcRelTV", bind_vars)
+        bind_vars[rtf] = r_map.get("typeField")
+        bind_vars[rtv] = r_map.get("typeValue")
+        filters.append(f"{pc_e}[@{rtf}] == @{rtv}")
+
+    if t_labels:
+        t_primary = _pick_primary_entity_label(t_labels, resolver)
+        try:
+            t_map = resolver.resolve_entity(t_primary)
+            if t_map.get("style") == "LABEL":
+                ttf = _pick_bind_key("pcTTF", bind_vars)
+                ttv = _pick_bind_key("pcTTV", bind_vars)
+                bind_vars[ttf] = t_map.get("typeField")
+                bind_vars[ttv] = t_map.get("typeValue")
+                filters.append(f"{pc_v}[@{ttf}] == @{ttv}")
+        except CoreError:
+            pass
+
+    where_ctx = ctx.oC_Expression()
+    exprs = ctx.oC_Expression() if not isinstance(ctx.oC_Expression(), list) else ctx.oC_Expression()
+
+    all_exprs = ctx.oC_Expression()
+    if not isinstance(all_exprs, list):
+        all_exprs = [all_exprs] if all_exprs else []
+
+    where_node = None
+    for child in ctx.children or []:
+        text = getattr(child, "symbol", None)
+        if text and hasattr(text, "text") and text.text == "WHERE":
+            idx = list(ctx.children).index(child)
+            where_node = all_exprs[0] if all_exprs else None
+            break
+
+    projection_expr = all_exprs[-1] if all_exprs else pc_v
+    projection = _compile_expression(projection_expr, bind_vars) if projection_expr else pc_v
+
+    if where_node is not None and len(all_exprs) > 1:
+        where_compiled = _compile_expression(all_exprs[0], bind_vars)
+        filters.append(where_compiled)
+        projection = _compile_expression(all_exprs[-1], bind_vars)
+
+    rmin, rmax = rel_range
+    edge_ref = _aql_collection_ref(edge_key)
+    sub = f"FOR {pc_v}, {pc_e} IN {rmin}..{rmax} {direction} {start_var} {edge_ref}"
+    for f in filters:
+        sub += f" FILTER {f}"
+    sub += f" RETURN {projection}"
+
+    return f"({sub})"
 
 
 def _compile_case(
@@ -2463,6 +4653,19 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         aql_op = {"=": "==", "<>": "!=", "<": "<", "<=": "<=", ">": ">", ">=": ">="}.get(op)
         if not aql_op:
             raise CoreError(f"Unsupported comparison op: {op}", code="UNSUPPORTED")
+        # Cypher uses 3-valued logic: ordered comparisons against null
+        # return null (treated as false in WHERE).  AQL coerces null to
+        # the lowest sortable value, so ``null < 1950`` is true.  Guard
+        # ordered comparisons explicitly so WHERE clauses match Cypher.
+        # Equality/inequality already match Cypher semantics in AQL.
+        if aql_op in {"<", "<=", ">", ">="}:
+            guards: list[str] = []
+            if not _is_obvious_non_null(left):
+                guards.append(f"{left} != null")
+            if not _is_obvious_non_null(right):
+                guards.append(f"{right} != null")
+            if guards:
+                return "(" + " AND ".join(guards + [f"{left} {aql_op} {right}"]) + ")"
         return f"({left} {aql_op} {right})"
 
     if isinstance(ctx, CypherParser.OC_AddOrSubtractExpressionContext):
@@ -2547,6 +4750,8 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
                 return f"(RIGHT({base}, LENGTH({rhs})) == {rhs})"
             if sop.CONTAINS() is not None:
                 return f"CONTAINS({base}, {rhs})"
+            if sop.getText().startswith("=~") or "=~" in sop.getText():
+                return f"REGEX_TEST({base}, {rhs})"
             raise CoreError("Unknown string operator", code="UNSUPPORTED")
 
         return base
@@ -2573,6 +4778,19 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             return _compile_expression(ctx.oC_ParenthesizedExpression().oC_Expression(), bind_vars)
         if ctx.oC_CaseExpression() is not None:
             return _compile_case(ctx.oC_CaseExpression(), bind_vars)
+        if ctx.oC_ExistsSubquery() is not None:
+            return _compile_exists_subquery(ctx.oC_ExistsSubquery(), bind_vars)
+        if ctx.oC_CountSubquery() is not None:
+            return _compile_count_subquery(ctx.oC_CountSubquery(), bind_vars)
+        if ctx.oC_RelationshipsPattern() is not None:
+            return _compile_pattern_predicate(ctx.oC_RelationshipsPattern(), bind_vars)
+        if ctx.oC_ListComprehension() is not None:
+            return _compile_list_comprehension(ctx.oC_ListComprehension(), bind_vars)
+        if ctx.oC_PatternComprehension() is not None:
+            return _compile_pattern_comprehension(ctx.oC_PatternComprehension(), bind_vars)
+        # COUNT(*) aggregate
+        if ctx.COUNT() is not None:
+            raise CoreError("COUNT(*) subquery not supported in v0", code="NOT_IMPLEMENTED")
         raise CoreError("Unsupported atom in v0", code="UNSUPPORTED")
 
     if isinstance(ctx, CypherParser.OC_LiteralContext):
@@ -2590,7 +4808,11 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             exprs = inner.oC_Expression() or []
             return "[" + ",".join(_compile_expression(e, bind_vars) for e in exprs) + "]"
         if ctx.oC_MapLiteral() is not None:
-            raise CoreError("Map literal not supported in v0", code="UNSUPPORTED")
+            ml = ctx.oC_MapLiteral()
+            keys = ml.oC_PropertyKeyName() or []
+            vals = ml.oC_Expression() or []
+            pairs = [f"{k.getText().strip()}: {_compile_expression(v, bind_vars)}" for k, v in zip(keys, vals)]
+            return "{" + ", ".join(pairs) + "}"
         raise CoreError("Unsupported literal in v0", code="UNSUPPORTED")
 
     if isinstance(ctx, CypherParser.OC_ParameterContext):
@@ -2628,6 +4850,190 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             # ArangoDB AQL doesn't have COALESCE(); emulate Cypher coalesce by
             # picking the first non-null value.
             return f"FIRST(REMOVE_VALUES([{', '.join(compiled_args)}], null))"
+        if fn_norm == "id":
+            if len(compiled_args) != 1:
+                raise CoreError("id expects 1 arg", code="UNSUPPORTED")
+            return f"{compiled_args[0]}._id"
+        if fn_norm == "keys":
+            if len(compiled_args) != 1:
+                raise CoreError("keys expects 1 arg", code="UNSUPPORTED")
+            return f"ATTRIBUTES({compiled_args[0]})"
+        if fn_norm == "properties":
+            if len(compiled_args) != 1:
+                raise CoreError("properties expects 1 arg", code="UNSUPPORTED")
+            return f'UNSET({compiled_args[0]}, "_id", "_key", "_rev")'
+        if fn_norm == "tostring":
+            if len(compiled_args) != 1:
+                raise CoreError("toString expects 1 arg", code="UNSUPPORTED")
+            return f"TO_STRING({compiled_args[0]})"
+        if fn_norm in ("tointeger", "toint"):
+            if len(compiled_args) != 1:
+                raise CoreError("toInteger expects 1 arg", code="UNSUPPORTED")
+            return f"TO_NUMBER({compiled_args[0]})"
+        if fn_norm == "tofloat":
+            if len(compiled_args) != 1:
+                raise CoreError("toFloat expects 1 arg", code="UNSUPPORTED")
+            return f"TO_NUMBER({compiled_args[0]})"
+        if fn_norm in ("toboolean", "tobool"):
+            if len(compiled_args) != 1:
+                raise CoreError("toBoolean expects 1 arg", code="UNSUPPORTED")
+            return f"TO_BOOL({compiled_args[0]})"
+
+        if fn_norm == "exists":
+            if len(compiled_args) != 1:
+                raise CoreError("exists expects 1 arg", code="UNSUPPORTED")
+            return f"({compiled_args[0]} != null)"
+        if fn_norm == "abs":
+            if len(compiled_args) != 1:
+                raise CoreError("abs expects 1 arg", code="UNSUPPORTED")
+            return f"ABS({compiled_args[0]})"
+        if fn_norm == "ceil":
+            if len(compiled_args) != 1:
+                raise CoreError("ceil expects 1 arg", code="UNSUPPORTED")
+            return f"CEIL({compiled_args[0]})"
+        if fn_norm == "floor":
+            if len(compiled_args) != 1:
+                raise CoreError("floor expects 1 arg", code="UNSUPPORTED")
+            return f"FLOOR({compiled_args[0]})"
+        if fn_norm == "round":
+            if len(compiled_args) != 1:
+                raise CoreError("round expects 1 arg", code="UNSUPPORTED")
+            return f"ROUND({compiled_args[0]})"
+        if fn_norm == "sign":
+            if len(compiled_args) != 1:
+                raise CoreError("sign expects 1 arg", code="UNSUPPORTED")
+            return f"(({compiled_args[0]}) > 0 ? 1 : (({compiled_args[0]}) < 0 ? -1 : 0))"
+        if fn_norm == "rand":
+            return "RAND()"
+        if fn_norm == "length":
+            if len(compiled_args) != 1:
+                raise CoreError("length expects 1 arg", code="UNSUPPORTED")
+            pvars = _active_path_vars.get()
+            path_arg = args[0].getText().strip() if args else compiled_args[0]
+            if path_arg in pvars:
+                return f"LENGTH({path_arg}.edges)"
+            return f"LENGTH({compiled_args[0]})"
+        if fn_norm == "left":
+            if len(compiled_args) != 2:
+                raise CoreError("left expects 2 args", code="UNSUPPORTED")
+            return f"LEFT({compiled_args[0]}, {compiled_args[1]})"
+        if fn_norm == "right":
+            if len(compiled_args) != 2:
+                raise CoreError("right expects 2 args", code="UNSUPPORTED")
+            return f"RIGHT({compiled_args[0]}, {compiled_args[1]})"
+        if fn_norm == "ltrim":
+            if len(compiled_args) != 1:
+                raise CoreError("lTrim expects 1 arg", code="UNSUPPORTED")
+            return f"LTRIM({compiled_args[0]})"
+        if fn_norm == "rtrim":
+            if len(compiled_args) != 1:
+                raise CoreError("rTrim expects 1 arg", code="UNSUPPORTED")
+            return f"RTRIM({compiled_args[0]})"
+        if fn_norm == "trim":
+            if len(compiled_args) != 1:
+                raise CoreError("trim expects 1 arg", code="UNSUPPORTED")
+            return f"TRIM({compiled_args[0]})"
+        if fn_norm == "replace":
+            if len(compiled_args) != 3:
+                raise CoreError("replace expects 3 args", code="UNSUPPORTED")
+            return f"SUBSTITUTE({compiled_args[0]}, {compiled_args[1]}, {compiled_args[2]})"
+        if fn_norm == "substring":
+            if len(compiled_args) == 2:
+                return f"SUBSTRING({compiled_args[0]}, {compiled_args[1]})"
+            if len(compiled_args) == 3:
+                return f"SUBSTRING({compiled_args[0]}, {compiled_args[1]}, {compiled_args[2]})"
+            raise CoreError("substring expects 2-3 args", code="UNSUPPORTED")
+        if fn_norm == "reverse":
+            if len(compiled_args) != 1:
+                raise CoreError("reverse expects 1 arg", code="UNSUPPORTED")
+            return f"REVERSE({compiled_args[0]})"
+        if fn_norm == "split":
+            if len(compiled_args) not in (1, 2):
+                raise CoreError("split expects 1-2 args", code="UNSUPPORTED")
+            return f"SPLIT({', '.join(compiled_args)})"
+        if fn_norm == "nodes":
+            if len(compiled_args) != 1:
+                raise CoreError("nodes expects 1 arg", code="UNSUPPORTED")
+            pvars = _active_path_vars.get()
+            path_arg = args[0].getText().strip() if args else compiled_args[0]
+            if path_arg in pvars:
+                return f"{path_arg}.nodes"
+            return f"{compiled_args[0]}.nodes"
+        if fn_norm == "relationships" or fn_norm == "rels":
+            if len(compiled_args) != 1:
+                raise CoreError("relationships expects 1 arg", code="UNSUPPORTED")
+            pvars = _active_path_vars.get()
+            path_arg = args[0].getText().strip() if args else compiled_args[0]
+            if path_arg in pvars:
+                return f"{path_arg}.edges"
+            return f"{compiled_args[0]}.edges"
+        if fn_norm == "head":
+            if len(compiled_args) != 1:
+                raise CoreError("head expects 1 arg", code="UNSUPPORTED")
+            return f"FIRST({compiled_args[0]})"
+        if fn_norm == "last":
+            if len(compiled_args) != 1:
+                raise CoreError("last expects 1 arg", code="UNSUPPORTED")
+            return f"LAST({compiled_args[0]})"
+        if fn_norm == "tail":
+            if len(compiled_args) != 1:
+                raise CoreError("tail expects 1 arg", code="UNSUPPORTED")
+            return f"SLICE({compiled_args[0]}, 1)"
+        if fn_norm == "range":
+            if len(compiled_args) == 2:
+                return f"RANGE({compiled_args[0]}, {compiled_args[1]})"
+            if len(compiled_args) == 3:
+                return f"RANGE({compiled_args[0]}, {compiled_args[1]}, {compiled_args[2]})"
+            raise CoreError("range expects 2-3 args", code="UNSUPPORTED")
+        if fn_norm == "type":
+            if len(compiled_args) != 1:
+                raise CoreError("type expects 1 arg", code="UNSUPPORTED")
+            resolver = _active_resolver.get()
+            if resolver is not None:
+                r_var = compiled_args[0]
+                rel_type_field = resolver.bundle.physical_mapping.get(
+                    "relationshipTypes", {},
+                ).get("defaultTypeField")
+                if rel_type_field:
+                    return f"{r_var}.{rel_type_field}"
+            return f'PARSE_IDENTIFIER({compiled_args[0]}._id).collection'
+        if fn_norm == "labels":
+            if len(compiled_args) != 1:
+                raise CoreError("labels expects 1 arg", code="UNSUPPORTED")
+            resolver = _active_resolver.get()
+            if resolver is not None:
+                entity_defs = resolver.bundle.physical_mapping.get("entityLabels", {})
+                for ek, ev in entity_defs.items():
+                    if ev.get("style") == "LABEL" and ev.get("typeField"):
+                        tf = ev["typeField"]
+                        return f"[{compiled_args[0]}.{tf}]"
+            return f'[PARSE_IDENTIFIER({compiled_args[0]}._id).collection]'
+        if fn_norm == "timestamp":
+            return "DATE_NOW()"
+        if fn_norm == "date":
+            if not compiled_args:
+                return "DATE_ISO8601(DATE_NOW())"
+            return f"DATE_ISO8601({compiled_args[0]})"
+        if fn_norm == "localdatetime":
+            if not compiled_args:
+                return "DATE_ISO8601(DATE_NOW())"
+            return f"DATE_ISO8601({compiled_args[0]})"
+        if fn_norm == "e":
+            return "2.718281828459045"
+        if fn_norm == "pi":
+            return "PI()"
+        if fn_norm == "log":
+            if len(compiled_args) != 1:
+                raise CoreError("log expects 1 arg", code="UNSUPPORTED")
+            return f"LOG({compiled_args[0]})"
+        if fn_norm == "log10":
+            if len(compiled_args) != 1:
+                raise CoreError("log10 expects 1 arg", code="UNSUPPORTED")
+            return f"LOG10({compiled_args[0]})"
+        if fn_norm == "sqrt":
+            if len(compiled_args) != 1:
+                raise CoreError("sqrt expects 1 arg", code="UNSUPPORTED")
+            return f"SQRT({compiled_args[0]})"
 
         if fn_norm.startswith("arango."):
             registry = _active_registry.get()

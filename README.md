@@ -232,11 +232,20 @@ RUN_INTEGRATION=1 pytest -m integration
 # Profile integration tests only: isolated Arango on host port 28530 (auto start/stop)
 RUN_INTEGRATION=1 pytest tests/integration/test_profile_integration.py -q
 
+# Cross-validate translated AQL against reference Neo4j (same query corpus,
+# result-set diff). Bolt on host port 27687.
+docker compose -f docker-compose.neo4j.yml -p arango_cypher_neo4j up -d
+pip install 'arango-cypher-py[neo4j]'
+RUN_INTEGRATION=1 RUN_CROSS=1 pytest tests/integration/test_movies_crossvalidate.py -q
+docker compose -f docker-compose.neo4j.yml -p arango_cypher_neo4j down
+
 # All tests
 pytest
 ```
 
 `docker-compose.pytest.yml` publishes **28530→8529** so it does not clash with the dev stack on **28529** or a native Arango on **8529**. The `arango_pytest_url` session fixture starts and tears that stack down for `test_profile_integration.py`.
+
+`docker-compose.neo4j.yml` publishes Bolt on **27687** and the Browser on **27474**, so it coexists with a native Neo4j on 7687. The cross-validation harness (`tests/integration/test_movies_crossvalidate.py`) runs every Cypher query in `tests/fixtures/datasets/movies/query-corpus.yml` against Neo4j (the reference Cypher engine) and against the translated AQL, then diffs the two result sets row-by-row. Override connection settings with `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS`.
 
 ## Architecture
 

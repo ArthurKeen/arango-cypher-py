@@ -20,6 +20,16 @@ service = [
   "fastapi>=0.100.0",
   "uvicorn[standard]>=0.20.0",
 ]
+analyzer = [
+  "arangodb-schema-analyzer",
+]
+cli = [
+  "typer>=0.9.0",
+  "rich>=13.0.0",
+]
+owl = [
+  "rdflib>=7.0",
+]
 dev = [
   "pytest>=8.0.0",
   "pytest-cov>=5.0.0",
@@ -28,6 +38,9 @@ dev = [
   "PyYAML>=6.0.0",
   "httpx>=0.24.0",
 ]
+neo4j = [
+  "neo4j>=5.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -35,6 +48,7 @@ pythonpath = ["."]
 markers = [
   "integration: requires a running ArangoDB (see README); isolated profile tests use docker-compose.pytest.yml on port 28530",
   "tck: openCypher TCK harness and runners",
+  "cross: cross-validates translated AQL against a reference Cypher engine (Neo4j); requires a running Neo4j (see docker-compose.neo4j.yml) plus RUN_INTEGRATION=1 and RUN_CROSS=1",
 ]
 
 [tool.ruff]
@@ -43,6 +57,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[project.scripts]
+arango-cypher-py = "arango_cypher.cli:app"
 
 [build-system]
 requires = ["hatchling>=1.21.0"]
