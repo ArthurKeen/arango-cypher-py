@@ -1,35 +1,230 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EditorView } from "@codemirror/view";
 import ConnectionDialog from "./components/ConnectionDialog";
 import CypherEditor from "./components/CypherEditor";
 import AqlEditor from "./components/AqlEditor";
 import ResultsPanel from "./components/ResultsPanel";
 import MappingPanel from "./components/MappingPanel";
+import ParameterPanel from "./components/ParameterPanel";
+import QueryHistory from "./components/QueryHistory";
+import SampleQueries from "./components/SampleQueries";
+import ClauseOutline from "./components/ClauseOutline";
 import { useAppState } from "./api/store";
+import { buildCorrespondenceMap, buildReverseMap } from "./utils/correspondenceMap";
 import {
   translateCypher,
   executeCypher,
+  executeAql,
   explainCypher,
   profileCypher,
+  nl2Cypher,
+  nl2Aql,
+  saveCorrection,
+  listCorrections,
+  deleteCorrection,
+  suggestNlQueries,
+  type CorrectionRecord,
 } from "./api/client";
+
+const NL_SAMPLES_SEEN_KEY = "nl_samples_seen";
+
+function loadSeenNlSamples(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(NL_SAMPLES_SEEN_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function markSeenNlSamples(key: string) {
+  try {
+    const seen = loadSeenNlSamples();
+    seen[key] = Date.now();
+    localStorage.setItem(NL_SAMPLES_SEEN_KEY, JSON.stringify(seen));
+  } catch {
+    // ignore
+  }
+}
+
+function splitCypherStatements(input: string): string[] {
+  const stmts: string[] = [];
+  let buf = "";
+  let inStr: string | null = null;
+  let inBlock = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (inStr) {
+      buf += ch;
+      if (ch === "\\" && i + 1 < input.length) { buf += input[++i]; continue; }
+      if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (inBlock) {
+      buf += ch;
+      if (ch === "*" && input[i + 1] === "/") { buf += input[++i]; inBlock = false; }
+      continue;
+    }
+    if (ch === "'" || ch === '"') { inStr = ch; buf += ch; continue; }
+    if (ch === "/" && input[i + 1] === "*") { buf += ch + input[++i]; inBlock = true; continue; }
+    if (ch === "/" && input[i + 1] === "/") {
+      while (i < input.length && input[i] !== "\n") buf += input[i++];
+      continue;
+    }
+    if (ch === ";") {
+      const trimmed = buf.trim();
+      if (trimmed) stmts.push(trimmed);
+      buf = "";
+      continue;
+    }
+    buf += ch;
+  }
+  const trimmed = buf.trim();
+  if (trimmed) stmts.push(trimmed);
+  return stmts.length > 0 ? stmts : [""];
+}
 
 export default function App() {
   const [state, dispatch] = useAppState();
   const [showMapping, setShowMapping] = useState(true);
+  const [mappingWidth, setMappingWidth] = useState(320);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
+  const [showOutline, setShowOutline] = useState(false);
+  const cypherViewRef = useRef<EditorView | null>(null);
+  const [cypherHighlightLines, setCypherHighlightLines] = useState<number[]>([]);
+  const [aqlHighlightLines, setAqlHighlightLines] = useState<number[]>([]);
+
+  const correspondenceMap = useMemo(
+    () => buildCorrespondenceMap(state.cypher, state.aql),
+    [state.cypher, state.aql],
+  );
+  const reverseCorrespondenceMap = useMemo(
+    () => buildReverseMap(correspondenceMap),
+    [correspondenceMap],
+  );
+
+  const handleCypherHoverLine = useCallback(
+    (line: number | null) => {
+      if (line == null) {
+        setAqlHighlightLines([]);
+        return;
+      }
+      const aqlLines = correspondenceMap.get(line - 1);
+      setAqlHighlightLines(aqlLines ? aqlLines.map((l) => l + 1) : []);
+    },
+    [correspondenceMap],
+  );
+
+  const handleAqlHoverLine = useCallback(
+    (line: number | null) => {
+      if (line == null) {
+        setCypherHighlightLines([]);
+        return;
+      }
+      const cypherLines = reverseCorrespondenceMap.get(line - 1);
+      setCypherHighlightLines(cypherLines ? cypherLines.map((l) => l + 1) : []);
+    },
+    [reverseCorrespondenceMap],
+  );
+
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = e.clientX - dragRef.current.startX;
+      setMappingWidth(Math.max(240, Math.min(800, dragRef.current.startW + delta)));
+    };
+    const onMouseUp = () => { dragRef.current = null; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+  }, []);
+  const [nlInput, setNlInput] = useState("");
+  const [nlLoading, setNlLoading] = useState(false);
+  const [nlInfo, setNlInfo] = useState("");
+  const [nlMode, setNlMode] = useState<"cypher" | "aql">("cypher");
+  const directAqlRef = useRef(false); // true when AQL came from NL→AQL direct path
+  const [aqlModified, setAqlModified] = useState(false);
+  const editedAqlRef = useRef("");
+  const [learnSaving, setLearnSaving] = useState(false);
+  const [learnInfo, setLearnInfo] = useState("");
+  const [showCorrections, setShowCorrections] = useState(false);
+  const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
+  const [nlHistory, setNlHistory] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("nl_history") || "[]"); } catch { return []; }
+  });
+  const [nlHistoryOpen, setNlHistoryOpen] = useState(false);
+  const [autoTranslate, setAutoTranslate] = useState<boolean>(() => {
+    try { return localStorage.getItem("auto_translate") === "1"; } catch { return false; }
+  });
+  const [autoRun, setAutoRun] = useState<boolean>(() => {
+    try { return localStorage.getItem("auto_run") === "1"; } catch { return false; }
+  });
+  const [pendingAutoTranslate, setPendingAutoTranslate] = useState(false);
+  const [pendingAutoRun, setPendingAutoRun] = useState(false);
+
+  const toggleAutoTranslate = useCallback(() => {
+    setAutoTranslate((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("auto_translate", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const toggleAutoRun = useCallback(() => {
+    setAutoRun((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("auto_run", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+  const nlHistoryRef = useRef<HTMLDivElement>(null);
   const mappingRef = useRef(state.mapping);
   mappingRef.current = state.mapping;
   const cypherRef = useRef(state.cypher);
   cypherRef.current = state.cypher;
+  const paramsRef = useRef(state.params);
+  paramsRef.current = state.params;
+
+  const activeStmtRef = useRef(state.activeStatement);
+  activeStmtRef.current = state.activeStatement;
+
+  function getActiveStatement(): string {
+    const stmts = splitCypherStatements(cypherRef.current);
+    const idx = Math.min(activeStmtRef.current, stmts.length - 1);
+    return stmts[idx] || "";
+  }
 
   function makeRequest() {
+    const p = paramsRef.current;
     return {
-      cypher: cypherRef.current,
+      cypher: getActiveStatement(),
       mapping: mappingRef.current,
+      params: Object.keys(p).length > 0 ? p : undefined,
       extensions_enabled: true,
     };
   }
 
+  function addToHistory(aql: string) {
+    const cypher = cypherRef.current.trim();
+    if (!cypher) return;
+    dispatch({
+      type: "ADD_HISTORY",
+      entry: {
+        cypher,
+        timestamp: Date.now(),
+        aqlPreview: aql.slice(0, 120),
+      },
+    });
+  }
+
   const handleTranslate = useCallback(async () => {
     if (!cypherRef.current.trim()) return;
+    directAqlRef.current = false;
     dispatch({ type: "TRANSLATE_START" });
     try {
       const resp = await translateCypher(makeRequest());
@@ -37,7 +232,11 @@ export default function App() {
         type: "TRANSLATE_SUCCESS",
         aql: resp.aql,
         bindVars: resp.bind_vars,
+        warnings: resp.warnings,
+        translateMs: resp.elapsed_ms,
       });
+      addToHistory(resp.aql);
+      if (autoRun) setPendingAutoRun(true);
     } catch (err) {
       dispatch({
         type: "TRANSLATE_ERROR",
@@ -45,15 +244,23 @@ export default function App() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
+  }, [dispatch, autoRun]);
 
   const handleExecute = useCallback(async () => {
-    if (!cypherRef.current.trim() || !state.connection.token) return;
+    if (!state.connection.token) return;
     dispatch({ type: "EXECUTE_START" });
     try {
-      const resp = await executeCypher(makeRequest(), state.connection.token);
-      dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars });
-      dispatch({ type: "EXECUTE_SUCCESS", results: resp.results });
+      if (directAqlRef.current && state.aql) {
+        const resp = await executeAql(state.aql, state.bindVars, state.connection.token);
+        dispatch({ type: "EXECUTE_SUCCESS", results: resp.results, warnings: resp.warnings, execMs: resp.exec_ms });
+        addToHistory(resp.aql);
+      } else {
+        if (!cypherRef.current.trim()) return;
+        const resp = await executeCypher(makeRequest(), state.connection.token);
+        dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars, warnings: resp.warnings });
+        dispatch({ type: "EXECUTE_SUCCESS", results: resp.results, warnings: resp.warnings, execMs: resp.exec_ms });
+        addToHistory(resp.aql);
+      }
     } catch (err) {
       dispatch({
         type: "EXECUTE_ERROR",
@@ -61,7 +268,7 @@ export default function App() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, state.connection.token]);
+  }, [dispatch, state.connection.token, state.aql, state.bindVars]);
 
   const handleExplain = useCallback(async () => {
     if (!cypherRef.current.trim() || !state.connection.token) return;
@@ -70,6 +277,7 @@ export default function App() {
       const resp = await explainCypher(makeRequest(), state.connection.token);
       dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars });
       dispatch({ type: "EXPLAIN_SUCCESS", plan: resp.plan });
+      addToHistory(resp.aql);
     } catch (err) {
       dispatch({
         type: "EXPLAIN_ERROR",
@@ -91,6 +299,7 @@ export default function App() {
         statistics: resp.statistics,
         profile: resp.profile,
       });
+      addToHistory(resp.aql);
     } catch (err) {
       dispatch({
         type: "PROFILE_ERROR",
@@ -99,6 +308,209 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, state.connection.token]);
+
+  const addNlHistory = useCallback((query: string) => {
+    setNlHistory((prev) => {
+      const filtered = prev.filter((q) => q !== query);
+      const next = [query, ...filtered].slice(0, 50);
+      localStorage.setItem("nl_history", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const appendNlHistory = useCallback((queries: string[]) => {
+    if (!queries.length) return;
+    setNlHistory((prev) => {
+      const existing = new Set(prev);
+      const additions = queries.filter((q) => q && !existing.has(q));
+      if (additions.length === 0) return prev;
+      const next = [...prev, ...additions].slice(0, 100);
+      localStorage.setItem("nl_history", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  // Seed the Ask-history with a representative set of NL queries the first
+  // time we connect to a given database and finish schema introspection.
+  const mappingEntityCount = useMemo(() => {
+    const pm = (state.mapping as Record<string, unknown>)?.physical_mapping as
+      | Record<string, unknown>
+      | undefined;
+    const ents = pm?.entities as Record<string, unknown> | undefined;
+    return ents ? Object.keys(ents).length : 0;
+  }, [state.mapping]);
+
+  useEffect(() => {
+    if (state.connection.status !== "connected") return;
+    if (state.introspecting) return;
+    if (mappingEntityCount === 0) return;
+
+    const key = `${state.connection.url}||${state.connection.database}`;
+    const seen = loadSeenNlSamples();
+    if (seen[key]) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await suggestNlQueries(state.mapping, 8);
+        if (cancelled) return;
+        if (resp.queries && resp.queries.length > 0) {
+          appendNlHistory(resp.queries);
+        }
+        markSeenNlSamples(key);
+      } catch (err) {
+        console.warn("NL sample generation failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    state.connection.status,
+    state.connection.url,
+    state.connection.database,
+    state.introspecting,
+    mappingEntityCount,
+    state.mapping,
+    appendNlHistory,
+  ]);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (nlHistoryRef.current && !nlHistoryRef.current.contains(e.target as Node)) {
+        setNlHistoryOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const handleNL = useCallback(async () => {
+    if (!nlInput.trim()) return;
+    addNlHistory(nlInput.trim());
+    setNlLoading(true);
+    setNlInfo("");
+    try {
+      if (nlMode === "aql") {
+        const resp = await nl2Aql(nlInput, mappingRef.current);
+        if (resp.aql) {
+          directAqlRef.current = true;
+          dispatch({
+            type: "TRANSLATE_SUCCESS",
+            aql: resp.aql,
+            bindVars: resp.bind_vars || {},
+            warnings: [],
+            translateMs: resp.elapsed_ms ?? null,
+          });
+          dispatch({ type: "SET_CYPHER", cypher: `/* NL→AQL: ${nlInput.trim()} */` });
+          const ms = resp.elapsed_ms != null ? ` ${resp.elapsed_ms}ms` : "";
+          const tokens = resp.total_tokens ? ` ${resp.total_tokens}tok` : "";
+          const info = `${resp.method} (${Math.round(resp.confidence * 100)}%)${ms}${tokens}`;
+          setNlInfo(info);
+          if (autoRun) setPendingAutoRun(true);
+        } else {
+          setNlInfo(resp.explanation || "Could not generate AQL");
+        }
+      } else {
+        const resp = await nl2Cypher(nlInput, mappingRef.current);
+        if (resp.cypher) {
+          directAqlRef.current = false;
+          dispatch({ type: "SET_CYPHER", cypher: resp.cypher });
+          const ms = resp.elapsed_ms != null ? ` ${resp.elapsed_ms}ms` : "";
+          const tokens = resp.total_tokens ? ` ${resp.total_tokens}tok` : "";
+          const info = `${resp.method} (${Math.round(resp.confidence * 100)}%)${ms}${tokens}`;
+          setNlInfo(info);
+          if (autoTranslate || autoRun) setPendingAutoTranslate(true);
+        } else {
+          setNlInfo(resp.explanation || "Could not generate Cypher");
+        }
+      }
+    } catch (err) {
+      setNlInfo(err instanceof Error ? err.message : "NL translation failed");
+    } finally {
+      setNlLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun]);
+
+  // Chain auto-translate after NL→Cypher when enabled.
+  useEffect(() => {
+    if (!pendingAutoTranslate) return;
+    if (state.translating || state.executing) return;
+    if (!state.cypher.trim()) return;
+    setPendingAutoTranslate(false);
+    handleTranslate();
+  }, [pendingAutoTranslate, state.cypher, state.translating, state.executing, handleTranslate]);
+
+  // Chain auto-run after a successful translate (manual or auto).
+  useEffect(() => {
+    if (!pendingAutoRun) return;
+    if (state.translating || state.executing) return;
+    if (!state.aql.trim()) return;
+    if (!state.connection.token) return;
+    setPendingAutoRun(false);
+    handleExecute();
+  }, [
+    pendingAutoRun,
+    state.aql,
+    state.translating,
+    state.executing,
+    state.connection.token,
+    handleExecute,
+  ]);
+
+  const handleAqlModified = useCallback((modified: boolean, editedAql: string) => {
+    setAqlModified(modified);
+    editedAqlRef.current = editedAql;
+    if (!modified) setLearnInfo("");
+  }, []);
+
+  const handleLearn = useCallback(async () => {
+    if (!aqlModified || !editedAqlRef.current.trim()) return;
+    setLearnSaving(true);
+    setLearnInfo("");
+    try {
+      await saveCorrection({
+        cypher: cypherRef.current,
+        mapping: mappingRef.current,
+        database: state.connection.database || "",
+        original_aql: state.aql,
+        corrected_aql: editedAqlRef.current,
+        bind_vars: state.bindVars,
+      });
+      setLearnInfo("Saved");
+      setAqlModified(false);
+    } catch (err) {
+      setLearnInfo(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setLearnSaving(false);
+    }
+  }, [aqlModified, state.aql, state.bindVars, state.connection.database]);
+
+  const loadCorrections = useCallback(async () => {
+    try {
+      const resp = await listCorrections();
+      setCorrections(resp.corrections);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleDeleteCorrection = useCallback(async (id: number) => {
+    try {
+      await deleteCorrection(id);
+      setCorrections((prev) => prev.filter((c) => c.id !== id));
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleJumpToLine = useCallback((line: number) => {
+    const view = cypherViewRef.current;
+    if (!view) return;
+    const lineInfo = view.state.doc.line(Math.min(line, view.state.doc.lines));
+    view.dispatch({
+      selection: { anchor: lineInfo.from },
+      scrollIntoView: true,
+    });
+    view.focus();
+  }, []);
 
   const isConnected = state.connection.status === "connected";
   const isLoading =
@@ -115,10 +527,38 @@ export default function App() {
           <span className="text-gray-600 text-xs">|</span>
           <ConnectionDialog
             connection={state.connection}
+            introspecting={state.introspecting}
             dispatch={dispatch}
           />
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSamples(true)}
+            className="px-2.5 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            Samples
+          </button>
+          <button
+            onClick={() => setShowHistory(true)}
+            className="px-2.5 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            History
+            {state.history.length > 0 && (
+              <span className="ml-1.5 text-gray-500">
+                ({state.history.length})
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setShowOutline(!showOutline)}
+            className={`px-2.5 py-1 text-xs rounded transition-colors ${
+              showOutline
+                ? "bg-indigo-600/20 text-indigo-400 border border-indigo-600/30"
+                : "bg-gray-800 text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            Outline
+          </button>
           <button
             onClick={() => setShowMapping(!showMapping)}
             className={`px-2.5 py-1 text-xs rounded transition-colors ${
@@ -149,16 +589,96 @@ export default function App() {
       <div className="flex-1 min-h-0 flex">
         {/* Mapping sidebar */}
         {showMapping && (
-          <div className="w-80 border-r border-gray-800 flex-shrink-0">
-            <MappingPanel
-              mapping={state.mapping}
-              onChange={(m) => dispatch({ type: "SET_MAPPING", mapping: m })}
+          <>
+            <div className="border-r border-gray-800 flex-shrink-0 relative" style={{ width: mappingWidth }}>
+              <MappingPanel
+                mapping={state.mapping}
+                onChange={(m) => dispatch({ type: "SET_MAPPING", mapping: m })}
+              />
+              {state.introspecting && (
+                <div className="absolute inset-0 bg-gray-950/70 flex items-center justify-center z-20 backdrop-blur-sm">
+                  <div className="flex flex-col items-center gap-2">
+                    <svg className="w-6 h-6 text-indigo-400 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" strokeDasharray="42" strokeDashoffset="12" strokeLinecap="round" />
+                    </svg>
+                    <span className="text-xs text-gray-300 font-medium">Extracting schema...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div
+              className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-indigo-500/30 active:bg-indigo-500/40 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                dragRef.current = { startX: e.clientX, startW: mappingWidth };
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
             />
-          </div>
+          </>
         )}
 
         {/* Editors and results */}
         <div className="flex-1 min-w-0 flex flex-col">
+          {/* NL input bar */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/30 border-b border-gray-800">
+            <span className="text-xs text-gray-500 shrink-0">Ask:</span>
+            <div className="flex-1 relative" ref={nlHistoryRef}>
+              <input
+                type="text"
+                value={nlInput}
+                onChange={(e) => setNlInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { handleNL(); setNlHistoryOpen(false); } }}
+                onFocus={() => { if (nlHistory.length > 0) setNlHistoryOpen(true); }}
+                placeholder="Describe what you want in plain English..."
+                className="w-full bg-gray-800 text-gray-200 text-xs rounded px-2.5 py-1.5 border border-gray-700 focus:border-indigo-500 focus:outline-none placeholder-gray-600"
+              />
+              {nlHistoryOpen && nlHistory.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-gray-800 border border-gray-700 rounded shadow-xl max-h-48 overflow-y-auto">
+                  {nlHistory.map((q, i) => (
+                    <button
+                      key={i}
+                      className="w-full text-left px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white truncate transition-colors"
+                      title={q}
+                      onClick={() => { setNlInput(q); setNlHistoryOpen(false); }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* NL output mode toggle: Cypher (two-stage) vs AQL (direct) */}
+            <div className="flex items-center rounded border border-gray-700 overflow-hidden shrink-0">
+              <button
+                onClick={() => setNlMode("cypher")}
+                className={`px-2 py-1 text-[10px] font-medium transition-colors ${nlMode === "cypher" ? "bg-indigo-600 text-white" : "bg-gray-800 text-gray-400 hover:text-gray-200"}`}
+                title="NL → Cypher → AQL (two-stage)"
+              >
+                Cypher
+              </button>
+              <button
+                onClick={() => setNlMode("aql")}
+                className={`px-2 py-1 text-[10px] font-medium transition-colors ${nlMode === "aql" ? "bg-amber-600 text-white" : "bg-gray-800 text-gray-400 hover:text-gray-200"}`}
+                title="NL → AQL (direct, requires LLM)"
+              >
+                AQL
+              </button>
+            </div>
+            <button
+              onClick={handleNL}
+              disabled={nlLoading || !nlInput.trim()}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              {nlLoading ? "..." : "Generate"}
+            </button>
+            {nlInfo && (
+              <span className="text-[10px] text-emerald-500/70 shrink-0 max-w-[280px] truncate tabular-nums" title={nlInfo}>
+                {nlInfo}
+              </span>
+            )}
+          </div>
+
           {/* Editor toolbar */}
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-900/50 border-b border-gray-800">
             <button
@@ -171,7 +691,7 @@ export default function App() {
             </button>
             <button
               onClick={handleExecute}
-              disabled={isLoading || !isConnected || !state.cypher.trim()}
+              disabled={isLoading || !isConnected || (!state.cypher.trim() && !state.aql)}
               className="px-3 py-1.5 text-xs font-medium rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="Shift+Enter"
             >
@@ -199,6 +719,34 @@ export default function App() {
               <div className="ml-2 w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
             )}
 
+            <div className="w-px h-5 bg-gray-700 ml-2" />
+
+            <label
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer select-none"
+              title="Automatically Translate after generating Cypher from natural language"
+            >
+              <input
+                type="checkbox"
+                checked={autoTranslate}
+                onChange={toggleAutoTranslate}
+                className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+              />
+              Auto-translate
+            </label>
+            <label
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 cursor-pointer select-none"
+              title="Automatically Run after a successful Translate (requires connection)"
+            >
+              <input
+                type="checkbox"
+                checked={autoRun}
+                onChange={toggleAutoRun}
+                disabled={!isConnected}
+                className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+              Auto-run
+            </label>
+
             <div className="flex-1" />
 
             <span className="text-xs text-gray-600">
@@ -218,40 +766,164 @@ export default function App() {
           <div className="flex-1 min-h-0 flex">
             {/* Cypher editor */}
             <div className="flex-1 min-w-0 flex flex-col border-r border-gray-800">
-              <div className="px-3 py-1.5 bg-gray-900/30 border-b border-gray-800">
+              <div className="px-3 py-1.5 bg-gray-900/30 border-b border-gray-800 flex items-center gap-2">
                 <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                   Cypher
                 </span>
+                {(() => {
+                  const stmts = splitCypherStatements(state.cypher);
+                  if (stmts.length <= 1) return null;
+                  const idx = Math.min(state.activeStatement, stmts.length - 1);
+                  return (
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => dispatch({ type: "SET_ACTIVE_STATEMENT", index: Math.max(0, idx - 1) })}
+                        disabled={idx === 0}
+                        className="w-5 h-5 rounded text-[10px] bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-30 flex items-center justify-center transition-colors"
+                      >
+                        &#9664;
+                      </button>
+                      <span className="text-[10px] text-gray-500 tabular-nums whitespace-nowrap">
+                        {idx + 1} / {stmts.length}
+                      </span>
+                      <button
+                        onClick={() => dispatch({ type: "SET_ACTIVE_STATEMENT", index: Math.min(stmts.length - 1, idx + 1) })}
+                        disabled={idx === stmts.length - 1}
+                        className="w-5 h-5 rounded text-[10px] bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-30 flex items-center justify-center transition-colors"
+                      >
+                        &#9654;
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
-              <div className="flex-1 min-h-0">
-                <CypherEditor
-                  value={state.cypher}
-                  onChange={(v) =>
-                    dispatch({ type: "SET_CYPHER", cypher: v })
-                  }
-                  onTranslate={handleTranslate}
-                  onExecute={handleExecute}
-                  onExplain={handleExplain}
-                  onProfile={handleProfile}
-                />
+              <div className="flex-1 min-h-0 flex">
+                <div className="flex-1 min-w-0">
+                  <CypherEditor
+                    value={state.cypher}
+                    mapping={state.mapping}
+                    onChange={(v) =>
+                      dispatch({ type: "SET_CYPHER", cypher: v })
+                    }
+                    onTranslate={handleTranslate}
+                    onExecute={handleExecute}
+                    onExplain={handleExplain}
+                    onProfile={handleProfile}
+                    viewRef={cypherViewRef}
+                    highlightLines={cypherHighlightLines}
+                    onHoverLine={handleCypherHoverLine}
+                  />
+                </div>
+                {showOutline && (
+                  <div className="w-48 border-l border-gray-800 overflow-y-auto bg-gray-900/30 shrink-0">
+                    <div className="px-3 py-1.5 border-b border-gray-800">
+                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                        Clause Outline
+                      </span>
+                    </div>
+                    <ClauseOutline
+                      cypher={state.cypher}
+                      onJumpToLine={handleJumpToLine}
+                    />
+                  </div>
+                )}
               </div>
+              <ParameterPanel
+                cypher={state.cypher}
+                params={state.params}
+                onChange={(p) => dispatch({ type: "SET_PARAMS", params: p })}
+              />
             </div>
 
             {/* AQL editor */}
             <div className="flex-1 min-w-0 flex flex-col">
-              <div className="px-3 py-1.5 bg-gray-900/30 border-b border-gray-800">
+              <div className="px-3 py-1.5 bg-gray-900/30 border-b border-gray-800 flex items-center gap-2">
                 <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                   AQL
                 </span>
-                {state.aql && (
-                  <span className="text-xs text-gray-600 ml-2">read-only</span>
+                {state.aql && !aqlModified && (
+                  <span className="text-xs text-gray-600">editable</span>
+                )}
+                {aqlModified && (
+                  <span className="text-xs text-amber-400 font-medium">modified</span>
+                )}
+                {aqlModified && (
+                  <button
+                    onClick={handleLearn}
+                    disabled={learnSaving}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-40"
+                  >
+                    {learnSaving ? "Saving..." : "Learn"}
+                  </button>
+                )}
+                {learnInfo && (
+                  <span className="text-[10px] text-emerald-400">{learnInfo}</span>
+                )}
+                <div className="flex-1" />
+                <button
+                  onClick={() => { setShowCorrections(!showCorrections); if (!showCorrections) loadCorrections(); }}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                  title="View learned corrections"
+                >
+                  {showCorrections ? "Hide" : "Learned"} ({corrections.length})
+                </button>
+                {state.translateMs != null && (
+                  <span className="text-[10px] text-emerald-500/70 tabular-nums">
+                    Cypher→AQL {state.translateMs}ms
+                  </span>
+                )}
+                {state.execMs != null && (
+                  <span className="text-[10px] text-sky-400/70 tabular-nums">
+                    AQL exec {state.execMs}ms
+                  </span>
                 )}
               </div>
+              {showCorrections && (
+                <div className="max-h-40 overflow-y-auto bg-gray-900/50 border-b border-gray-800">
+                  {corrections.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-500">No learned corrections yet</div>
+                  ) : (
+                    corrections.map((c) => (
+                      <div key={c.id} className="flex items-start gap-2 px-3 py-1.5 border-b border-gray-800/50 hover:bg-gray-800/30">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] text-gray-400 truncate" title={c.cypher}>
+                            {c.cypher.slice(0, 80)}
+                          </div>
+                          <div className="text-[10px] text-gray-600">
+                            {c.database || "any"} · {new Date(c.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteCorrection(c.id)}
+                          className="text-[10px] text-red-500/60 hover:text-red-400 shrink-0"
+                          title="Delete this correction"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+              {state.warnings.length > 0 && (
+                <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-800/30 space-y-0.5">
+                  {state.warnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-amber-500 text-xs mt-0.5 shrink-0">&#9888;</span>
+                      <span className="text-xs text-amber-400">{w.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex-1 min-h-0">
                 <AqlEditor
                   value={state.aql}
                   bindVars={state.bindVars}
                   error={null}
+                  onModified={handleAqlModified}
+                  mapping={state.mapping}
+                  highlightLines={aqlHighlightLines}
+                  onHoverLine={handleAqlHoverLine}
                 />
               </div>
             </div>
@@ -261,14 +933,32 @@ export default function App() {
           <div className="h-64 border-t border-gray-800 flex-shrink-0">
             <ResultsPanel
               results={state.results}
+              warnings={state.warnings}
               explainPlan={state.explainPlan}
               profileData={state.profileData}
               activeTab={state.activeResultTab}
               dispatch={dispatch}
+              execMs={state.execMs}
             />
           </div>
         </div>
       </div>
+
+      {showHistory && (
+        <QueryHistory
+          history={state.history}
+          onSelect={(cypher) => dispatch({ type: "SET_CYPHER", cypher })}
+          onClear={() => dispatch({ type: "CLEAR_HISTORY" })}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {showSamples && (
+        <SampleQueries
+          onSelect={(cypher) => dispatch({ type: "SET_CYPHER", cypher })}
+          onClose={() => setShowSamples(false)}
+        />
+      )}
     </div>
   );
 }

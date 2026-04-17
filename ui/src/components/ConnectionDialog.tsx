@@ -1,61 +1,90 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   connect,
   disconnect,
   getConnectDefaults,
+  introspectSchema,
+  introspectToMapping,
   type ConnectDefaults,
 } from "../api/client";
 import type { Action, ConnectionState } from "../api/store";
 
 interface Props {
   connection: ConnectionState;
+  introspecting: boolean;
   dispatch: (action: Action) => void;
 }
 
-export default function ConnectionDialog({ connection, dispatch }: Props) {
+export default function ConnectionDialog({ connection, introspecting, dispatch }: Props) {
   const [form, setForm] = useState({
-    host: connection.host,
-    port: String(connection.port),
+    url: connection.url,
     database: connection.database,
     username: connection.username,
     password: "",
   });
   const [open, setOpen] = useState(false);
+  const autoConnectAttempted = useRef(false);
+
+  useEffect(() => {
+    if (connection.status === "disconnected") {
+      setForm((f) => ({
+        ...f,
+        url: connection.url,
+        database: connection.database,
+        username: connection.username,
+      }));
+    }
+  }, [connection.status, connection.url, connection.database, connection.username]);
 
   useEffect(() => {
     getConnectDefaults()
       .then((defaults: ConnectDefaults) => {
-        setForm((f) => ({
-          ...f,
-          host: defaults.host || f.host,
-          port: String(defaults.port || f.port),
-          database: defaults.database || f.database,
-          username: defaults.username || f.username,
-        }));
+        const newForm = {
+          url: defaults.url || form.url,
+          database: form.database && form.database !== "_system" ? form.database : (defaults.database || form.database),
+          username: defaults.username || form.username,
+          password: defaults.password || form.password,
+        };
+        setForm(newForm);
+
+        if (!autoConnectAttempted.current && defaults.password && connection.status === "disconnected") {
+          autoConnectAttempted.current = true;
+          doConnect(newForm);
+        }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleConnect() {
+  async function doConnect(f: typeof form) {
     dispatch({ type: "CONNECT_START" });
     try {
       const resp = await connect({
-        host: form.host,
-        port: Number(form.port),
-        database: form.database,
-        username: form.username,
-        password: form.password,
+        url: f.url,
+        database: f.database,
+        username: f.username,
+        password: f.password,
       });
       dispatch({
         type: "CONNECT_SUCCESS",
         token: resp.token,
         databases: resp.databases,
-        host: form.host,
-        port: Number(form.port),
-        database: form.database,
-        username: form.username,
+        url: f.url,
+        database: f.database,
+        username: f.username,
+        password: f.password,
       });
       setOpen(false);
+
+      dispatch({ type: "INTROSPECT_START" });
+      try {
+        const schema = await introspectSchema(resp.token, 50, true);
+        const mapping = introspectToMapping(schema);
+        dispatch({ type: "INTROSPECT_SUCCESS", mapping });
+      } catch (introspectErr) {
+        console.warn("Schema introspection failed:", introspectErr);
+        dispatch({ type: "INTROSPECT_ERROR", error: introspectErr instanceof Error ? introspectErr.message : "Introspection failed" });
+      }
     } catch (err) {
       dispatch({
         type: "CONNECT_ERROR",
@@ -64,13 +93,25 @@ export default function ConnectionDialog({ connection, dispatch }: Props) {
     }
   }
 
+  async function handleConnect() {
+    await doConnect(form);
+  }
+
+  async function handleSwitchDb(newDb: string) {
+    if (newDb === connection.database) return;
+
+    if (connection.token) {
+      try { await disconnect(connection.token); } catch { /* best-effort */ }
+    }
+
+    const f = { ...form, database: newDb };
+    setForm(f);
+    await doConnect(f);
+  }
+
   async function handleDisconnect() {
     if (connection.token) {
-      try {
-        await disconnect(connection.token);
-      } catch {
-        // best-effort
-      }
+      try { await disconnect(connection.token); } catch { /* best-effort */ }
     }
     dispatch({ type: "DISCONNECT" });
   }
@@ -80,10 +121,31 @@ export default function ConnectionDialog({ connection, dispatch }: Props) {
       <div className="flex items-center gap-3 text-sm">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
-          <span className="text-gray-300">
-            {connection.host}:{connection.port}/{connection.database}
+          <span className="text-gray-400 text-xs truncate max-w-[200px]" title={connection.url}>
+            {connection.url.replace(/^https?:\/\//, "")}/
           </span>
+          {connection.databases.length > 1 ? (
+            <select
+              value={connection.database}
+              onChange={(e) => handleSwitchDb(e.target.value)}
+              className="bg-gray-800 border border-gray-600 text-gray-200 text-sm rounded px-1.5 py-0.5 focus:border-indigo-500 focus:outline-none cursor-pointer"
+            >
+              {connection.databases.map((db) => (
+                <option key={db} value={db}>{db}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-gray-300">{connection.database}</span>
+          )}
         </span>
+        {introspecting && (
+          <span className="flex items-center gap-1.5 text-xs text-amber-400 animate-pulse">
+            <svg className="w-3 h-3 animate-spin" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
+            </svg>
+            Loading schema...
+          </span>
+        )}
         <button
           onClick={handleDisconnect}
           className="px-2.5 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
@@ -91,6 +153,12 @@ export default function ConnectionDialog({ connection, dispatch }: Props) {
           Disconnect
         </button>
       </div>
+    );
+  }
+
+  if (!open && connection.status === "connecting") {
+    return (
+      <span className="text-sm text-gray-400">Connecting...</span>
     );
   }
 
@@ -119,24 +187,15 @@ export default function ConnectionDialog({ connection, dispatch }: Props) {
         )}
 
         <div className="space-y-3">
-          <div className="flex gap-3">
-            <label className="flex-1">
-              <span className="text-xs text-gray-400 block mb-1">Host</span>
-              <input
-                value={form.host}
-                onChange={(e) => setForm({ ...form, host: e.target.value })}
-                className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              />
-            </label>
-            <label className="w-24">
-              <span className="text-xs text-gray-400 block mb-1">Port</span>
-              <input
-                value={form.port}
-                onChange={(e) => setForm({ ...form, port: e.target.value })}
-                className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              />
-            </label>
-          </div>
+          <label>
+            <span className="text-xs text-gray-400 block mb-1">URL</span>
+            <input
+              value={form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              placeholder="http://localhost:8529 or https://cloud.arangodb.com"
+              className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-white focus:border-indigo-500 focus:outline-none"
+            />
+          </label>
           <label>
             <span className="text-xs text-gray-400 block mb-1">Database</span>
             <input
