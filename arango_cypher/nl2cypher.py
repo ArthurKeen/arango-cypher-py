@@ -57,15 +57,20 @@ class NL2CypherResult:
 class LLMProvider(Protocol):
     """Protocol for LLM backends that generate text from a prompt.
 
-    ``generate`` accepts a user question and schema context string and
+    ``generate`` accepts pre-rendered ``system`` and ``user`` strings and
     returns ``(response_text, usage_dict)`` where *usage_dict* contains
-    ``prompt_tokens``, ``completion_tokens``, and ``total_tokens``.
+    ``prompt_tokens``, ``completion_tokens``, and ``total_tokens``.  The
+    caller is responsible for rendering the system prompt (see
+    :class:`PromptBuilder` for the NL→Cypher path); providers no longer
+    format schema context themselves, which keeps the §1.2 invariant
+    auditable at a single site and lets future waves extend the prompt
+    without touching every provider.
     """
 
     def generate(
-        self, question: str, schema_summary: str,
+        self, system: str, user: str,
     ) -> tuple[str, dict[str, int]]:
-        """Return ``(content, usage_dict)`` for the given question and schema."""
+        """Return ``(content, usage_dict)`` for the given system/user pair."""
         ...
 
 
@@ -150,9 +155,8 @@ class OpenAIProvider(_BaseChatProvider):
             timeout=timeout,
         )
 
-    def generate(self, question: str, schema_summary: str) -> tuple[str, dict[str, int]]:
-        system = _SYSTEM_PROMPT.format(schema=schema_summary)
-        return self._chat(system, question)
+    def generate(self, system: str, user: str) -> tuple[str, dict[str, int]]:
+        return self._chat(system, user)
 
 
 class OpenRouterProvider(_BaseChatProvider):
@@ -179,9 +183,8 @@ class OpenRouterProvider(_BaseChatProvider):
             timeout=timeout,
         )
 
-    def generate(self, question: str, schema_summary: str) -> tuple[str, dict[str, int]]:
-        system = _SYSTEM_PROMPT.format(schema=schema_summary)
-        return self._chat(system, question)
+    def generate(self, system: str, user: str) -> tuple[str, dict[str, int]]:
+        return self._chat(system, user)
 
 
 def get_llm_provider() -> OpenAIProvider | OpenRouterProvider | None:
@@ -419,6 +422,74 @@ Rules:
 {schema}"""
 
 
+_RETRY_USER_SUFFIX = (
+    "\n\nYour previous Cypher was invalid: {error}. Please fix it."
+)
+
+
+@dataclass
+class PromptBuilder:
+    """Composable prompt builder for the NL→Cypher pipeline.
+
+    Renders the ``system`` and ``user`` messages used by :func:`nl_to_cypher`.
+    Per PRD §1.2, only *conceptual* schema text ever reaches this builder —
+    collection names, type discriminators, and AQL stay out of the prompt.
+
+    Invariants
+    ----------
+    * Zero-shot case (empty ``few_shot_examples`` and ``resolved_entities``):
+      ``render_system()`` is byte-identical to the pre-refactor rendering
+      of the :data:`_SYSTEM_PROMPT` template against ``schema_summary``.
+      This is pinned by :mod:`tests.test_nl2cypher_prompt_builder`.
+    * ``retry_context`` never alters the system message; it is appended to
+      the user message only, matching the historical retry wording.
+    """
+
+    schema_summary: str
+    few_shot_examples: list[tuple[str, str]] = field(default_factory=list)
+    resolved_entities: list[str] = field(default_factory=list)
+    retry_context: str = ""
+
+    def render_system(self) -> str:
+        base = _SYSTEM_PROMPT.replace("{schema}", self.schema_summary)
+
+        extensions: list[str] = []
+        if self.few_shot_examples:
+            # TODO(WP-25.1): fewshot plug-in point — retrieval wave will
+            # ship a ranker that populates ``few_shot_examples`` with
+            # (nl_question, cypher) pairs drawn from the query corpus.
+            extensions.append(self._render_few_shot_section())
+        if self.resolved_entities:
+            # TODO(WP-25.2): entity-resolution plug-in point — ER wave
+            # will pre-resolve mentions in the question to canonical
+            # conceptual entities before prompting.
+            extensions.append(self._render_resolved_entities_section())
+
+        if not extensions:
+            return base
+        return base + "\n\n" + "\n\n".join(extensions)
+
+    def render_user(self, question: str) -> str:
+        if not self.retry_context:
+            return question
+        return question + _RETRY_USER_SUFFIX.format(error=self.retry_context)
+
+    def _render_few_shot_section(self) -> str:
+        lines = ["## Examples"]
+        for nl, cypher in self.few_shot_examples:
+            lines.append(f"Q: {nl}")
+            lines.append("```cypher")
+            lines.append(cypher.strip())
+            lines.append("```")
+        return "\n".join(lines)
+
+    def _render_resolved_entities_section(self) -> str:
+        lines = ["## Resolved entities"]
+        for entry in self.resolved_entities:
+            lines.append(f"- {entry}")
+        return "\n".join(lines)
+
+
 def _extract_cypher_from_response(text: str) -> str:
     """Extract Cypher query from LLM response (handles code blocks)."""
     m = re.search(r"```(?:cypher)?\s*\n(.*?)```", text, re.DOTALL)
@@ -511,22 +582,21 @@ def _call_llm_with_retry(
     the LLM for up to ``max_retries`` additional attempts.  The result
     includes a ``retries`` count so callers can observe how many rounds
     were needed.
+
+    The prompt is assembled by a :class:`PromptBuilder` shared across
+    attempts; only ``retry_context`` mutates between iterations so the
+    (cacheable) system prefix stays byte-stable.
     """
-    last_error = ""
+    builder = PromptBuilder(schema_summary=schema_summary)
     best_cypher = ""
     best_content = ""
     total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for attempt in range(1 + max_retries):
         try:
-            prompt_question = question
-            if attempt > 0 and last_error:
-                prompt_question = (
-                    f"{question}\n\n"
-                    f"Your previous Cypher was invalid: {last_error}. "
-                    f"Please fix it."
-                )
+            system = builder.render_system()
+            user = builder.render_user(question)
 
-            result = provider.generate(prompt_question, schema_summary)
+            result = provider.generate(system, user)
             if isinstance(result, tuple):
                 content, usage = result
                 for k in total_usage:
@@ -559,20 +629,20 @@ def _call_llm_with_retry(
 
             best_cypher = cypher
             best_content = content
-            last_error = err_msg or "generated text did not parse as Cypher"
+            builder.retry_context = err_msg or "generated text did not parse as Cypher"
             logger.info(
                 "LLM attempt %d/%d: validation failed for: %s",
                 attempt + 1, 1 + max_retries, cypher[:120],
             )
         except Exception as e:
             logger.warning("LLM call failed (attempt %d): %s", attempt + 1, e)
-            last_error = str(e)
+            builder.retry_context = str(e)
 
     if best_cypher:
         return NL2CypherResult(
             cypher=best_cypher,
             explanation=f"WARNING: Cypher failed validation after {1 + max_retries} attempts. "
-                        f"Last error: {last_error}\n\n{best_content}",
+                        f"Last error: {builder.retry_context}\n\n{best_content}",
             confidence=0.3,
             method="llm",
             schema_context=schema_summary,
@@ -977,7 +1047,7 @@ class NL2AqlResult:
     total_tokens: int = 0
 
 
-_AQL_SYSTEM_PROMPT = """You are an ArangoDB AQL query expert. Given a natural language question and a database schema, generate a valid AQL query.
+_AQL_PROMPT_TEMPLATE = """You are an ArangoDB AQL query expert. Given a natural language question and a database schema, generate a valid AQL query.
 
 {schema}
 
@@ -1308,20 +1378,29 @@ def _call_llm_for_aql(
     max_retries: int = 2,
     known_collections: set[str] | None = None,
 ) -> NL2AqlResult | None:
-    """Call the LLM to generate AQL directly, with validation and retry."""
+    """Call the LLM to generate AQL directly, with validation and retry.
+
+    NL→AQL uses the full physical schema and a distinct system prompt
+    (:data:`_AQL_PROMPT_TEMPLATE`), so it deliberately does not share
+    :class:`PromptBuilder` with the NL→Cypher path — mixing the two
+    would risk leaking physical details into the conceptual prompt
+    (see PRD §1.2). The system string is rendered once here and reused
+    across retry attempts; only the user message changes per attempt.
+    """
+    system = _AQL_PROMPT_TEMPLATE.format(schema=schema_summary)
     last_error = ""
     total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for attempt in range(1 + max_retries):
         try:
-            prompt_question = question
+            user = question
             if attempt > 0 and last_error:
-                prompt_question = (
+                user = (
                     f"{question}\n\n"
                     f"(Previous attempt produced invalid AQL: {last_error}. "
                     f"Please fix and try again.)"
                 )
 
-            result = provider.generate(prompt_question, schema_summary)
+            result = provider.generate(system, user)
             if isinstance(result, tuple):
                 content, usage = result
                 for k in total_usage:
@@ -1357,17 +1436,6 @@ def _call_llm_for_aql(
             last_error = str(e)
 
     return None
-
-
-class _AqlChatProvider:
-    """Wraps a ``_BaseChatProvider`` to use the AQL system prompt."""
-
-    def __init__(self, base: _BaseChatProvider) -> None:
-        self._base = base
-
-    def generate(self, question: str, schema_summary: str) -> tuple[str, dict[str, int]]:
-        system = _AQL_SYSTEM_PROMPT.format(schema=schema_summary)
-        return self._base._chat(system, question)
 
 
 def _collect_known_collections(bundle: MappingBundle) -> set[str]:
@@ -1438,12 +1506,9 @@ def nl_to_aql(
             method="none",
         )
 
-    aql_provider = (
-        _AqlChatProvider(base_provider) if isinstance(base_provider, _BaseChatProvider) else base_provider
-    )
     known_collections = _collect_known_collections(bundle)
     result = _call_llm_for_aql(
-        question, schema_summary, aql_provider,
+        question, schema_summary, base_provider,
         max_retries=max_retries,
         known_collections=known_collections,
     )
@@ -1516,7 +1581,7 @@ def nl_to_cypher(
 # ---------------------------------------------------------------------------
 
 
-_SUGGEST_SYSTEM_PROMPT = """You generate short, natural-language example questions that a user might ask about a property graph.
+_SUGGEST_PROMPT_TEMPLATE = """You generate short, natural-language example questions that a user might ask about a property graph.
 
 The user has just connected to a database with the following schema:
 
@@ -1539,7 +1604,7 @@ def _llm_suggest_nl_queries(
 ) -> list[str]:
     """Ask the LLM to propose representative NL queries for the schema."""
     schema_summary = _build_schema_summary(bundle)
-    system = _SUGGEST_SYSTEM_PROMPT.format(schema=schema_summary)
+    system = _SUGGEST_PROMPT_TEMPLATE.format(schema=schema_summary)
     user = (
         f"Generate {count} example natural-language questions for this graph. "
         "Return only the questions, one per line."
