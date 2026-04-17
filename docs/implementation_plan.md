@@ -643,6 +643,152 @@ Week 9:     TCK re-run + bug fixes to hit ≥ 25%
 
 ---
 
+### WP-25: NL→Cypher pipeline hardening (SOTA upgrades)
+
+**PRD**: §1.2.1
+**Priority**: High — the existing `nl2cypher.py` is a correct but minimal zero-shot baseline; each SOTA upgrade below directly improves accuracy, cost, or reliability on real workloads.
+**Estimate**: 3-4 weeks wall-clock with 4 parallel sub-agents on .1-.4, then 1 week sequential on .5. ~18-23 dev-days total.
+**Dependencies**: WP-17 (existing NL→Cypher pipeline — the thing being hardened). Optional: an ArangoSearch view on the target database improves .2; otherwise a BM25/regex fallback is used.
+
+#### Motivation and research
+
+Two research notes (`docs/research/nl2cypher.md`, `docs/research/nl2cypher2aql_analysis.md`) document the 2025-2026 state of the art for Text2Cypher and analyze this repo's implementation against it. The summary: we have the right architecture (two-stage pipeline, logical-only prompt, self-healing retry) but we are missing every non-structural technique the literature calls essential — dynamic few-shot retrieval, pre-flight entity resolution, execution-grounded validation, and prompt caching. PRD §1.2.1 gives the full gap analysis.
+
+#### Scope: five sub-packages, four parallelizable
+
+The first four sub-packages touch disjoint modules and can run in parallel under separate sub-agents. Their single merge point in `arango_cypher/nl2cypher.py` is the shape of the prompt builder — handled by a pre-step refactor (below) so each sub-agent extends a composable builder rather than editing the monolithic `_SYSTEM_PROMPT` constant.
+
+**Pre-step (must land first, ~0.5 d, 1 agent):** refactor `_SYSTEM_PROMPT` / `_call_llm_with_retry` in `arango_cypher/nl2cypher.py` into a `PromptBuilder` class with composable sections (`schema`, `few_shot`, `resolved_entities`, `question`, `retry_context`). The existing behaviour is preserved exactly — zero-shot with schema only — but the shape lets sub-agents add their section without conflicting diffs. Ship the refactor on `main` before launching parallel agents.
+
+##### WP-25.1 — Dynamic few-shot retrieval
+
+**Goal:** inject the top-K most similar (NL, Cypher) example pairs into the prompt.
+
+**Files:**
+- `arango_cypher/nl2cypher/fewshot.py` — new. `FewShotIndex` class: build an in-memory index over a seed corpus of `(question, cypher)` pairs, retrieve top-K by similarity given a new question. Start with **BM25** (rank_bm25 library, already light on dependencies) as the baseline so the feature ships without requiring embeddings or network calls. Leave a pluggable `Retriever` protocol so an embedding-based retriever can replace it later without API churn.
+- `arango_cypher/nl2cypher/corpora/` — new. Mine `tests/fixtures/datasets/{movies,northwind,social}/query-corpus.yml` into `(description, cypher)` seed files (`movies.yml`, `northwind.yml`, `social.yml`). These are conceptual-Cypher, so they respect the §1.2 invariant. ~60 pairs total, expandable.
+- `arango_cypher/nl2cypher.py` — wire the retriever into `PromptBuilder.few_shot`. Behaviour: when `use_fewshot=True` (default), retrieve K=3 similar examples and render them as `Q: <question>\nA:\n```cypher\n<cypher>\n```\n\n` before the user question.
+- `tests/test_nl2cypher_fewshot.py` — unit tests: BM25 retrieval correctness, end-to-end prompt shape, empty-corpus fallback (no crash), retriever protocol shape.
+
+**Corpus format (in `corpora/*.yml`):**
+```yaml
+version: 1
+mapping_fixture: movies_lpg
+examples:
+  - question: "Find all movies Tom Hanks acted in"
+    cypher: 'MATCH (p:Person {name: "Tom Hanks"})-[:ACTED_IN]->(m:Movie) RETURN m.title'
+  - ...
+```
+
+**Acceptance:**
+- Unit tests pass.
+- A/B against the held-out set from WP-25.5: first-shot parse-success rate on the evaluation harness improves by ≥ 5 pp over zero-shot (measurement is WP-25.5's responsibility; this WP just has to make the knob turn on).
+- No regressions in existing unit tests (`pytest -m "not integration and not tck"`).
+
+##### WP-25.2 — Pre-flight entity resolution
+
+**Goal:** rewrite user-supplied string literals ("Forest Gump") to their database-correct form ("Forrest Gump") before the LLM call, so the generated Cypher matches actual data.
+
+**Files:**
+- `arango_cypher/nl2cypher/entity_resolution.py` — new. Extract entity candidates from the question (proper nouns via simple POS heuristics, or quoted strings), then resolve each against the live database:
+  - **Preferred path:** ArangoSearch lookup — if the connected database has a view spanning the property/field candidates (`name`, `title`, etc.), issue an AQL `SEARCH ANALYZER(...)` query and take the top BM25 hit per candidate.
+  - **Fallback path (no view):** AQL `FILTER LOWER(d.name) == LOWER(@value) OR CONTAINS(LOWER(d.name), LOWER(@value))` against the relevant collections. Cap candidates and rows.
+  - **Offline/no-DB path:** skip entity resolution cleanly and log at INFO (the feature degrades gracefully when NL2Cypher is used without a live connection).
+- `arango_cypher/nl2cypher.py` — wire resolver into `PromptBuilder.resolved_entities`. Rendered as: `User mentioned 'Forest Gump' — matched to Movie.title='Forrest Gump'.` The section appears before the question.
+- `tests/test_nl2cypher_entity_resolution.py` — unit tests with mocked DB responses: typo correction, no-match handling, multiple candidates in one question, offline fallback.
+
+**Notes:**
+- Does NOT leak physical details to the LLM. The resolved string is a property *value*, not a collection name or schema detail. The conceptual label (`Movie`, `Person`) already appears in the schema summary.
+- Respect latency budget: one extra round-trip per request, cache per-session by question hash.
+- `_fix_labels()` (existing post-hoc label rewriter) stays — it catches cases the resolver misses.
+
+**Acceptance:**
+- Unit tests pass.
+- Intentional-typo corpus (added to WP-25.5 harness) now produces correct Cypher where previously it produced queries returning zero rows.
+- Graceful no-op when no provider/DB is configured.
+
+##### WP-25.3 — Execution-grounded validation loop
+
+**Goal:** extend the retry loop in `_call_llm_with_retry` to also run the translated AQL through `_api/explain` on the connected database. Collection-not-exists, property-not-exists, and syntax errors surfaced by `EXPLAIN` feed back into the LLM retry — same mechanism as the existing ANTLR parse-error feedback.
+
+**Files:**
+- `arango_cypher/nl2cypher.py` — extend `_call_llm_with_retry`:
+  - After ANTLR parse succeeds, invoke `translate()` to produce AQL.
+  - If a DB client is available on the request, call `POST /_api/explain` with the AQL (no execution, just planning).
+  - On `EXPLAIN` failure, capture the error message, include it in the next retry prompt, and try again.
+  - On `EXPLAIN` success, return the result as before.
+- `arango_query_core/exec.py` — add `explain_aql(aql, bind_vars) -> (ok, plan_or_error)` helper if one doesn't exist. Read-only; no data risk.
+- `tests/test_nl2cypher_execution_grounded.py` — unit tests with a mocked `explain` function: label-typo self-heal, property-typo self-heal, syntax-only failure still works without DB.
+
+**Bounded retry:** honour the existing `max_retries` knob (default 2). Total LLM calls is still capped.
+
+**Acceptance:**
+- Unit tests pass.
+- Offline mode (no DB configured) behaves identically to today — ANTLR-only validation.
+- Online mode self-heals at least two of the intentional-failure cases added in WP-25.5.
+
+##### WP-25.4 — Prompt caching
+
+**Goal:** the schema block is the same on every request for a given mapping. Stop paying tokens for it.
+
+**Files:**
+- `arango_cypher/nl2cypher.py` — `PromptBuilder.render()` returns the prompt *structured* (system prefix including schema, then the per-request tail) so the provider layer can apply provider-specific caching.
+- `arango_cypher/nl2cypher/providers.py` (or extend inline) — provider-specific:
+  - **OpenAI:** prompt caching is automatic above a token threshold; ensure schema-prefix ordering (largest static block first). Log `usage.prompt_tokens_details.cached_tokens` when present.
+  - **Anthropic:** wrap the schema block in a `cache_control: {type: "ephemeral"}` message segment per the Anthropic SDK (if/when an Anthropic provider lands — for now, leave the hook).
+  - **OpenRouter:** varies by upstream model; best-effort, no assertion required.
+- `tests/test_nl2cypher_caching.py` — provider plumbing tests only (no live API calls). Assert that the rendered prompt places schema first and marks the cache boundary.
+
+**Acceptance:**
+- Unit tests pass.
+- At least one real-API smoke test (opt-in, requires `OPENAI_API_KEY`) shows `cached_tokens > 0` on the second of two identical requests.
+- No prompt-shape changes visible to the end user.
+
+##### WP-25.5 — Evaluation harness + regression gate
+
+**Goal:** a repeatable measurement that tells us whether each of WP-25.1 through .4 actually improves the pipeline, plus a CI gate that blocks regressions.
+
+**Files:**
+- `tests/nl2cypher/eval/corpus.yml` — new. Hand-curated NL→expected-Cypher pairs per dataset (movies, northwind, social), with:
+  - Straightforward cases (baseline coverage).
+  - Typo cases (for WP-25.2).
+  - Intent-similar-to-corpus cases (for WP-25.1).
+  - Hallucination-bait cases — questions phrased to tempt the LLM into inventing labels (for WP-25.3).
+  - ~40-60 cases total.
+- `tests/nl2cypher/eval/runner.py` — new. For each case: run the pipeline, collect metrics (parse-success, `EXPLAIN`-success, exact-match against expected, row-match against the live DB if `RUN_NL2CYPHER_EVAL_LIVE=1`), token usage, retries, latency. Emit a markdown + JSON report to `tests/nl2cypher/eval/reports/<date>-<config>.{md,json}`.
+- `tests/nl2cypher/eval/configs.yml` — named configs (`zero_shot`, `few_shot`, `few_shot+entity`, `few_shot+entity+grounded`, `full`) that set the flags on the pipeline. The runner can sweep all configs to produce a comparison.
+- `tests/test_nl2cypher_eval_gate.py` — a tiny regression test that loads `tests/nl2cypher/eval/baseline.json` (committed) and fails if first-shot parse-success drops by more than 5 pp or mean tokens per query increases by more than 20%. Gated behind `RUN_NL2CYPHER_EVAL=1` so it only runs when opted in (LLM calls cost money).
+
+**Acceptance:**
+- `RUN_NL2CYPHER_EVAL=1 pytest tests/test_nl2cypher_eval_gate.py` passes on a checkout that includes all of WP-25.1 through .4.
+- The committed baseline report shows measurable uplift over zero-shot across the corpus.
+- Report format is readable (markdown tables) and diff-friendly (JSON).
+
+#### Test strategy summary
+
+- **Unit tests per sub-package** (no LLM calls, no DB calls): run on every PR.
+- **Eval harness** (WP-25.5): opt-in via `RUN_NL2CYPHER_EVAL=1`, runs on a nightly/cron CI or manually.
+- **Live smoke test for caching** (WP-25.4): opt-in via `OPENAI_API_KEY`, manual.
+
+#### Multi-subagent orchestration
+
+Agent prompts for WP-25 are documented as "Wave 4" in `docs/agent_prompts.md`. Orchestration:
+
+```
+Pre-step:  refactor PromptBuilder (1 agent, sequential; ~0.5 d)
+Wave 4a:   WP-25.1, WP-25.2, WP-25.3, WP-25.4 in parallel (4 agents)
+Wave 4b:   merge 4a, run unit suite, resolve any small merge conflicts
+Wave 4c:   WP-25.5 (1 agent, after 4b)
+```
+
+#### Out of scope for WP-25 (tracked as future work)
+
+- **Task decomposition** — multi-agent splitting of complex questions into sub-queries. Revisit after the eval harness tells us whether single-shot is ceiling-bound.
+- **SLM fine-tuning** — belongs in a separate research project with a GPU training pipeline. The `LLMProvider` protocol already accommodates a fine-tuned endpoint.
+- **NL → AQL direct-path (§1.3) parity** — the same SOTA techniques would help the direct path. Layer in only after §1.2 (primary) is hardened.
+
+---
+
 ## v0.4+ — Advanced features + TCK convergence
 
 Feature-level outline. Detailed WP breakdown created when v0.3 nears completion.
@@ -791,3 +937,4 @@ Update this table as work packages are completed:
 | WP-22 | Results export (CSV/JSON) | v0.4 | **Done** | 2026-04-13 |
 | WP-23 | Agentic tools | v0.4 | **Done** | 2026-04-13 |
 | WP-24 | WITH from multiple MATCHes | v0.4 | **Done** | 2026-04-13 |
+| WP-25 | NL→Cypher pipeline hardening (SOTA upgrades) | v0.4 | Not started | Scoped 2026-04-17 (PRD §1.2.1). Five sub-packages; .1/.2/.3/.4 parallelizable, .5 sequential. |

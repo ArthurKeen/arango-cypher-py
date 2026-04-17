@@ -874,6 +874,594 @@ and fix translator bugs until the pass rate reaches 40%.
 
 ---
 
+## Wave 4 prompts — WP-25: NL→Cypher pipeline hardening
+
+**Source of truth:** `docs/implementation_plan.md` WP-25, `docs/python_prd.md` §1.2.1, research notes in `docs/research/nl2cypher.md` and `docs/research/nl2cypher2aql_analysis.md`.
+
+**Orchestration:**
+1. **Wave 4-pre (sequential, 1 agent, ~0.5 d):** PromptBuilder refactor. Lands on `main` before Wave 4a launches.
+2. **Wave 4a (parallel, 4 agents):** WP-25.1 (few-shot), WP-25.2 (entity resolution), WP-25.3 (execution-grounded), WP-25.4 (caching). Launch on separate branches from `main` after 4-pre merges.
+3. **Wave 4b (sequential):** merge 4a branches, resolve `nl2cypher.py` merge points, run full unit suite.
+4. **Wave 4c (sequential, 1 agent):** WP-25.5 (evaluation harness + regression gate).
+
+**Shared context for all Wave 4 sub-agents:**
+
+```
+{SHARED CONTEXT BLOCK — paste from top of this document}
+
+## Wave 4 addenda — NL→Cypher module layout
+
+ADDITIONAL FILES RELEVANT TO WAVE 4:
+arango_cypher/nl2cypher.py         # Single large module today; being decomposed.
+arango_query_core/mapping.py       # MappingBundle / MappingResolver
+arango_query_core/exec.py          # AqlExecutor (wraps python-arango cursor)
+tests/fixtures/datasets/movies/query-corpus.yml      # ~20 (description, cypher) pairs
+tests/fixtures/datasets/northwind/query-corpus.yml   # ~14 (description, cypher) pairs
+tests/fixtures/datasets/social/query-corpus.yml      # small, illustrative
+
+## Current NL→Cypher pipeline (what you are hardening)
+
+- nl_to_cypher(question, *, mapping, use_llm=True, llm_provider=None, max_retries=2)
+  - Builds a conceptual-only schema summary via _build_schema_summary(bundle).
+  - Calls _call_llm_with_retry() which:
+    - Sends { _SYSTEM_PROMPT.format(schema=summary), question } to the provider.
+    - Extracts a Cypher block from the response (code fences or heuristic).
+    - Rewrites hallucinated labels via _fix_labels().
+    - Parses the Cypher with the ANTLR parser; on failure feeds error back and retries.
+  - Falls back to _rule_based_translate() when no LLM is configured.
+
+## The §1.2 invariant (NON-NEGOTIABLE)
+
+The LLM never sees physical details (collection names, type discriminators, field
+names, AQL). It sees only the conceptual schema: entity labels, relationship types,
+properties, domain/range, and data-quality hints. Few-shot examples MUST be
+conceptual Cypher. Resolved entities are string VALUES (e.g. "Forrest Gump"), not
+schema details.
+
+## Quality rules specific to Wave 4
+
+- Offline graceful degradation: every feature must behave sanely when no DB is
+  connected and no LLM is configured. Specifically, unit tests MUST run without
+  network access.
+- Latency budget: each added round-trip must be justified. Cache aggressively within
+  a request lifecycle; cache the per-mapping-bundle retriever across requests.
+- No silent behaviour change when the feature's flag is off: the zero-shot /
+  no-resolution / no-EXPLAIN path must be bit-identical to today's output on a
+  given question + mapping + seeded LLM response.
+```
+
+---
+
+### Wave 4-pre: PromptBuilder refactor (sequential, must land first)
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: Wave 4-pre — Refactor _SYSTEM_PROMPT into a composable PromptBuilder
+
+### Goal
+Replace the monolithic `_SYSTEM_PROMPT` string + ad-hoc retry-prompt construction in
+`arango_cypher/nl2cypher.py` with a `PromptBuilder` class whose sections can be
+extended independently by the Wave 4a sub-agents. Behaviour is preserved EXACTLY.
+
+### Scope
+
+1. Add a `PromptBuilder` class to `arango_cypher/nl2cypher.py`:
+
+```python
+@dataclass
+class PromptBuilder:
+    schema_summary: str
+    few_shot_examples: list[tuple[str, str]] = field(default_factory=list)
+    resolved_entities: list[str] = field(default_factory=list)
+    retry_context: str = ""
+
+    def render_system(self) -> str:
+        # Schema-first so providers can cache this prefix. Existing wording of
+        # _SYSTEM_PROMPT MUST be preserved byte-for-byte in the zero-shot case
+        # (empty few_shot_examples and empty resolved_entities).
+        ...
+
+    def render_user(self, question: str) -> str:
+        # retry_context appended if non-empty, as today.
+        ...
+```
+
+2. Rewrite `_call_llm_with_retry()` to build a `PromptBuilder`, pass it through
+   the attempt loop, and mutate only `retry_context` between attempts. Preserve
+   the existing `_fix_labels()`, `_extract_cypher_from_response()`, and
+   `_validate_cypher()` calls unchanged.
+
+3. Update `OpenAIProvider.generate()` / `OpenRouterProvider.generate()` to
+   accept the already-built system string (the builder renders once; the
+   provider no longer does `_SYSTEM_PROMPT.format(...)`). This is a small
+   provider-interface change — bump the protocol to
+   `generate(system: str, user: str) -> (content, usage)`. Update the
+   `_AqlChatProvider` wrapper likewise.
+
+4. Do NOT introduce few-shot or entity resolution behaviour. Those are
+   Wave 4a's job. Your job is only the shape change.
+
+### Constraints
+
+- Golden-shape test: add `tests/test_nl2cypher_prompt_builder.py` asserting
+  that `PromptBuilder(schema_summary="X").render_system()` equals the
+  pre-refactor `_SYSTEM_PROMPT.format(schema="X")` character-for-character.
+- Mock-provider test: existing unit tests that mock `LLMProvider.generate()`
+  must still pass unchanged. If they break because of the signature change,
+  update the mocks minimally.
+
+### Acceptance
+
+- `pytest -m "not integration and not tck"` is bit-identical green.
+- `ruff check .` passes.
+- A grep for `_SYSTEM_PROMPT.format` returns zero hits.
+- Diff touches only `arango_cypher/nl2cypher.py` and
+  `tests/test_nl2cypher_prompt_builder.py` (plus any mock-fix lines in
+  existing tests).
+```
+
+---
+
+### WP-25.1: Dynamic few-shot retrieval
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: WP-25.1 — Dynamic few-shot retrieval for NL→Cypher
+
+### Goal
+Before the LLM call, retrieve the top-K most similar (NL question → Cypher answer)
+examples from a curated seed corpus and inject them into the prompt.
+
+### What to implement
+
+1. Package layout:
+   - `arango_cypher/nl2cypher/__init__.py` — re-export the existing public API
+     (`nl_to_cypher`, `nl_to_aql`, `NL2CypherResult`, `NL2AqlResult`,
+     `LLMProvider`, `OpenAIProvider`, `OpenRouterProvider`,
+     `get_llm_provider`, `suggest_nl_queries`). Convert the current
+     `arango_cypher/nl2cypher.py` file into a package — preserve every
+     import path that exists today.
+   - `arango_cypher/nl2cypher/fewshot.py` — new. Implement:
+     ```python
+     class Retriever(Protocol):
+         def retrieve(self, question: str, k: int = 3) -> list[tuple[str, str]]: ...
+
+     class BM25Retriever(Retriever):
+         def __init__(self, examples: list[tuple[str, str]]): ...
+         def retrieve(self, question: str, k: int = 3) -> list[tuple[str, str]]: ...
+
+     class FewShotIndex:
+         def __init__(self, retriever: Retriever): ...
+         @classmethod
+         def from_corpus_files(cls, paths: list[Path]) -> "FewShotIndex": ...
+         def format_prompt_section(self, question: str, k: int = 3) -> str: ...
+     ```
+   - `arango_cypher/nl2cypher/corpora/` — new directory with:
+     - `movies.yml`, `northwind.yml`, `social.yml`: mined from the `description`
+       and `cypher` fields of `tests/fixtures/datasets/*/query-corpus.yml`.
+       Format:
+       ```yaml
+       version: 1
+       examples:
+         - question: "Find all movies Tom Hanks acted in"
+           cypher: 'MATCH (p:Person {name: "Tom Hanks"})-[:ACTED_IN]->(m:Movie) RETURN m.title'
+       ```
+     - Use the `description` field as `question` (lightly humanized if it
+       reads more like a label than a question — e.g. append a question mark,
+       replace "Count foo per bar" with "How many foo per bar").
+
+2. Integration with `PromptBuilder` (from Wave 4-pre):
+   - Add `FewShotIndex` invocation in `nl_to_cypher()` when `use_fewshot=True`
+     (default). Retrieve K=3 examples; pass them to `PromptBuilder.few_shot_examples`.
+   - Render as a `## Examples` block immediately after the schema, in the
+     order produced by the retriever:
+     ```
+     ## Examples
+
+     Q: <question>
+     ```cypher
+     <cypher>
+     ```
+
+     Q: <question>
+     ...
+     ```
+
+3. Dependency: add `rank_bm25>=0.2.2` to the `[dev]` extra in `pyproject.toml`.
+   Do NOT add it to core requirements — the corpora are conceptual-Cypher, so
+   the retriever can live behind a lazy import and degrade to no-op if
+   `rank_bm25` is unavailable at runtime.
+
+### Tests (`tests/test_nl2cypher_fewshot.py`)
+
+- `test_bm25_retriever_finds_similar_question()`: given a tiny corpus with
+  a known best match, `retrieve("find movies for tom hanks", k=1)` returns
+  the Tom Hanks example.
+- `test_few_shot_index_from_corpus_files()`: loads the three yml corpora,
+  checks `len(index.examples) > 30`.
+- `test_prompt_section_format()`: asserts the rendered block matches a
+  golden string (multi-line, deterministic order).
+- `test_empty_corpus_graceful()`: `FewShotIndex(BM25Retriever([]))` yields
+  an empty string from `format_prompt_section`, no exceptions.
+- `test_nl_to_cypher_use_fewshot_false_is_bit_identical()`: with
+  `use_fewshot=False`, the system string exactly matches the Wave 4-pre
+  zero-shot baseline.
+
+### Acceptance
+
+- New unit tests pass.
+- All existing unit tests pass unchanged.
+- `ruff check .` clean.
+- With `OPENAI_API_KEY` set, a quick manual sanity check produces a
+  plausibly-better Cypher on the Movies fixture for a tricky question
+  (document the before/after in the PR description, do not commit it).
+```
+
+---
+
+### WP-25.2: Pre-flight entity resolution
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: WP-25.2 — Pre-flight entity resolution for NL→Cypher
+
+### Goal
+Extract candidate entity mentions from the user question and rewrite each to its
+database-correct form before the LLM call. So "who acted in Forest Gump?" gets
+augmented with `User mentioned 'Forest Gump' — matched to Movie.title='Forrest Gump'.`
+
+### What to implement
+
+1. `arango_cypher/nl2cypher/entity_resolution.py` — new. Implement:
+   ```python
+   @dataclass
+   class ResolvedEntity:
+       mention: str           # "Forest Gump"
+       label: str             # "Movie"
+       property: str          # "title"
+       value: str             # "Forrest Gump"
+       score: float           # 0.0 - 1.0
+
+   class EntityResolver:
+       def __init__(
+           self,
+           *,
+           db=None,           # python-arango StandardDatabase or None
+           mapping: MappingBundle | None = None,
+           max_candidates: int = 5,
+       ): ...
+
+       def extract_candidates(self, question: str) -> list[str]: ...
+       def resolve(self, question: str) -> list[ResolvedEntity]: ...
+       def format_prompt_section(self, resolved: list[ResolvedEntity]) -> str: ...
+   ```
+
+2. `extract_candidates()`: return quoted substrings, Title-Case multi-word
+   phrases, and capitalized single words that don't match schema keywords.
+   Conservative — better to miss a candidate than drown the LLM in garbage.
+
+3. `resolve()`:
+   - **DB path (preferred):** for each candidate, try ArangoSearch-backed
+     lookup against string properties of entity collections (name, title,
+     label — read property names from the `MappingBundle`). Use AQL
+     `SEARCH ANALYZER(...)` with BM25 if a view exists; otherwise fall back
+     to `FILTER LOWER(d.<prop>) CONTAINS LOWER(@mention)` against each
+     relevant collection (cap at 50 rows per collection). Take the highest
+     score per candidate above a threshold (e.g. 0.6 for search, strict
+     equality/prefix for FILTER fallback).
+   - **No-DB path:** return `[]`. Do NOT raise.
+   - Cache results per `(mapping_id, question)` for the lifetime of the
+     `EntityResolver` instance.
+
+4. Integration with `PromptBuilder`:
+   - In `nl_to_cypher()`, if `use_entity_resolution=True` (default) AND an
+     `EntityResolver` is available on the call (either passed explicitly or
+     derivable from a DB handle on the request), invoke it; pass the
+     rendered section to `PromptBuilder.resolved_entities`.
+   - Rendered as a `## Resolved entities` block between schema/examples and
+     the question:
+     ```
+     ## Resolved entities
+
+     - "Forest Gump" → Movie.title = "Forrest Gump" (similarity 0.92)
+     ```
+
+5. `arango_cypher/service.py`: when a DB connection is configured, wire an
+   `EntityResolver` into the `/nl2cypher` handler's call to `nl_to_cypher()`.
+
+### Tests (`tests/test_nl2cypher_entity_resolution.py`)
+
+- `test_extract_candidates_quoted_string()`: extracts `The Matrix` from
+  `Find movies similar to "The Matrix"`.
+- `test_extract_candidates_title_case()`: extracts `Tom Hanks` from
+  `Which movies did Tom Hanks act in?`.
+- `test_extract_candidates_skips_schema_keywords()`: does NOT extract `Person`
+  from `Find all Person nodes`.
+- `test_resolve_with_mocked_db()`: mock the db handle to return a BM25-style
+  result for "Forest Gump" → "Forrest Gump"; assert the ResolvedEntity shape.
+- `test_resolve_no_db_returns_empty()`: `EntityResolver(db=None).resolve(q)` → `[]`.
+- `test_prompt_section_format()`: golden assertion on rendered block.
+- `test_nl_to_cypher_use_entity_resolution_false_is_bit_identical()`: with
+  flag off, system string matches Wave 4-pre baseline.
+
+### Acceptance
+
+- New unit tests pass (all with mocked or no DB).
+- All existing unit tests pass.
+- Offline nl_to_cypher() behaviour is unchanged when entity resolution is off.
+- `ruff check .` clean.
+- Integration test (opt-in, RUN_INTEGRATION=1) against the Movies dataset:
+  "who acted in Forest Gump" (deliberate typo) produces a Cypher whose
+  property literal is "Forrest Gump".
+```
+
+---
+
+### WP-25.3: Execution-grounded validation loop
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: WP-25.3 — Execution-grounded validation for NL→Cypher
+
+### Goal
+Extend the LLM retry loop to catch semantic errors (nonexistent collection,
+nonexistent property, invalid traversal direction) in addition to the syntactic
+errors the ANTLR parser already catches. Use `POST /_api/explain` on the connected
+database: no execution, just planning. Errors from `EXPLAIN` feed back into the
+next retry prompt the same way ANTLR errors do today.
+
+### What to implement
+
+1. `arango_query_core/exec.py`: add a read-only helper:
+   ```python
+   def explain_aql(
+       db,  # python-arango StandardDatabase
+       aql: str,
+       bind_vars: dict,
+   ) -> tuple[bool, str]:
+       """Return (ok, error_message). Empty message on success."""
+   ```
+   Use `db.aql.explain(aql, bind_vars=bind_vars)` from python-arango; map any
+   `AQLQueryExplainError` / `ArangoServerError` into a short human-readable
+   error string suitable for LLM feedback. Do NOT surface full HTTP payloads
+   or stack traces.
+
+2. `arango_cypher/nl2cypher/__init__.py` (or the split file that replaces it):
+   extend `_call_llm_with_retry()`:
+   - After ANTLR parse succeeds, call the existing `translate()` to produce AQL.
+   - If a `db` is available on the call (passed through the `nl_to_cypher()`
+     kwargs), call `explain_aql()`.
+   - On `EXPLAIN` failure:
+     - Build a retry message: `"Translated AQL failed EXPLAIN: <error>. The
+       Cypher was: <cypher>. Please revise your Cypher."`
+     - Feed it into `PromptBuilder.retry_context` on the next attempt.
+     - Count against `max_retries` (same budget as ANTLR failures).
+   - On `EXPLAIN` success, return the result.
+   - If no `db` is configured, skip `EXPLAIN` entirely and preserve today's
+     behaviour exactly.
+
+3. `arango_cypher/service.py`: pipe the connected DB through the `/nl2cypher`
+   handler. Respect existing connection lifecycle.
+
+### Tests (`tests/test_nl2cypher_execution_grounded.py`)
+
+- `test_explain_success_accepted()`: mock `explain_aql` to return `(True, "")`;
+  result is identical to today's validation path.
+- `test_explain_failure_triggers_retry()`: mock `explain_aql` to return
+  `(False, "collection 'Persons' not found")` on attempt 1 and `(True, "")`
+  on attempt 2; assert retry prompt contains the error and the final result
+  uses the second Cypher.
+- `test_no_db_skips_explain()`: with `db=None`, behaviour is bit-identical
+  to Wave 4-pre baseline.
+- `test_retry_budget_respected()`: `max_retries=2` with three failures total
+  produces the best-of result with `retries=2`, not an infinite loop.
+
+### Constraints
+
+- NEVER execute the AQL — EXPLAIN only. Even on a read-only database, we
+  respect the budget by not paying for row materialization.
+- The feature is opt-in via the presence of a DB handle. No config flag.
+- Unit tests MUST run without network access (mock everything).
+
+### Acceptance
+
+- New unit tests pass.
+- Offline nl_to_cypher() is bit-identical to Wave 4-pre.
+- `ruff check .` clean.
+- Integration test (opt-in): a deliberately-bad Cypher like
+  `MATCH (n:Persons) RETURN n` (collection is `Person`, not `Persons`) is
+  self-healed when called via `/nl2cypher` with a live DB.
+```
+
+---
+
+### WP-25.4: Prompt caching
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: WP-25.4 — Schema-prefix prompt caching
+
+### Goal
+The schema block is static per mapping. Put it at the top of the system prompt so
+OpenAI's automatic prompt caching kicks in above the token threshold, and add the
+Anthropic `cache_control` hook so a future Anthropic provider gets caching for free.
+
+### What to implement
+
+1. `arango_cypher/nl2cypher/` (post-4-pre structure): confirm
+   `PromptBuilder.render_system()` orders sections as:
+   ```
+   [role/rules prelude]       <- tiny, static
+   [schema summary]           <- large, static per mapping: the cache target
+   [few-shot examples]        <- medium, varies per question (WP-25.1)
+   [resolved entities]        <- small, varies per question (WP-25.2)
+   ```
+   If Wave 4-pre shipped the sections in a different order, refactor to this
+   order. Existing golden tests may need to be regenerated; keep the zero-shot
+   case bit-identical EXCEPT for order, and update the Wave 4-pre golden
+   accordingly.
+
+2. OpenAI telemetry: in `OpenAIProvider._chat()`, capture
+   `usage.prompt_tokens_details.cached_tokens` when the field is present and
+   include it in the returned usage dict. Update `NL2CypherResult` / `NL2AqlResult`
+   to expose `cached_tokens: int = 0`. Surface in the `/nl2cypher` JSON response
+   so the UI can display cache-hit rate.
+
+3. Anthropic cache_control hook: in the provider dispatch, if the provider is
+   an Anthropic-compatible one (detect via base_url or explicit subclass),
+   split the system prompt into a cached prefix (everything through the schema
+   block) and an uncached suffix, and render to Anthropic's
+   `{role: "system", content: [{type: "text", text: "...", cache_control: {...}}]}`
+   message shape. Leave a `AnthropicProvider` stub class in
+   `arango_cypher/nl2cypher/providers.py` even if it's not wired end-to-end —
+   the shape of the hook is what we're committing to here.
+
+4. Document the caching behaviour in `arango_cypher/nl2cypher/README.md`
+   (new, short): who caches what, what token thresholds apply, how to read
+   the `cached_tokens` field.
+
+### Tests (`tests/test_nl2cypher_caching.py`)
+
+- `test_prompt_ordering_schema_is_first_after_prelude()`: assert the schema
+  block appears before examples and resolved-entities sections.
+- `test_cached_tokens_propagates_from_usage()`: mock a provider response
+  with `prompt_tokens_details.cached_tokens = 512`; assert the final
+  `NL2CypherResult.cached_tokens == 512`.
+- `test_cached_tokens_default_zero()`: provider returns no details; result
+  has `cached_tokens == 0`.
+- `test_anthropic_provider_shape_stub()`: assert the Anthropic cache_control
+  prefix/suffix split is produced correctly for a sample prompt.
+
+### Acceptance
+
+- New unit tests pass.
+- All existing unit tests pass (some may need golden updates for section
+  ordering — keep the update minimal).
+- No live API calls in the unit suite.
+- `ruff check .` clean.
+```
+
+---
+
+### WP-25.5: Evaluation harness + regression gate (Wave 4c, sequential)
+
+```
+{SHARED CONTEXT BLOCK — paste from top of document}
+{Wave 4 addenda — paste from above}
+
+## Your task: WP-25.5 — NL→Cypher evaluation harness + regression gate
+
+### Goal
+A repeatable measurement of the pipeline's accuracy, cost, and reliability — plus
+a CI gate that prevents future regressions.
+
+### What to implement
+
+1. `tests/nl2cypher/__init__.py` — new package.
+2. `tests/nl2cypher/eval/corpus.yml` — hand-curated evaluation set. ~40-60 cases
+   across the three fixture datasets. Categories:
+   - **Baseline**: simple NL→Cypher lookups with a known-good answer.
+   - **Few-shot bait**: questions whose intent closely mirrors a seed corpus
+     example (WP-25.1 should lift these).
+   - **Typo cases**: intentional misspellings of property values
+     (WP-25.2 should fix these).
+   - **Hallucination bait**: questions phrased to tempt label/collection
+     invention (WP-25.3 should self-heal these).
+   Case format:
+   ```yaml
+   version: 1
+   cases:
+     - id: eval_001
+       mapping_fixture: movies_lpg
+       question: "Which movies did Tom Hanks act in?"
+       expected_patterns:
+         - "MATCH .*Person.*Tom Hanks.*ACTED_IN.*Movie"
+       category: baseline
+     - id: eval_042
+       mapping_fixture: movies_lpg
+       question: "Who acted in Forest Gump?"
+       expected_patterns:
+         - "Forrest Gump"   # should be resolved by WP-25.2
+       category: typo
+   ```
+
+3. `tests/nl2cypher/eval/runner.py` — new. For each case in corpus.yml:
+   - Run the pipeline with a named config.
+   - Collect metrics:
+     - `parse_ok`: ANTLR parse success on the returned Cypher.
+     - `explain_ok`: AQL EXPLAIN success (requires DB; skip if unavailable).
+     - `pattern_match`: regex check against `expected_patterns` — ALL must match.
+     - `row_match`: (optional, requires seeded DB) AQL executes and returns
+       at least 1 row.
+     - `tokens`, `retries`, `latency_ms`, `cached_tokens`.
+   - Aggregate into a `Report` dataclass and serialize both markdown and JSON.
+   - Output to `tests/nl2cypher/eval/reports/<UTC-date>-<config>.{md,json}`.
+
+4. `tests/nl2cypher/eval/configs.yml` — named configs:
+   ```yaml
+   - name: zero_shot
+     use_fewshot: false
+     use_entity_resolution: false
+     use_execution_grounded: false
+   - name: few_shot
+     use_fewshot: true
+     use_entity_resolution: false
+     use_execution_grounded: false
+   - name: few_shot_plus_entity
+     use_fewshot: true
+     use_entity_resolution: true
+     use_execution_grounded: false
+   - name: full
+     use_fewshot: true
+     use_entity_resolution: true
+     use_execution_grounded: true
+   ```
+
+5. `tests/nl2cypher/eval/baseline.json` — the committed baseline report for
+   the `full` config. Check in the initial baseline after the harness lands
+   and the pipeline runs green.
+
+6. `tests/test_nl2cypher_eval_gate.py` — gate. Loads baseline.json; asserts
+   a fresh run's metrics are not worse by more than:
+   - `parse_ok` rate: drop ≤ 5 pp.
+   - `pattern_match` rate: drop ≤ 5 pp.
+   - `tokens_mean`: increase ≤ 20%.
+   - `retries_mean`: increase ≤ 0.3.
+   Gated behind `RUN_NL2CYPHER_EVAL=1` because LLM calls cost money.
+
+7. README section: add `tests/nl2cypher/eval/README.md` explaining how to run
+   the harness, how to sweep configs, and how to refresh the baseline.
+
+### Tests
+
+- `test_eval_runner_runs_on_fixture()`: mock the provider; assert the runner
+  produces a Report with expected fields.
+- `test_pattern_match_regex()`: case-level pattern-matching logic is correct.
+- `test_gate_fails_on_regression()`: synthetic "worse" report triggers assertion.
+- `test_gate_passes_on_no_change()`: identical-to-baseline report passes.
+
+### Acceptance
+
+- Harness runs end-to-end with a mocked provider in the unit suite.
+- `RUN_NL2CYPHER_EVAL=1 OPENAI_API_KEY=... pytest tests/test_nl2cypher_eval_gate.py`
+  passes on a checkout that has all of WP-25.1 through .4 merged.
+- `tests/nl2cypher/eval/baseline.json` committed.
+- `ruff check .` clean.
+- `docs/python_prd.md` §1.2.1 updated to link to the baseline report.
+```
+
+---
+
 ## Orchestrator checklist
 
 Use this checklist when running the waves:
@@ -912,3 +1500,14 @@ Use this checklist when running the waves:
 - [ ] Update implementation_plan.md tracking table
 - [ ] Update pyproject.toml version to 0.2.0
 - [ ] Tag release: `git tag v0.2.0`
+
+### Wave 4 (WP-25 — NL→Cypher hardening, separate release band)
+- [ ] **Wave 4-pre**: land PromptBuilder refactor on `main` (1 agent, sequential). Verify `pytest -m "not integration and not tck"` is bit-identical green.
+- [ ] **Wave 4a**: launch WP-25.1, WP-25.2, WP-25.3, WP-25.4 in parallel (4 agents, separate branches from `main`).
+- [ ] Review each branch: unit tests pass, offline behaviour preserved, `ruff check .` clean.
+- [ ] **Wave 4b**: merge 4a branches sequentially into an integration branch; resolve `nl2cypher/__init__.py` / `nl2cypher.py` conflicts (expect small overlaps in `PromptBuilder` section wiring and in `_call_llm_with_retry`).
+- [ ] Full test run: `pytest -m "not integration and not tck"` — all green.
+- [ ] **Wave 4c**: launch WP-25.5 (1 agent, sequential). Produce initial baseline report, commit `tests/nl2cypher/eval/baseline.json`.
+- [ ] Manual smoke with a live LLM + DB on the Movies fixture: verify each of few-shot / entity resolution / execution-grounded actually fires on representative questions.
+- [ ] Update PRD §1.2.1: mark implemented techniques with `*(implemented)*` and link the baseline report.
+- [ ] Update `docs/implementation_plan.md` status table WP-25 row to **Done** with the merge date.
