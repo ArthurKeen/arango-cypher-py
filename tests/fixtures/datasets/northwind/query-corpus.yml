@@ -1,0 +1,85 @@
+# Northwind query corpus — sample Cypher queries for the Northwind e-commerce dataset
+
+- id: nw_all_customers
+  description: "List all customers"
+  cypher: "MATCH (c:Customer) RETURN c.companyName, c.city, c.country"
+  expected_min_count: 10
+  dataset: northwind
+
+- id: nw_customers_in_germany
+  description: "Customers in Germany"
+  cypher: "MATCH (c:Customer) WHERE c.country = 'Germany' RETURN c.companyName, c.city"
+  expected_min_count: 3
+  dataset: northwind
+
+- id: nw_expensive_products
+  description: "Products over $25"
+  cypher: "MATCH (p:Product) WHERE p.unitPrice > 25 RETURN p.productName, p.unitPrice ORDER BY p.unitPrice DESC"
+  expected_min_count: 4
+  dataset: northwind
+
+- id: nw_discontinued_products
+  description: "Discontinued products"
+  cypher: "MATCH (p:Product) WHERE p.discontinued = true RETURN p.productName"
+  expected_min_count: 2
+  dataset: northwind
+
+- id: nw_customer_orders
+  description: "Orders placed by a customer"
+  cypher: "MATCH (c:Customer)-[:PURCHASED]->(o:Order) WHERE c.companyName = 'Alfreds Futterkiste' RETURN o.orderDate, o.shipCity"
+  expected_min_count: 2
+  dataset: northwind
+
+- id: nw_order_products
+  description: "Products in an order"
+  cypher: "MATCH (o:Order)-[:CONTAINS]->(p:Product) WHERE o._key = '10248' RETURN p.productName"
+  expected_min_count: 2
+  dataset: northwind
+
+- id: nw_product_category
+  description: "Product with its category"
+  cypher: "MATCH (p:Product)-[:BELONGS_TO]->(c:Category) RETURN p.productName, c.categoryName"
+  expected_min_count: 12
+  dataset: northwind
+
+- id: nw_product_supplier
+  description: "Product with its supplier"
+  cypher: "MATCH (p:Product)-[:SUPPLIED_BY]->(s:Supplier) RETURN p.productName, s.companyName"
+  expected_min_count: 12
+  dataset: northwind
+
+- id: nw_order_employee
+  description: "Orders handled by employees"
+  cypher: "MATCH (o:Order)-[:SOLD_BY]->(e:Employee) RETURN o._key, e.firstName, e.lastName"
+  expected_min_count: 10
+  dataset: northwind
+
+- id: nw_employee_hierarchy
+  description: "Employee reporting structure"
+  cypher: "MATCH (e:Employee)-[:REPORTS_TO]->(m:Employee) RETURN e.firstName, e.lastName, m.firstName AS managerFirst, m.lastName AS managerLast"
+  expected_min_count: 4
+  dataset: northwind
+
+- id: nw_customer_order_product
+  description: "Three-hop: customer → order → product"
+  cypher: "MATCH (c:Customer)-[:PURCHASED]->(o:Order)-[:CONTAINS]->(p:Product) RETURN c.companyName, p.productName"
+  expected_min_count: 10
+  dataset: northwind
+
+- id: nw_beverages
+  description: "All beverages"
+  cypher: "MATCH (p:Product)-[:BELONGS_TO]->(c:Category) WHERE c.categoryName = 'Beverages' RETURN p.productName, p.unitPrice"
+  expected_min_count: 2
+  dataset: northwind
+
+- id: nw_order_count_by_customer
+  description: "Number of orders per customer"
+  cypher: "MATCH (c:Customer)-[:PURCHASED]->(o:Order) RETURN c.companyName, count(o) AS orderCount ORDER BY orderCount DESC, c.companyName"
+  expected_min_count: 1
+  dataset: northwind
+
+- id: nw_optional_supplier
+  description: "Products with optional supplier info"
+  cypher: "MATCH (p:Product) OPTIONAL MATCH (p)-[:SUPPLIED_BY]->(s:Supplier) RETURN p.productName, s.companyName"
+  expected_min_count: 12
+  dataset: northwind

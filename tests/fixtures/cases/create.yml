@@ -1,0 +1,147 @@
+version: 1
+cases:
+- id: C260
+  name: CREATE single node with label and properties (PG)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (n:Person {name: "Alice", age: 30})
+
+    '
+  expected:
+    aql: 'INSERT {name: "Alice", age: 30} INTO @@collection
+
+      '
+    bind_vars:
+      '@collection': persons
+- id: C261
+  name: CREATE single node with label and properties (LPG)
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'CREATE (n:User {name: "Alice"})
+
+    '
+  expected:
+    aql: 'INSERT {type: @typeValue, name: "Alice"} INTO @@collection
+
+      '
+    bind_vars:
+      '@collection': vertices
+      typeValue: User
+- id: C262
+  name: CREATE two nodes and a relationship between them
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (a:Person {name: "Alice"}), (b:Person {name: "Bob"}), (a)-[:FOLLOWS]->(b)
+
+    '
+  expected:
+    aql: 'LET a = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
+
+      LET b = FIRST(INSERT {name: "Bob"} INTO @@collection RETURN NEW)
+
+      INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection
+
+      '
+    bind_vars:
+      '@collection': persons
+      '@edgeCollection': follows
+- id: C263
+  name: MATCH then CREATE relationship
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person {name: "Alice"}) CREATE (a)-[:FOLLOWS]->(b:Person {name: "Bob"})
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  LET b = FIRST(INSERT {name: \"Bob\"} INTO @@collection RETURN NEW)\n  INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection\n"
+    bind_vars:
+      '@collection': persons
+      '@edgeCollection': follows
+- id: C264
+  name: CREATE with RETURN
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (n:Person {name: "Alice"}) RETURN n
+
+    '
+  expected:
+    aql: 'LET n = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
+
+      RETURN n'
+    bind_vars:
+      '@collection': persons
+- id: C265
+  name: CREATE node with parameter values
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (n:User {name: $name})
+
+    '
+  params:
+    name: Alice
+  expected:
+    aql: 'INSERT {name: @name} INTO @@collection
+
+      '
+    bind_vars:
+      '@collection': users
+      name: Alice
+- id: C266
+  name: CREATE relationship with properties
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (a:Person {name: "Alice"})-[:FOLLOWS {since: 2020}]->(b:Person {name: "Bob"})
+
+    '
+  expected:
+    aql: 'LET a = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
+
+      LET b = FIRST(INSERT {name: "Bob"} INTO @@collection RETURN NEW)
+
+      INSERT {_from: a._id, _to: b._id, since: 2020} INTO @@edgeCollection
+
+      '
+    bind_vars:
+      '@collection': persons
+      '@edgeCollection': follows
+- id: C267
+  name: CREATE multiple disconnected nodes
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (a:Person {name: "Alice"}), (b:User {name: "Bob"})
+
+    '
+  expected:
+    aql: 'LET a = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
+
+      INSERT {name: "Bob"} INTO @@collection2
+
+      '
+    bind_vars:
+      '@collection': persons
+      '@collection2': users
+- id: C268
+  name: MATCH+CREATE with WHERE filter on match side
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person) WHERE a.name = "Alice" CREATE (a)-[:FOLLOWS]->(b:Person {name: "Bob"})
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (a.name == \"Alice\")\n  LET b = FIRST(INSERT {name: \"Bob\"} INTO @@collection RETURN NEW)\n  INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection\n"
+    bind_vars:
+      '@collection': persons
+      '@edgeCollection': follows
+- id: C269
+  name: CREATE with RETURN accessing property
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (n:Person {name: "Alice", age: 30}) RETURN n.name
+
+    '
+  expected:
+    aql: 'LET n = FIRST(INSERT {name: "Alice", age: 30} INTO @@collection RETURN NEW)
+
+      RETURN n.name'
+    bind_vars:
+      '@collection': persons

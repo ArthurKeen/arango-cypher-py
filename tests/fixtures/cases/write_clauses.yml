@@ -1,0 +1,249 @@
+version: 1
+cases:
+# ─── SET ───────────────────────────────────────────────────────
+- id: C400
+  name: SET single property
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) SET n.name = "Bob"
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C401
+  name: SET multiple properties in one SET clause
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) SET n.name = "Bob", n.age = 30
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\", age: 30} IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C402
+  name: SET += merge semantics
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) SET n += {name: "Bob", age: 30}
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH MERGE(n, {name: \"Bob\", age: 30}) IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C403
+  name: SET = replace semantics
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) SET n = {name: "Bob"}
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REPLACE n WITH {name: \"Bob\"} IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C404
+  name: SET with LPG label filter
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User {name: "Alice"}) SET n.name = "Bob"
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+- id: C405
+  name: SET with RETURN
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) SET n.name = "Bob" RETURN n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n  RETURN n\n"
+    bind_vars:
+      '@collection': persons
+# ─── DELETE ────────────────────────────────────────────────────
+- id: C410
+  name: DELETE node
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) DELETE n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REMOVE n IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C411
+  name: DETACH DELETE node (PG)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) DETACH DELETE n
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    bind_vars:
+      '@collection': persons
+      '@detachEdge': follows
+- id: C412
+  name: DETACH DELETE node (LPG)
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User {name: "Alice"}) DETACH DELETE n
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    bind_vars:
+      '@collection': vertices
+      '@detachEdge': edges
+      typeField: type
+      typeValue: User
+- id: C413
+  name: DELETE with RETURN
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person {name: "Alice"}) DELETE n RETURN n.name
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REMOVE n IN @@collection\n  RETURN n.name\n"
+    bind_vars:
+      '@collection': persons
+# ─── MERGE ─────────────────────────────────────────────────────
+- id: C420
+  name: MERGE basic node upsert (PG)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MERGE (n:Person {name: "Alice"})
+
+    '
+  expected:
+    aql: "UPSERT {name: \"Alice\"}\nINSERT {name: \"Alice\"}\nUPDATE {}\nIN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C421
+  name: MERGE basic node upsert (LPG)
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'MERGE (n:User {name: "Alice"})
+
+    '
+  expected:
+    aql: "UPSERT {type: @typeValue, name: \"Alice\"}\nINSERT {type: @typeValue, name: \"Alice\"}\nUPDATE {}\nIN @@collection\n"
+    bind_vars:
+      '@collection': vertices
+      typeValue: User
+- id: C422
+  name: MERGE with ON CREATE SET
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MERGE (n:Person {name: "Alice"}) ON CREATE SET n.created = timestamp()
+
+    '
+  expected:
+    aql: "UPSERT {name: \"Alice\"}\nINSERT {name: \"Alice\", created: DATE_NOW()}\nUPDATE {}\nIN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C423
+  name: MERGE with ON MATCH SET
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MERGE (n:Person {name: "Alice"}) ON MATCH SET n.updated = timestamp()
+
+    '
+  expected:
+    aql: "UPSERT {name: \"Alice\"}\nINSERT {name: \"Alice\"}\nUPDATE {updated: DATE_NOW()}\nIN @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C424
+  name: MERGE with ON CREATE SET and ON MATCH SET
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MERGE (n:Person {name: "Alice"}) ON CREATE SET n.created = timestamp() ON MATCH SET n.updated = timestamp()
+
+    '
+  expected:
+    aql: "UPSERT {name: \"Alice\"}\nINSERT {name: \"Alice\", created: DATE_NOW()}\nUPDATE {updated: DATE_NOW()}\nIN @@collection\n"
+    bind_vars:
+      '@collection': persons
+# ─── MERGE relationship ───────────────────────────────────────
+- id: C425
+  name: MERGE relationship after MATCH (PG DEDICATED_COLLECTION)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+    MERGE (a)-[:FOLLOWS {since: 2020}]->(b)
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, since: 2020}\n    UPDATE {}\n    IN @@edgeCollection\n"
+    bind_vars:
+      '@collection': persons
+      '@collection2': persons
+      '@edgeCollection': follows
+- id: C426
+  name: MERGE relationship after MATCH (LPG GENERIC_WITH_TYPE)
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'MATCH (a:User {name: "Alice"}), (b:User {name: "Bob"})
+    MERGE (a)-[:FOLLOWS]->(b)
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER a[@aTypeField] == @aTypeValue\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER b[@bTypeField] == @bTypeValue\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    INSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    UPDATE {}\n    IN @@edgeCollection\n"
+    bind_vars:
+      '@collection': vertices
+      '@collection2': vertices
+      '@edgeCollection': edges
+      aTypeField: type
+      aTypeValue: User
+      bTypeField: type
+      bTypeValue: User
+      relTypeValue: FOLLOWS
+- id: C427
+  name: MERGE relationship with ON CREATE SET and ON MATCH SET
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
+    MERGE (a)-[:FOLLOWS]->(b) ON CREATE SET r.created = timestamp() ON MATCH SET r.updated = timestamp()
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, created: DATE_NOW()}\n    UPDATE {updated: DATE_NOW()}\n    IN @@edgeCollection\n"
+    bind_vars:
+      '@collection': persons
+      '@collection2': persons
+      '@edgeCollection': follows
+# ─── CREATE extras ─────────────────────────────────────────────
+- id: C430
+  name: CREATE node without properties (PG)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'CREATE (n:Person)
+
+    '
+  expected:
+    aql: "INSERT {} INTO @@collection\n"
+    bind_vars:
+      '@collection': persons
+- id: C431
+  name: CREATE node without properties (LPG)
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'CREATE (n:User)
+
+    '
+  expected:
+    aql: "INSERT {type: @typeValue} INTO @@collection\n"
+    bind_vars:
+      '@collection': vertices
+      typeValue: User

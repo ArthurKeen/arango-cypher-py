@@ -1,0 +1,31 @@
+{
+  "conceptual_schema": {
+    "entities": [
+      {"name": "Entity", "labels": ["Entity"], "properties": [{"name": "name"}, {"name": "jurisdiction"}, {"name": "incorporation_date"}, {"name": "status"}]},
+      {"name": "Officer", "labels": ["Officer"], "properties": [{"name": "name"}, {"name": "country"}]},
+      {"name": "Intermediary", "labels": ["Intermediary"], "properties": [{"name": "name"}, {"name": "country"}, {"name": "status"}]},
+      {"name": "Address", "labels": ["Address"], "properties": [{"name": "address"}, {"name": "country"}]}
+    ],
+    "relationships": [
+      {"type": "OFFICER_OF", "fromEntity": "Officer", "toEntity": "Entity", "properties": []},
+      {"type": "INTERMEDIARY_OF", "fromEntity": "Intermediary", "toEntity": "Entity", "properties": []},
+      {"type": "REGISTERED_ADDRESS", "fromEntity": "Entity", "toEntity": "Address", "properties": []},
+      {"type": "SIMILAR_NAME", "fromEntity": "Entity", "toEntity": "Entity", "properties": [{"name": "similarity"}]}
+    ]
+  },
+  "physical_mapping": {
+    "entities": {
+      "Entity": {"style": "COLLECTION", "collectionName": "Entity", "properties": {"name": {"field": "name"}, "jurisdiction": {"field": "jurisdiction"}, "incorporation_date": {"field": "incorporation_date"}, "status": {"field": "status"}}},
+      "Officer": {"style": "COLLECTION", "collectionName": "Officer", "properties": {"name": {"field": "name"}, "country": {"field": "country_codes"}}},
+      "Intermediary": {"style": "COLLECTION", "collectionName": "Intermediary", "properties": {"name": {"field": "name"}, "country": {"field": "country_codes"}, "status": {"field": "status"}}},
+      "Address": {"style": "COLLECTION", "collectionName": "Address", "properties": {"address": {"field": "address"}, "country": {"field": "countries"}}}
+    },
+    "relationships": {
+      "OFFICER_OF": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "officer_of", "domain": "Officer", "range": "Entity"},
+      "INTERMEDIARY_OF": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "intermediary_of", "domain": "Intermediary", "range": "Entity"},
+      "REGISTERED_ADDRESS": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "registered_address", "domain": "Entity", "range": "Address"},
+      "SIMILAR_NAME": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "similar_name", "domain": "Entity", "range": "Entity"}
+    }
+  },
+  "metadata": {"provider": "icij_paradise_papers"}
+}

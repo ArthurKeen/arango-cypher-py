@@ -1,0 +1,78 @@
+{
+  "conceptualSchema": {
+    "entities": [
+      {"name": "Customer", "labels": ["Customer"], "properties": [
+        {"name": "companyName", "type": "string"}, {"name": "contactName", "type": "string"},
+        {"name": "city", "type": "string"}, {"name": "country", "type": "string"}
+      ]},
+      {"name": "Product", "labels": ["Product"], "properties": [
+        {"name": "productName", "type": "string"}, {"name": "unitPrice", "type": "number"},
+        {"name": "unitsInStock", "type": "integer"}, {"name": "discontinued", "type": "boolean"}
+      ]},
+      {"name": "Order", "labels": ["Order"], "properties": [
+        {"name": "orderDate", "type": "string"}, {"name": "shipCity", "type": "string"},
+        {"name": "shipCountry", "type": "string"}, {"name": "freight", "type": "number"}
+      ]},
+      {"name": "Category", "labels": ["Category"], "properties": [
+        {"name": "categoryName", "type": "string"}, {"name": "description", "type": "string"}
+      ]},
+      {"name": "Supplier", "labels": ["Supplier"], "properties": [
+        {"name": "companyName", "type": "string"}, {"name": "contactName", "type": "string"},
+        {"name": "city", "type": "string"}, {"name": "country", "type": "string"}
+      ]},
+      {"name": "Employee", "labels": ["Employee"], "properties": [
+        {"name": "firstName", "type": "string"}, {"name": "lastName", "type": "string"},
+        {"name": "title", "type": "string"}, {"name": "city", "type": "string"},
+        {"name": "country", "type": "string"}
+      ]}
+    ],
+    "relationships": [
+      {"type": "PURCHASED", "fromEntity": "Customer", "toEntity": "Order", "properties": []},
+      {"type": "CONTAINS", "fromEntity": "Order", "toEntity": "Product", "properties": [
+        {"name": "quantity", "type": "integer"}, {"name": "unitPrice", "type": "number"},
+        {"name": "discount", "type": "number"}
+      ]},
+      {"type": "BELONGS_TO", "fromEntity": "Product", "toEntity": "Category", "properties": []},
+      {"type": "SUPPLIED_BY", "fromEntity": "Product", "toEntity": "Supplier", "properties": []},
+      {"type": "SOLD_BY", "fromEntity": "Order", "toEntity": "Employee", "properties": []},
+      {"type": "REPORTS_TO", "fromEntity": "Employee", "toEntity": "Employee", "properties": []}
+    ]
+  },
+  "physicalMapping": {
+    "entities": {
+      "Customer": {"collectionName": "customers", "style": "COLLECTION"},
+      "Product": {"collectionName": "products", "style": "COLLECTION"},
+      "Order": {"collectionName": "orders", "style": "COLLECTION"},
+      "Category": {"collectionName": "categories", "style": "COLLECTION"},
+      "Supplier": {"collectionName": "suppliers", "style": "COLLECTION"},
+      "Employee": {"collectionName": "employees", "style": "COLLECTION"}
+    },
+    "relationships": {
+      "PURCHASED": {"edgeCollectionName": "purchased", "style": "DEDICATED_COLLECTION",
+        "domain": "Customer", "range": "Order"},
+      "CONTAINS": {"edgeCollectionName": "contains", "style": "DEDICATED_COLLECTION",
+        "domain": "Order", "range": "Product"},
+      "BELONGS_TO": {"edgeCollectionName": "belongs_to", "style": "DEDICATED_COLLECTION",
+        "domain": "Product", "range": "Category"},
+      "SUPPLIED_BY": {"edgeCollectionName": "supplied_by", "style": "DEDICATED_COLLECTION",
+        "domain": "Product", "range": "Supplier"},
+      "SOLD_BY": {"edgeCollectionName": "sold_by", "style": "DEDICATED_COLLECTION",
+        "domain": "Order", "range": "Employee"},
+      "REPORTS_TO": {"edgeCollectionName": "reports_to", "style": "DEDICATED_COLLECTION",
+        "domain": "Employee", "range": "Employee"}
+    },
+    "indexes": [
+      {"collection": "customers", "type": "persistent", "fields": ["companyName"]},
+      {"collection": "products", "type": "persistent", "fields": ["productName"]},
+      {"collection": "orders", "type": "persistent", "fields": ["orderDate"]},
+      {"collection": "categories", "type": "persistent", "fields": ["categoryName"]}
+    ]
+  },
+  "metadata": {
+    "analyzedCollectionCounts": {"documentCollections": 6, "edgeCollections": 6},
+    "confidence": 0.9,
+    "provider": "fixture",
+    "timestamp": "2026-04-13T00:00:00Z",
+    "warnings": []
+  }
+}

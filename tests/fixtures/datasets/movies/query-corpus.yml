@@ -1,0 +1,133 @@
+- id: movies_001
+  description: "Find person by name"
+  cypher: 'MATCH (p:Person {name: "Tom Hanks"}) RETURN p.name, p.born'
+  expected_min_count: 1
+
+- id: movies_002
+  description: "Find movies an actor acted in"
+  cypher: 'MATCH (p:Person {name: "Tom Hanks"})-[:ACTED_IN]->(m:Movie) RETURN m.title ORDER BY m.title'
+  expected_min_count: 10
+
+- id: movies_003
+  description: "Find actors in a specific movie"
+  cypher: 'MATCH (p:Person)-[:ACTED_IN]->(m:Movie {title: "The Matrix"}) RETURN p.name ORDER BY p.name'
+  expected_min_count: 4
+
+- id: movies_004
+  description: "Find director of a movie"
+  cypher: 'MATCH (p:Person)-[:DIRECTED]->(m:Movie {title: "The Matrix"}) RETURN p.name'
+  expected_min_count: 2
+
+- id: movies_005
+  description: "Find co-actors via shared movie"
+  cypher: >
+    MATCH (p:Person {name: "Tom Hanks"})-[:ACTED_IN]->(m:Movie)<-[:ACTED_IN]-(coactor:Person)
+    RETURN DISTINCT coactor.name ORDER BY coactor.name
+  expected_min_count: 10
+
+- id: movies_006
+  description: "Count movies per person who directed"
+  cypher: >
+    MATCH (p:Person)-[:DIRECTED]->(m:Movie)
+    RETURN p.name, count(m) AS movie_count
+    ORDER BY movie_count DESC, p.name
+    LIMIT 5
+  expected_min_count: 5
+
+- id: movies_007
+  description: "Movies released in the 1990s"
+  cypher: >
+    MATCH (m:Movie)
+    WHERE m.released >= 1990 AND m.released < 2000
+    RETURN m.title ORDER BY m.released, m.title
+  expected_min_count: 10
+
+- id: movies_008
+  description: "Find person who both acted and directed same movie"
+  cypher: >
+    MATCH (p:Person)-[:ACTED_IN]->(m:Movie)<-[:DIRECTED]-(p)
+    RETURN p.name, m.title ORDER BY p.name
+  expected_min_count: 1
+
+- id: movies_009
+  description: "Movies with LIMIT"
+  cypher: 'MATCH (m:Movie) RETURN m.title ORDER BY m.title LIMIT 5'
+  expected_min_count: 5
+
+- id: movies_010
+  description: "Find reviewers and their ratings"
+  cypher: >
+    MATCH (p:Person)-[r:REVIEWED]->(m:Movie)
+    RETURN p.name, m.title, r.rating ORDER BY r.rating DESC
+  expected_min_count: 5
+
+- id: movies_011
+  description: "Find who follows whom"
+  cypher: >
+    MATCH (a:Person)-[:FOLLOWS]->(b:Person)
+    RETURN a.name, b.name ORDER BY a.name
+  expected_min_count: 3
+
+- id: movies_012
+  description: "Movies released after 2000"
+  cypher: >
+    MATCH (m:Movie)
+    WHERE m.released > 2000
+    RETURN m.title, m.released ORDER BY m.released
+  expected_min_count: 5
+
+- id: movies_013
+  description: "People who produced a movie"
+  cypher: >
+    MATCH (p:Person)-[:PRODUCED]->(m:Movie)
+    RETURN p.name, m.title ORDER BY p.name, m.title
+  expected_min_count: 5
+
+- id: movies_014
+  description: "People who wrote a movie"
+  cypher: >
+    MATCH (p:Person)-[:WROTE]->(m:Movie)
+    RETURN p.name, m.title ORDER BY p.name, m.title
+  expected_min_count: 5
+
+- id: movies_015
+  description: "Count all movies"
+  cypher: 'MATCH (m:Movie) RETURN count(m) AS total'
+  expected_min_count: 1
+
+- id: movies_016
+  description: "Actor born before 1950"
+  cypher: >
+    MATCH (p:Person)-[:ACTED_IN]->(m:Movie)
+    WHERE p.born < 1950
+    RETURN DISTINCT p.name, p.born ORDER BY p.born, p.name
+  expected_min_count: 5
+
+- id: movies_017
+  description: "Movies Keanu Reeves acted in"
+  cypher: 'MATCH (p:Person {name: "Keanu Reeves"})-[:ACTED_IN]->(m:Movie) RETURN m.title ORDER BY m.title'
+  expected_min_count: 5
+
+- id: movies_018
+  description: "Person with most acted-in movies"
+  cypher: >
+    MATCH (p:Person)-[:ACTED_IN]->(m:Movie)
+    RETURN p.name, count(m) AS cnt
+    ORDER BY cnt DESC, p.name
+    LIMIT 3
+  expected_min_count: 3
+
+- id: movies_019
+  description: "Find movie by title substring in WHERE"
+  cypher: >
+    MATCH (m:Movie)
+    WHERE m.title = "Forrest Gump"
+    RETURN m.title, m.released
+  expected_min_count: 1
+
+- id: movies_020
+  description: "Actors and directors of the same movie"
+  cypher: >
+    MATCH (actor:Person)-[:ACTED_IN]->(m:Movie {title: "Apollo 13"})<-[:DIRECTED]-(director:Person)
+    RETURN actor.name, director.name ORDER BY actor.name
+  expected_min_count: 3

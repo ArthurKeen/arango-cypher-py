@@ -1,0 +1,73 @@
+{
+  "conceptualSchema": {
+    "entities": [
+      {
+        "labels": ["Person"],
+        "name": "Person",
+        "properties": []
+      },
+      {
+        "labels": ["User"],
+        "name": "User",
+        "properties": []
+      }
+    ],
+    "properties": [],
+    "relationships": [
+      {
+        "fromEntity": "Person",
+        "properties": [],
+        "toEntity": "Person",
+        "type": "KNOWS"
+      },
+      {
+        "fromEntity": "User",
+        "properties": [],
+        "toEntity": "User",
+        "type": "FOLLOWS"
+      }
+    ]
+  },
+  "metadata": {
+    "analyzedCollectionCounts": {
+      "documentCollections": 2,
+      "edgeCollections": 2
+    },
+    "assumptions": [],
+    "confidence": 0.9,
+    "detectedPatterns": [],
+    "model": null,
+    "provider": null,
+    "repairAttempts": 0,
+    "reviewRequired": false,
+    "timestamp": "2026-04-10T00:00:00Z",
+    "usedBaseline": false,
+    "warnings": []
+  },
+  "physicalMapping": {
+    "entities": {
+      "Person": {
+        "collectionName": "persons",
+        "style": "COLLECTION"
+      },
+      "User": {
+        "collectionName": "users",
+        "style": "COLLECTION"
+      }
+    },
+    "relationships": {
+      "KNOWS": {
+        "edgeCollectionName": "knows",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Person"
+      },
+      "FOLLOWS": {
+        "edgeCollectionName": "follows",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "User",
+        "range": "User"
+      }
+    }
+  }
+}

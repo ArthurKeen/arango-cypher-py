@@ -1,0 +1,110 @@
+# Golden tests for EXISTS and pattern predicates (WP-10)
+
+##############################################################################
+# EXISTS function (property existence)
+##############################################################################
+- id: exists_property
+  description: "EXISTS(n.email) → n.email != null"
+  cypher: >
+    MATCH (u:User)
+    WHERE EXISTS(u.email)
+    RETURN u.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "!= null"
+    - "RETURN"
+
+- id: not_exists_property
+  description: "NOT EXISTS(n.email)"
+  cypher: >
+    MATCH (u:User)
+    WHERE NOT EXISTS(u.email)
+    RETURN u.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "NOT"
+    - "!= null"
+
+##############################################################################
+# Pattern predicates
+##############################################################################
+- id: pattern_predicate_simple
+  description: "WHERE (n)-[:FOLLOWS]->() pattern predicate"
+  cypher: >
+    MATCH (u:User)
+    WHERE (u)-[:FOLLOWS]->(:User)
+    RETURN u.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LENGTH("
+    - "> 0"
+    - "OUTBOUND"
+
+- id: pattern_predicate_negated
+  description: "WHERE NOT (n)-[:FOLLOWS]->()"
+  cypher: >
+    MATCH (u:User)
+    WHERE NOT (u)-[:FOLLOWS]->(:User)
+    RETURN u.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "NOT"
+    - "LENGTH("
+    - "> 0"
+
+##############################################################################
+# Built-in functions added in WP-10
+##############################################################################
+- id: abs_function
+  description: "abs() function"
+  cypher: >
+    MATCH (u:User)
+    RETURN abs(u.age - 30) AS diff
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "ABS("
+
+- id: length_function
+  description: "length() on string"
+  cypher: >
+    MATCH (u:User)
+    RETURN u.name, length(u.name) AS len
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LENGTH("
+
+- id: trim_function
+  description: "trim() function"
+  cypher: >
+    MATCH (u:User)
+    RETURN trim(u.name) AS trimmed
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "TRIM("
+
+- id: substring_function
+  description: "substring() function"
+  cypher: >
+    MATCH (u:User)
+    RETURN substring(u.name, 0, 3) AS prefix
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "SUBSTRING("
+
+- id: replace_function
+  description: "replace() function → SUBSTITUTE"
+  cypher: >
+    MATCH (u:User)
+    RETURN replace(u.name, "a", "b") AS replaced
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "SUBSTITUTE("
+
+- id: reverse_function
+  description: "reverse() function"
+  cypher: >
+    MATCH (u:User)
+    RETURN reverse(u.name) AS rev
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "REVERSE("

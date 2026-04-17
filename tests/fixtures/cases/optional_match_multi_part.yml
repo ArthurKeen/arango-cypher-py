@@ -1,0 +1,45 @@
+version: 1
+cases:
+- id: C600
+  name: OPTIONAL MATCH with comma-separated pattern parts
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:User) OPTIONAL MATCH (a)-[:FOLLOWS]->(b:User), (a)-[:FOLLOWS]->(c:Person) RETURN a.name, b.name, c.name
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR a IN @@collection\n  LET b = FIRST(\n\
+      \  FOR b_0, r_0 IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ b_0)\n    RETURN b_0\n    )\n    LET c = FIRST(\n    FOR c_0, r_0_1 IN 1..1\
+      \ OUTBOUND a @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2,\
+      \ c_0)\n      RETURN c_0\n      )\n      RETURN {name: a.name, b_name: b.name,\
+      \ c_name: c.name}"
+    bind_vars:
+      '@collection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@edgeCollection2': follows
+      vCollection2: persons
+- id: C601
+  name: OPTIONAL MATCH with comma-separated parts from traversal target
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:User)-[:FOLLOWS]->(b:User) OPTIONAL MATCH (b)-[:FOLLOWS]->(c:Person), (b)-[:FOLLOWS]->(d:Place) RETURN a.name, c.name, d.name
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR a IN @@uCollection\n  FOR b, r IN\
+      \ 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ b)\n    LET c = FIRST(\n    FOR c_0, r_0 IN 1..1 OUTBOUND b @@edgeCollection2\n\
+      \      FILTER IS_SAME_COLLECTION(@vCollection2, c_0)\n      RETURN c_0\n   \
+      \   )\n      LET d = FIRST(\n      FOR d_0, r_0_1 IN 1..1 OUTBOUND b @@edgeCollection3\n\
+      \        FILTER IS_SAME_COLLECTION(@vCollection3, d_0)\n        RETURN d_0\n\
+      \        )\n        RETURN {name: a.name, c_name: c.name, d_name: d.name}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@edgeCollection2': follows
+      vCollection2: persons
+      '@edgeCollection3': follows
+      vCollection3: places

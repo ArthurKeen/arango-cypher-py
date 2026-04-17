@@ -1,0 +1,38 @@
+version: 1
+cases:
+- id: C700
+  name: two MATCH node-only cross product with WITH
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person) MATCH (b:Movie) WITH a, b WHERE a.name = "Tom Hanks" RETURN a, b
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FOR b IN @@tailCollection\n    FILTER (a.name == \"Tom Hanks\")\n    RETURN {a: a, b: b}"
+    bind_vars:
+      '@collection': persons
+      '@tailCollection': movies
+- id: C701
+  name: two MATCH with ORDER BY and LIMIT
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person) MATCH (b:Movie) WITH a, b RETURN a.name, b.title ORDER BY a.name LIMIT 5
+
+    '
+  expected:
+    aql: "FOR a IN @@collection\n  FOR b IN @@tailCollection\n    SORT a.name\n    LIMIT 5\n    RETURN {name: a.name, title: b.title}"
+    bind_vars:
+      '@collection': persons
+      '@tailCollection': movies
+- id: C702
+  name: two MATCH second with relationship then WITH
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person) MATCH (a)-[:ACTED_IN]->(m:Movie) WITH a, m RETURN a.name, m.title
+
+    '
+  expected:
+    aql: "WITH movies, persons\nFOR a IN @@collection\n  FOR m, r IN 1..1 OUTBOUND a @@edgeCollection\n    RETURN {name: a.name, title: m.title}"
+    bind_vars:
+      '@collection': persons
+      '@edgeCollection': acted_in

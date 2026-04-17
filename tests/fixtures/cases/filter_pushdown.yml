@@ -1,0 +1,32 @@
+version: 1
+cases:
+- id: C710
+  name: varlen traversal with simple filter gets PRUNE
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:FOLLOWS*1..3]->(v:User) WHERE v.active = true RETURN u.id, v.id
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..3 OUTBOUND u @@edgeCollection\n\
+      \    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    PRUNE NOT ((v.active ==\
+      \ true))\n    FILTER (v.active == true)\n    RETURN {id: u.id, v_id: v.id}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users
+- id: C711
+  name: fixed-length traversal no PRUNE
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:FOLLOWS]->(v:User) WHERE v.active = true RETURN u.id, v.id
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN\
+      \ 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ v)\n    FILTER (v.active == true)\n    RETURN {id: u.id, v_id: v.id}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users

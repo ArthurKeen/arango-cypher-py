@@ -1,0 +1,81 @@
+version: 1
+cases:
+- id: C500
+  name: List comprehension with WHERE and map expression
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN [x IN p.roles WHERE x <> "extra" | x]
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN (FOR x IN p.roles FILTER (x != \"extra\") RETURN x)"
+    bind_vars:
+      '@collection': persons
+- id: C501
+  name: List comprehension with map only (no WHERE)
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN [x IN [1,2,3] | x * 2]
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN (FOR x IN [1,2,3] RETURN (x * 2))"
+    bind_vars:
+      '@collection': persons
+- id: C502
+  name: List comprehension with WHERE only (no map)
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN [x IN [1,2,3,4,5,6] WHERE x > 3]
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN (FOR x IN [1,2,3,4,5,6] FILTER (x != null AND x > 3) RETURN x)\n"
+    bind_vars:
+      '@collection': persons
+- id: C503
+  name: List comprehension used in WHERE clause
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) WHERE length([x IN [1,2,3] | x]) > 0 RETURN p.name
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  FILTER (LENGTH((FOR x IN [1,2,3] RETURN x)) != null AND LENGTH((FOR x IN [1,2,3] RETURN x)) > 0)\n  RETURN p.name\n"
+    bind_vars:
+      '@collection': persons
+- id: C504
+  name: List comprehension with range function
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN [x IN range(1, 5) | x * 2]
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN (FOR x IN RANGE(1, 5) RETURN (x * 2))"
+    bind_vars:
+      '@collection': persons
+- id: C510
+  name: Pattern comprehension with ACTED_IN
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN p.name, [(p)-[:ACTED_IN]->(m:Movie) | m.title] AS movies
+
+    '
+  expected:
+    aql: "WITH movies, persons\nFOR p IN @@collection\n  RETURN {name: p.name, movies: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
+    bind_vars:
+      '@collection': persons
+      '@pcEdge': acted_in
+- id: C511
+  name: Pattern comprehension with DIRECTED
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) RETURN [(p)-[:DIRECTED]->(m:Movie) | m.title] AS directed
+
+    '
+  expected:
+    aql: "WITH movies, persons\nFOR p IN @@collection\n  RETURN {directed: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
+    bind_vars:
+      '@collection': persons
+      '@pcEdge': directed

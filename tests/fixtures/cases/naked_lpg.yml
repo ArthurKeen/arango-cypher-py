@@ -1,0 +1,123 @@
+version: 1
+cases:
+- id: C800
+  name: naked LPG basic match with type filter
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User) RETURN n LIMIT 5
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  LIMIT 5\n  RETURN n"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+- id: C801
+  name: naked LPG basic match where with type filter
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User) WHERE n.age >= 21 RETURN n.name, n.age
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (n.age != null AND n.age >= 21)\n  RETURN {name: n.name, age: n.age}\n"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+- id: C802
+  name: naked LPG outbound traversal no VCI hints
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:FOLLOWS]->(v:User) RETURN u.name, v.name
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, v_name: v.name}"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C803
+  name: naked LPG cross-type traversal
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:LIKES]->(d:Doc) RETURN u.name, d.body
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR d, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER d[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, body: d.body}"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: Doc
+      relTypeField: type
+      relTypeValue: LIKES
+- id: C804
+  name: naked LPG multi-hop traversal no VCI hints
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (a:User)-[:FOLLOWS]->(b:User)-[:LIKES]->(d:Doc) RETURN a.name, d.body
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR a IN @@uCollection\n  FILTER a[@uTypeField] == @uTypeValue\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FOR d, r_1 IN 1..1 OUTBOUND b @@edgeCollection2\n      FILTER d[@vTypeField2] == @vTypeValue2\n      FILTER r_1[@relTypeField2] == @relTypeValue2\n      FILTER r._id != r_1._id\n      RETURN {name: a.name, body: d.body}\n"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      '@edgeCollection2': edges
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS
+      vTypeField2: type
+      vTypeValue2: Doc
+      relTypeField2: type
+      relTypeValue2: LIKES
+- id: C805
+  name: naked LPG traversal with WHERE filter
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:FOLLOWS]->(v:User) WHERE u.name = "Alice" RETURN v.name
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FILTER (u.name == \"Alice\")\n    RETURN v.name"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C806
+  name: naked LPG relationship variable with type()
+  mapping_fixture: naked_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[r:FOLLOWS]->(v:User) RETURN type(r), u.name, v.name
+
+    '
+  expected:
+    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {type: r[@relTypeField], name: u.name, v_name: v.name}"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS

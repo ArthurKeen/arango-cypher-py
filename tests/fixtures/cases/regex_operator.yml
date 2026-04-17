@@ -1,0 +1,48 @@
+version: 1
+cases:
+- id: C300
+  name: regex basic match
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) WHERE n.name =~ ''.*Alice.*'' RETURN n.name
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER REGEX_TEST(n.name, '.*Alice.*')\n  RETURN n.name\n"
+    bind_vars:
+      '@collection': persons
+- id: C301
+  name: regex negated
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) WHERE NOT n.name =~ ''.*Bob.*'' RETURN n.name
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (NOT REGEX_TEST(n.name, '.*Bob.*'))\n  RETURN n.name\n"
+    bind_vars:
+      '@collection': persons
+- id: C302
+  name: regex combined with AND
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) WHERE n.name =~ ''^A'' AND n.age > 20 RETURN n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (REGEX_TEST(n.name, '^A') AND (n.age != null AND n.age > 20))\n  RETURN n\n"
+    bind_vars:
+      '@collection': persons
+- id: C303
+  name: regex with lpg mapping
+  mapping_fixture: movies_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) WHERE p.name =~ ''.*Tom.*'' RETURN p.name
+
+    '
+  expected:
+    aql: "FOR p IN @@collection\n  FILTER p[@typeField] == @typeValue\n  FILTER REGEX_TEST(p.name, '.*Tom.*')\n  RETURN p.name\n"
+    bind_vars:
+      '@collection': nodes
+      typeField: type
+      typeValue: Person

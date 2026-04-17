@@ -1,0 +1,61 @@
+version: 1
+cases:
+  - id: C330
+    name: pattern predicate outbound
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (u:User) WHERE (u)-[:FOLLOWS]->(:User) RETURN u.name
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@collection
+          FILTER (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge LIMIT 1 RETURN 1) > 0)
+          RETURN u.name
+      bind_vars:
+        "@collection": users
+        "@ppEdge": follows
+
+  - id: C331
+    name: pattern predicate negated
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (u:User) WHERE NOT (u)-[:FOLLOWS]->(:User) RETURN u.name
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@collection
+          FILTER (NOT (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge LIMIT 1 RETURN 1) > 0))
+          RETURN u.name
+      bind_vars:
+        "@collection": users
+        "@ppEdge": follows
+
+  - id: C332
+    name: exists property check
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (u:User) WHERE EXISTS(u.email) RETURN u.name
+    expected:
+      aql: |
+        FOR u IN @@collection
+          FILTER (u.email != null)
+          RETURN u.name
+      bind_vars:
+        "@collection": users
+
+  - id: C333
+    name: not exists property check
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (u:User) WHERE NOT EXISTS(u.email) RETURN u.name
+    expected:
+      aql: |
+        FOR u IN @@collection
+          FILTER (NOT (u.email != null))
+          RETURN u.name
+      bind_vars:
+        "@collection": users

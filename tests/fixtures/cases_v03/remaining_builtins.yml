@@ -1,0 +1,100 @@
+# Golden tests for WP-12: remaining built-in functions
+
+- id: head_function
+  description: "head() → FIRST()"
+  cypher: >
+    MATCH (u:User)
+    RETURN head([1,2,3]) AS h
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "FIRST("
+
+- id: last_function
+  description: "last() → LAST()"
+  cypher: >
+    MATCH (u:User)
+    RETURN last([1,2,3]) AS l
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LAST("
+
+- id: tail_function
+  description: "tail() → SLICE(list, 1)"
+  cypher: >
+    MATCH (u:User)
+    RETURN tail([1,2,3]) AS t
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "SLICE("
+
+- id: range_function_2args
+  description: "range(1, 10) → RANGE(1, 10)"
+  cypher: >
+    MATCH (u:User)
+    RETURN range(1, 10) AS r
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "RANGE("
+
+- id: range_function_3args
+  description: "range(0, 10, 2) → RANGE(0, 10, 2)"
+  cypher: >
+    MATCH (u:User)
+    RETURN range(0, 10, 2) AS r
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "RANGE(0, 10, 2)"
+
+- id: type_function
+  description: "type(r) for relationship type"
+  cypher: >
+    MATCH (u:User)-[r:FOLLOWS]->(f:User)
+    RETURN type(r) AS relType
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "RETURN"
+
+- id: labels_function_lpg
+  description: "labels(n) for LPG-style node"
+  cypher: >
+    MATCH (n:Person)
+    RETURN labels(n) AS nodeLabels
+  mapping_fixture: movies_lpg
+  expect_aql_contains:
+    - "RETURN"
+
+- id: timestamp_function
+  description: "timestamp() → DATE_NOW()"
+  cypher: >
+    MATCH (u:User)
+    RETURN timestamp() AS ts
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "DATE_NOW()"
+
+- id: sqrt_function
+  description: "sqrt() → SQRT()"
+  cypher: >
+    MATCH (u:User)
+    RETURN sqrt(u.age) AS s
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "SQRT("
+
+- id: log_function
+  description: "log() → LOG()"
+  cypher: >
+    MATCH (u:User)
+    RETURN log(u.age) AS l
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LOG("
+
+- id: pi_function
+  description: "pi() → PI()"
+  cypher: >
+    MATCH (u:User)
+    RETURN pi() AS p
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "PI()"

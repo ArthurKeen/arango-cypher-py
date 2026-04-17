@@ -1,0 +1,67 @@
+# Golden tests for SET and DELETE clauses
+
+- id: set_single_property
+  description: "SET n.age = 30"
+  cypher: >
+    MATCH (n:User {name: "Alice"})
+    SET n.age = 30
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "UPDATE"
+    - "age: 30"
+    - "IN @@collection"
+
+- id: set_multiple_properties
+  description: "SET n.age = 30, n.city = 'NYC' (comma-separated)"
+  cypher: >
+    MATCH (n:User {name: "Alice"})
+    SET n.age = 30, n.city = "NYC"
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "UPDATE"
+    - "age: 30"
+    - "city:"
+
+- id: set_with_return
+  description: "SET n.age = 30 RETURN n"
+  cypher: >
+    MATCH (n:User {name: "Alice"})
+    SET n.age = 30
+    RETURN n
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "UPDATE"
+    - "RETURN"
+
+- id: delete_node
+  description: "DELETE n"
+  cypher: >
+    MATCH (n:User {name: "Alice"})
+    DELETE n
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "REMOVE"
+    - "IN @@collection"
+
+- id: delete_with_where
+  description: "DELETE with WHERE filter"
+  cypher: >
+    MATCH (n:User)
+    WHERE n.age < 18
+    DELETE n
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "FILTER"
+    - "REMOVE"
+
+- id: detach_delete
+  description: "DETACH DELETE removes incident edges before vertex"
+  cypher: >
+    MATCH (n:User {name: "Alice"})
+    DETACH DELETE n
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "FOR _de"
+    - "ANY n"
+    - "REMOVE _de"
+    - "REMOVE n IN @@collection"

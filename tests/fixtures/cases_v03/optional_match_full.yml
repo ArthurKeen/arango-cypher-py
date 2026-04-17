@@ -1,0 +1,77 @@
+# Golden tests for full OPTIONAL MATCH support (WP-9)
+# Covers: multi-segment, node-only, leading OPTIONAL MATCH
+
+##############################################################################
+# Node-only OPTIONAL MATCH (PG)
+##############################################################################
+- id: optional_node_only_pg
+  description: "Node-only OPTIONAL MATCH with inline properties (PG)"
+  cypher: >
+    MATCH (u:User {name: "Alice"})
+    OPTIONAL MATCH (p:Person {name: "Nobody"})
+    RETURN u.name, p.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LET"
+    - "FIRST("
+    - "RETURN"
+
+##############################################################################
+# Multi-segment OPTIONAL MATCH (PG)
+##############################################################################
+- id: optional_multi_segment_pg
+  description: "Multi-segment OPTIONAL MATCH: two hops (PG)"
+  cypher: >
+    MATCH (u:User)
+    OPTIONAL MATCH (u)-[:FOLLOWS]->(f:User)-[:FOLLOWS]->(ff:User)
+    RETURN u.name, f.name, ff.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "FIRST("
+    - "OUTBOUND"
+    - "RETURN"
+
+##############################################################################
+# Single-hop OPTIONAL MATCH (LPG) - existing behavior
+##############################################################################
+- id: optional_single_hop_lpg
+  description: "Single-hop OPTIONAL MATCH (LPG)"
+  cypher: >
+    MATCH (u:User)
+    OPTIONAL MATCH (u)-[:FOLLOWS]->(f:User)
+    RETURN u.name, f.name
+  mapping_fixture: lpg
+  expect_aql_contains:
+    - "FIRST("
+    - "OUTBOUND"
+    - "RETURN"
+
+##############################################################################
+# Leading OPTIONAL MATCH (no mandatory MATCH)
+##############################################################################
+- id: optional_leading_single
+  description: "Leading OPTIONAL MATCH (becomes the mandatory match with null-wrap)"
+  cypher: >
+    OPTIONAL MATCH (u:User {name: "Nobody"})
+    RETURN u.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LET _rows"
+    - "LENGTH(_rows)"
+    - "RETURN"
+
+##############################################################################
+# OPTIONAL MATCH with WHERE clause
+##############################################################################
+- id: optional_with_where
+  description: "OPTIONAL MATCH with WHERE filter"
+  cypher: >
+    MATCH (u:User)
+    OPTIONAL MATCH (u)-[:FOLLOWS]->(f:User)
+    WHERE f.age > 25
+    RETURN u.name, f.name
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "FIRST("
+    - "FILTER"
+    - "RETURN"

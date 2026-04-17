@@ -1,0 +1,117 @@
+{
+  "conceptualSchema": {
+    "entities": [
+      {
+        "name": "User",
+        "labels": ["User"],
+        "properties": [
+          {"name": "name", "type": "string"},
+          {"name": "id", "type": "string"},
+          {"name": "city", "type": "string"},
+          {"name": "state", "type": "string"},
+          {"name": "age", "type": "number"},
+          {"name": "active", "type": "boolean"}
+        ]
+      },
+      {
+        "name": "Doc",
+        "labels": ["Doc"],
+        "properties": [
+          {"name": "body", "type": "string"},
+          {"name": "id", "type": "string"}
+        ]
+      },
+      {
+        "name": "Note",
+        "labels": ["Note"],
+        "properties": [
+          {"name": "body", "type": "string"},
+          {"name": "id", "type": "string"}
+        ]
+      }
+    ],
+    "properties": [],
+    "relationships": [
+      {
+        "type": "FOLLOWS",
+        "fromEntity": "User",
+        "toEntity": "User",
+        "properties": []
+      },
+      {
+        "type": "LIKES",
+        "fromEntity": "User",
+        "toEntity": "Doc",
+        "properties": []
+      }
+    ]
+  },
+  "physicalMapping": {
+    "entities": {
+      "User": {
+        "style": "LABEL",
+        "collectionName": "vertices",
+        "typeField": "type",
+        "typeValue": "User",
+        "properties": {
+          "name": {"field": "name", "type": "string", "indexed": false},
+          "id": {"field": "id", "type": "string", "indexed": false},
+          "city": {"field": "city", "type": "string", "indexed": false},
+          "state": {"field": "state", "type": "string", "indexed": false},
+          "age": {"field": "age", "type": "number", "indexed": false},
+          "active": {"field": "active", "type": "boolean", "indexed": false}
+        }
+      },
+      "Doc": {
+        "style": "LABEL",
+        "collectionName": "vertices",
+        "typeField": "type",
+        "typeValue": "Doc",
+        "properties": {
+          "body": {"field": "body", "type": "string", "indexed": false},
+          "id": {"field": "id", "type": "string", "indexed": false}
+        }
+      },
+      "Note": {
+        "style": "LABEL",
+        "collectionName": "vertices",
+        "typeField": "type",
+        "typeValue": "Note",
+        "properties": {
+          "body": {"field": "body", "type": "string", "indexed": false},
+          "id": {"field": "id", "type": "string", "indexed": false}
+        }
+      }
+    },
+    "relationships": {
+      "FOLLOWS": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "FOLLOWS",
+        "domain": "User",
+        "range": "User",
+        "properties": {}
+      },
+      "LIKES": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "LIKES",
+        "domain": "User",
+        "range": "Doc",
+        "properties": {}
+      }
+    }
+  },
+  "metadata": {
+    "provider": "fixture",
+    "model": null,
+    "timestamp": "2026-04-15T00:00:00Z",
+    "confidence": 1.0,
+    "reviewRequired": false,
+    "warnings": [
+      "No VCI indexes detected on edge collection 'edges'. Traversal performance may be degraded."
+    ]
+  }
+}

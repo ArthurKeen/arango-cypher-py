@@ -9,7 +9,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {category: CASE WHEN (n.age > 18) THEN 'adult' WHEN (n.age > 12) THEN 'teen' ELSE 'child' END}
+          RETURN {category: CASE WHEN (n.age != null AND n.age > 18) THEN 'adult' WHEN (n.age != null AND n.age > 12) THEN 'teen' ELSE 'child' END}
       bind_vars:
         "@collection": users
 

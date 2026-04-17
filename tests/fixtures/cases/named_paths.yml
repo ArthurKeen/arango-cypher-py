@@ -1,0 +1,77 @@
+version: 1
+cases:
+  - id: C320
+    name: named path basic
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN p
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@uCollection
+          FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
+            FILTER IS_SAME_COLLECTION(@vCollection, f)
+            LET p = {nodes: [u, f], edges: [r]}
+            RETURN p
+      bind_vars:
+        "@uCollection": users
+        "@edgeCollection": follows
+        vCollection: users
+
+  - id: C321
+    name: named path nodes function
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN nodes(p) AS pathNodes
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@uCollection
+          FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
+            FILTER IS_SAME_COLLECTION(@vCollection, f)
+            LET p = {nodes: [u, f], edges: [r]}
+            RETURN {pathNodes: p.nodes}
+      bind_vars:
+        "@uCollection": users
+        "@edgeCollection": follows
+        vCollection: users
+
+  - id: C322
+    name: named path relationships function
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN relationships(p) AS pathEdges
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@uCollection
+          FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
+            FILTER IS_SAME_COLLECTION(@vCollection, f)
+            LET p = {nodes: [u, f], edges: [r]}
+            RETURN {pathEdges: p.edges}
+      bind_vars:
+        "@uCollection": users
+        "@edgeCollection": follows
+        vCollection: users
+
+  - id: C323
+    name: named path length function
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN length(p) AS pathLen
+    expected:
+      aql: |
+        WITH docs, persons, places, users
+        FOR u IN @@uCollection
+          FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
+            FILTER IS_SAME_COLLECTION(@vCollection, f)
+            LET p = {nodes: [u, f], edges: [r]}
+            RETURN {pathLen: LENGTH(p.edges)}
+      bind_vars:
+        "@uCollection": users
+        "@edgeCollection": follows
+        vCollection: users

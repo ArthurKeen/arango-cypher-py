@@ -1,0 +1,141 @@
+{
+  "collections": {
+    "customers": [
+      {"_key": "ALFKI", "companyName": "Alfreds Futterkiste", "contactName": "Maria Anders", "city": "Berlin", "country": "Germany"},
+      {"_key": "ANATR", "companyName": "Ana Trujillo Emparedados", "contactName": "Ana Trujillo", "city": "México D.F.", "country": "Mexico"},
+      {"_key": "ANTON", "companyName": "Antonio Moreno Taquería", "contactName": "Antonio Moreno", "city": "México D.F.", "country": "Mexico"},
+      {"_key": "BERGS", "companyName": "Berglunds snabbköp", "contactName": "Christina Berglund", "city": "Luleå", "country": "Sweden"},
+      {"_key": "BLAUS", "companyName": "Blauer See Delikatessen", "contactName": "Hanna Moos", "city": "Mannheim", "country": "Germany"},
+      {"_key": "BONAP", "companyName": "Bon app'", "contactName": "Laurence Lebihan", "city": "Marseille", "country": "France"},
+      {"_key": "BOTTM", "companyName": "Bottom-Dollar Markets", "contactName": "Elizabeth Lincoln", "city": "Tsawassen", "country": "Canada"},
+      {"_key": "CHOPS", "companyName": "Chop-suey Chinese", "contactName": "Yang Wang", "city": "Bern", "country": "Switzerland"},
+      {"_key": "DRACD", "companyName": "Drachenblut Delikatessen", "contactName": "Sven Ottlieb", "city": "Aachen", "country": "Germany"},
+      {"_key": "ERNSH", "companyName": "Ernst Handel", "contactName": "Roland Mendel", "city": "Graz", "country": "Austria"}
+    ],
+    "products": [
+      {"_key": "1", "productName": "Chai", "unitPrice": 18.0, "unitsInStock": 39, "discontinued": false},
+      {"_key": "2", "productName": "Chang", "unitPrice": 19.0, "unitsInStock": 17, "discontinued": false},
+      {"_key": "3", "productName": "Aniseed Syrup", "unitPrice": 10.0, "unitsInStock": 13, "discontinued": false},
+      {"_key": "4", "productName": "Chef Anton's Cajun Seasoning", "unitPrice": 22.0, "unitsInStock": 53, "discontinued": false},
+      {"_key": "5", "productName": "Chef Anton's Gumbo Mix", "unitPrice": 21.35, "unitsInStock": 0, "discontinued": true},
+      {"_key": "6", "productName": "Grandma's Boysenberry Spread", "unitPrice": 25.0, "unitsInStock": 120, "discontinued": false},
+      {"_key": "7", "productName": "Uncle Bob's Organic Dried Pears", "unitPrice": 30.0, "unitsInStock": 15, "discontinued": false},
+      {"_key": "8", "productName": "Northwoods Cranberry Sauce", "unitPrice": 40.0, "unitsInStock": 6, "discontinued": false},
+      {"_key": "9", "productName": "Mishi Kobe Niku", "unitPrice": 97.0, "unitsInStock": 29, "discontinued": true},
+      {"_key": "10", "productName": "Ikura", "unitPrice": 31.0, "unitsInStock": 31, "discontinued": false},
+      {"_key": "11", "productName": "Queso Cabrales", "unitPrice": 21.0, "unitsInStock": 22, "discontinued": false},
+      {"_key": "12", "productName": "Queso Manchego La Pastora", "unitPrice": 38.0, "unitsInStock": 86, "discontinued": false}
+    ],
+    "orders": [
+      {"_key": "10248", "orderDate": "1996-07-04", "shipCity": "Reims", "shipCountry": "France", "freight": 32.38},
+      {"_key": "10249", "orderDate": "1996-07-05", "shipCity": "Münster", "shipCountry": "Germany", "freight": 11.61},
+      {"_key": "10250", "orderDate": "1996-07-08", "shipCity": "Rio de Janeiro", "shipCountry": "Brazil", "freight": 65.83},
+      {"_key": "10251", "orderDate": "1996-07-08", "shipCity": "Lyon", "shipCountry": "France", "freight": 41.34},
+      {"_key": "10252", "orderDate": "1996-07-09", "shipCity": "Charleroi", "shipCountry": "Belgium", "freight": 51.30},
+      {"_key": "10253", "orderDate": "1996-07-10", "shipCity": "Rio de Janeiro", "shipCountry": "Brazil", "freight": 58.17},
+      {"_key": "10254", "orderDate": "1996-07-11", "shipCity": "Bern", "shipCountry": "Switzerland", "freight": 22.98},
+      {"_key": "10255", "orderDate": "1996-07-12", "shipCity": "Genève", "shipCountry": "Switzerland", "freight": 148.33},
+      {"_key": "10256", "orderDate": "1996-07-15", "shipCity": "Resende", "shipCountry": "Brazil", "freight": 13.97},
+      {"_key": "10257", "orderDate": "1996-07-16", "shipCity": "México D.F.", "shipCountry": "Mexico", "freight": 81.91}
+    ],
+    "categories": [
+      {"_key": "1", "categoryName": "Beverages", "description": "Soft drinks, coffees, teas, beers, and ales"},
+      {"_key": "2", "categoryName": "Condiments", "description": "Sweet and savory sauces, relishes, spreads, and seasonings"},
+      {"_key": "3", "categoryName": "Confections", "description": "Desserts, candies, and sweet breads"},
+      {"_key": "4", "categoryName": "Dairy Products", "description": "Cheeses"},
+      {"_key": "5", "categoryName": "Grains/Cereals", "description": "Breads, crackers, pasta, and cereal"},
+      {"_key": "6", "categoryName": "Meat/Poultry", "description": "Prepared meats"},
+      {"_key": "7", "categoryName": "Produce", "description": "Dried fruit and bean curd"},
+      {"_key": "8", "categoryName": "Seafood", "description": "Seaweed and fish"}
+    ],
+    "suppliers": [
+      {"_key": "1", "companyName": "Exotic Liquids", "contactName": "Charlotte Cooper", "city": "London", "country": "UK"},
+      {"_key": "2", "companyName": "New Orleans Cajun Delights", "contactName": "Shelley Burke", "city": "New Orleans", "country": "USA"},
+      {"_key": "3", "companyName": "Grandma Kelly's Homestead", "contactName": "Regina Murphy", "city": "Ann Arbor", "country": "USA"},
+      {"_key": "4", "companyName": "Tokyo Traders", "contactName": "Yoshi Nagase", "city": "Tokyo", "country": "Japan"},
+      {"_key": "5", "companyName": "Cooperativa de Quesos", "contactName": "Antonio del Valle", "city": "Oviedo", "country": "Spain"}
+    ],
+    "employees": [
+      {"_key": "1", "firstName": "Nancy", "lastName": "Davolio", "title": "Sales Representative", "city": "Seattle", "country": "USA"},
+      {"_key": "2", "firstName": "Andrew", "lastName": "Fuller", "title": "Vice President, Sales", "city": "Tacoma", "country": "USA"},
+      {"_key": "3", "firstName": "Janet", "lastName": "Leverling", "title": "Sales Representative", "city": "Kirkland", "country": "USA"},
+      {"_key": "4", "firstName": "Margaret", "lastName": "Peacock", "title": "Sales Representative", "city": "Redmond", "country": "USA"},
+      {"_key": "5", "firstName": "Steven", "lastName": "Buchanan", "title": "Sales Manager", "city": "London", "country": "UK"}
+    ]
+  },
+  "edge_collections": {
+    "purchased": [
+      {"_from": "customers/ALFKI", "_to": "orders/10248"},
+      {"_from": "customers/ALFKI", "_to": "orders/10249"},
+      {"_from": "customers/ANATR", "_to": "orders/10250"},
+      {"_from": "customers/ANTON", "_to": "orders/10251"},
+      {"_from": "customers/BERGS", "_to": "orders/10252"},
+      {"_from": "customers/BERGS", "_to": "orders/10253"},
+      {"_from": "customers/CHOPS", "_to": "orders/10254"},
+      {"_from": "customers/ERNSH", "_to": "orders/10255"},
+      {"_from": "customers/DRACD", "_to": "orders/10256"},
+      {"_from": "customers/ANATR", "_to": "orders/10257"}
+    ],
+    "contains": [
+      {"_from": "orders/10248", "_to": "products/1", "quantity": 12, "unitPrice": 14.0, "discount": 0},
+      {"_from": "orders/10248", "_to": "products/2", "quantity": 10, "unitPrice": 9.8, "discount": 0},
+      {"_from": "orders/10249", "_to": "products/3", "quantity": 9, "unitPrice": 10.0, "discount": 0},
+      {"_from": "orders/10249", "_to": "products/4", "quantity": 40, "unitPrice": 17.6, "discount": 0.25},
+      {"_from": "orders/10250", "_to": "products/6", "quantity": 35, "unitPrice": 25.0, "discount": 0.15},
+      {"_from": "orders/10250", "_to": "products/7", "quantity": 15, "unitPrice": 30.0, "discount": 0.15},
+      {"_from": "orders/10251", "_to": "products/8", "quantity": 6, "unitPrice": 40.0, "discount": 0.05},
+      {"_from": "orders/10252", "_to": "products/9", "quantity": 40, "unitPrice": 97.0, "discount": 0.05},
+      {"_from": "orders/10253", "_to": "products/10", "quantity": 20, "unitPrice": 31.0, "discount": 0},
+      {"_from": "orders/10254", "_to": "products/11", "quantity": 15, "unitPrice": 21.0, "discount": 0},
+      {"_from": "orders/10255", "_to": "products/12", "quantity": 20, "unitPrice": 38.0, "discount": 0},
+      {"_from": "orders/10256", "_to": "products/1", "quantity": 10, "unitPrice": 18.0, "discount": 0},
+      {"_from": "orders/10257", "_to": "products/2", "quantity": 35, "unitPrice": 19.0, "discount": 0}
+    ],
+    "belongs_to": [
+      {"_from": "products/1", "_to": "categories/1"},
+      {"_from": "products/2", "_to": "categories/1"},
+      {"_from": "products/3", "_to": "categories/2"},
+      {"_from": "products/4", "_to": "categories/2"},
+      {"_from": "products/5", "_to": "categories/2"},
+      {"_from": "products/6", "_to": "categories/2"},
+      {"_from": "products/7", "_to": "categories/7"},
+      {"_from": "products/8", "_to": "categories/2"},
+      {"_from": "products/9", "_to": "categories/6"},
+      {"_from": "products/10", "_to": "categories/8"},
+      {"_from": "products/11", "_to": "categories/4"},
+      {"_from": "products/12", "_to": "categories/4"}
+    ],
+    "supplied_by": [
+      {"_from": "products/1", "_to": "suppliers/1"},
+      {"_from": "products/2", "_to": "suppliers/1"},
+      {"_from": "products/3", "_to": "suppliers/1"},
+      {"_from": "products/4", "_to": "suppliers/2"},
+      {"_from": "products/5", "_to": "suppliers/2"},
+      {"_from": "products/6", "_to": "suppliers/3"},
+      {"_from": "products/7", "_to": "suppliers/3"},
+      {"_from": "products/8", "_to": "suppliers/3"},
+      {"_from": "products/9", "_to": "suppliers/4"},
+      {"_from": "products/10", "_to": "suppliers/4"},
+      {"_from": "products/11", "_to": "suppliers/5"},
+      {"_from": "products/12", "_to": "suppliers/5"}
+    ],
+    "sold_by": [
+      {"_from": "orders/10248", "_to": "employees/5"},
+      {"_from": "orders/10249", "_to": "employees/1"},
+      {"_from": "orders/10250", "_to": "employees/4"},
+      {"_from": "orders/10251", "_to": "employees/3"},
+      {"_from": "orders/10252", "_to": "employees/4"},
+      {"_from": "orders/10253", "_to": "employees/3"},
+      {"_from": "orders/10254", "_to": "employees/5"},
+      {"_from": "orders/10255", "_to": "employees/2"},
+      {"_from": "orders/10256", "_to": "employees/3"},
+      {"_from": "orders/10257", "_to": "employees/4"}
+    ],
+    "reports_to": [
+      {"_from": "employees/1", "_to": "employees/2"},
+      {"_from": "employees/3", "_to": "employees/2"},
+      {"_from": "employees/4", "_to": "employees/2"},
+      {"_from": "employees/5", "_to": "employees/2"}
+    ]
+  }
+}

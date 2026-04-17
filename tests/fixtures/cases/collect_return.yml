@@ -1,0 +1,63 @@
+version: 1
+cases:
+  - id: C310
+    name: collect in return
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN collect(n.name) AS names
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT INTO names = n.name
+          RETURN names
+      bind_vars:
+        "@collection": persons
+
+  - id: C311
+    name: collect with grouping in return
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN n.city, collect(n.name) AS names
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT city = n.city INTO names = n.name
+          RETURN {city: city, names: names}
+      bind_vars:
+        "@collection": persons
+
+  - id: C312
+    name: collect in return lpg mapping
+    mapping_fixture: movies_lpg
+    extensions_enabled: false
+    cypher: |
+      MATCH (m:Movie) RETURN collect(m.title) AS titles
+    expected:
+      aql: |
+        FOR m IN @@collection
+          FILTER m[@typeField] == @typeValue
+          COLLECT INTO titles = m.title
+          RETURN titles
+      bind_vars:
+        "@collection": nodes
+        typeField: type
+        typeValue: Movie
+
+  - id: C313
+    name: collect with grouping lpg mapping
+    mapping_fixture: movies_lpg
+    extensions_enabled: false
+    cypher: |
+      MATCH (m:Movie) RETURN m.released, collect(m.title) AS titles
+    expected:
+      aql: |
+        FOR m IN @@collection
+          FILTER m[@typeField] == @typeValue
+          COLLECT released = m.released INTO titles = m.title
+          RETURN {released: released, titles: titles}
+      bind_vars:
+        "@collection": nodes
+        typeField: type
+        typeValue: Movie

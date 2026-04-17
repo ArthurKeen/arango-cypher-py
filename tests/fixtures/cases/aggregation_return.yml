@@ -1,0 +1,134 @@
+version: 1
+cases:
+  - id: C250
+    name: return count
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN count(n)
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT AGGREGATE count = COUNT(n)
+          RETURN count
+      bind_vars:
+        "@collection": persons
+
+  - id: C251
+    name: return group by with count
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN n.city, count(n)
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT city = n.city AGGREGATE count = COUNT(n)
+          RETURN {city: city, count: count}
+      bind_vars:
+        "@collection": persons
+
+  - id: C252
+    name: return count distinct
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN count(DISTINCT n.name)
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT AGGREGATE count = COUNT_DISTINCT(n.name)
+          RETURN count
+      bind_vars:
+        "@collection": persons
+
+  - id: C253
+    name: return sum and avg
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN sum(n.age) AS total, avg(n.age) AS average
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT AGGREGATE total = SUM(n.age), average = AVG(n.age)
+          RETURN {total: total, average: average}
+      bind_vars:
+        "@collection": persons
+
+  - id: C254
+    name: return distinct multi-column
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN DISTINCT n.name, n.city
+    expected:
+      aql: |
+        FOR n IN @@collection
+          RETURN DISTINCT {name: n.name, city: n.city}
+      bind_vars:
+        "@collection": persons
+
+  - id: C255
+    name: return min and max
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN min(n.age), max(n.age)
+    expected:
+      aql: |
+        FOR n IN @@collection
+          COLLECT AGGREGATE min = MIN(n.age), max = MAX(n.age)
+          RETURN {min: min, max: max}
+      bind_vars:
+        "@collection": persons
+
+  - id: C256
+    name: limit with parameter
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN n LIMIT $count
+    params:
+      count: 10
+    expected:
+      aql: |
+        FOR n IN @@collection
+          LIMIT @count
+          RETURN n
+      bind_vars:
+        "@collection": persons
+        count: 10
+
+  - id: C257
+    name: skip and limit with parameters
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN n SKIP $offset LIMIT $count
+    params:
+      offset: 5
+      count: 10
+    expected:
+      aql: |
+        FOR n IN @@collection
+          LIMIT @offset, @count
+          RETURN n
+      bind_vars:
+        "@collection": persons
+        offset: 5
+        count: 10
+
+  - id: C258
+    name: limit with arithmetic expression
+    mapping_fixture: pg
+    extensions_enabled: false
+    cypher: |
+      MATCH (n:Person) RETURN n LIMIT 5 + 5
+    expected:
+      aql: |
+        FOR n IN @@collection
+          LIMIT (5 + 5)
+          RETURN n
+      bind_vars:
+        "@collection": persons

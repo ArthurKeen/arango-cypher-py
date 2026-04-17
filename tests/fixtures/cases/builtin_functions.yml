@@ -1,0 +1,189 @@
+version: 1
+cases:
+- id: C235
+  name: return id function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN id(n)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN n._id\n"
+    bind_vars:
+      '@collection': persons
+- id: C236
+  name: return keys function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN keys(n)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN ATTRIBUTES(n)\n"
+    bind_vars:
+      '@collection': persons
+- id: C237
+  name: return properties function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN properties(n)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN UNSET(n, \"_id\", \"_key\", \"_rev\")\n"
+    bind_vars:
+      '@collection': persons
+- id: C238
+  name: return toString function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN toString(n.age)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN TO_STRING(n.age)\n"
+    bind_vars:
+      '@collection': persons
+- id: C239
+  name: return toInteger function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN toInteger(n.ageStr)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN TO_NUMBER(n.ageStr)\n"
+    bind_vars:
+      '@collection': persons
+- id: C240
+  name: regression toUpper in where
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) WHERE toUpper(n.name) = "ALICE" RETURN n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (UPPER(n.name) == \"ALICE\")\n  RETURN n\n"
+    bind_vars:
+      '@collection': persons
+- id: C241
+  name: regression size in where
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) WHERE size(n.friends) > 3 RETURN n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LENGTH(n.friends) != null AND LENGTH(n.friends) > 3)\n  RETURN n\n"
+    bind_vars:
+      '@collection': persons
+- id: C242
+  name: return toFloat function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN toFloat(n.score)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN TO_NUMBER(n.score)\n"
+    bind_vars:
+      '@collection': persons
+- id: C243
+  name: return toBoolean function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN toBoolean(n.active)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN TO_BOOL(n.active)\n"
+    bind_vars:
+      '@collection': persons
+- id: C244
+  name: return head function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN head(n.tags)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN FIRST(n.tags)\n"
+    bind_vars:
+      '@collection': persons
+- id: C245
+  name: return tail function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN tail(n.tags)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN SLICE(n.tags, 1)\n"
+    bind_vars:
+      '@collection': persons
+- id: C246
+  name: return last function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN last(n.tags)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN LAST(n.tags)\n"
+    bind_vars:
+      '@collection': persons
+- id: C247
+  name: return reverse function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN reverse(n.tags)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN REVERSE(n.tags)\n"
+    bind_vars:
+      '@collection': persons
+- id: C248
+  name: return range two args
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN range(1, size(n.tags))
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN RANGE(1, LENGTH(n.tags))\n"
+    bind_vars:
+      '@collection': persons
+- id: C249
+  name: return range three args
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN range(0, size(n.tags), 2)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN RANGE(0, LENGTH(n.tags), 2)\n"
+    bind_vars:
+      '@collection': persons
+- id: C270
+  name: return abs function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN abs(n.balance)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN ABS(n.balance)\n"
+    bind_vars:
+      '@collection': persons
+- id: C271
+  name: return coalesce function
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person) RETURN coalesce(n.nickname, n.name)
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN FIRST(REMOVE_VALUES([n.nickname, n.name], null))\n"
+    bind_vars:
+      '@collection': persons

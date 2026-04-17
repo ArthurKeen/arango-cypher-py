@@ -10,22 +10,6 @@
         ]
       },
       {
-        "labels": ["Actor"],
-        "name": "Actor",
-        "properties": [
-          {"name": "name", "type": "string"},
-          {"name": "born", "type": "number"}
-        ]
-      },
-      {
-        "labels": ["Director"],
-        "name": "Director",
-        "properties": [
-          {"name": "name", "type": "string"},
-          {"name": "born", "type": "number"}
-        ]
-      },
-      {
         "labels": ["Movie"],
         "name": "Movie",
         "properties": [
@@ -86,96 +70,68 @@
   "physicalMapping": {
     "entities": {
       "Person": {
-        "collectionName": "nodes",
-        "style": "LABEL",
-        "typeField": "type",
-        "typeValue": "Person",
+        "collectionName": "persons",
+        "style": "COLLECTION",
         "properties": {
           "name": {"field": "name", "type": "string", "indexed": true},
           "born": {"field": "born", "type": "number"}
         },
         "indexes": [
-          {"type": "persistent", "fields": ["type"], "unique": false, "name": "idx_nodes_type"},
-          {"type": "persistent", "fields": ["name"], "unique": false, "name": "idx_nodes_name"}
+          {"type": "persistent", "fields": ["name"], "unique": false, "name": "idx_persons_name"}
         ]
       },
-      "Actor": {
-        "collectionName": "nodes",
-        "style": "LABEL",
-        "typeField": "type",
-        "typeValue": "Actor",
-        "properties": {
-          "name": {"field": "name", "type": "string", "indexed": true},
-          "born": {"field": "born", "type": "number"}
-        }
-      },
-      "Director": {
-        "collectionName": "nodes",
-        "style": "LABEL",
-        "typeField": "type",
-        "typeValue": "Director",
-        "properties": {
-          "name": {"field": "name", "type": "string", "indexed": true},
-          "born": {"field": "born", "type": "number"}
-        }
-      },
       "Movie": {
-        "collectionName": "nodes",
-        "style": "LABEL",
-        "typeField": "type",
-        "typeValue": "Movie",
+        "collectionName": "movies",
+        "style": "COLLECTION",
         "properties": {
           "title": {"field": "title", "type": "string", "indexed": true},
           "released": {"field": "released", "type": "number"},
           "tagline": {"field": "tagline", "type": "string"}
         },
         "indexes": [
-          {"type": "persistent", "fields": ["title"], "unique": false, "name": "idx_nodes_title"}
+          {"type": "persistent", "fields": ["title"], "unique": false, "name": "idx_movies_title"}
         ]
       }
     },
     "relationships": {
       "ACTED_IN": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "ACTED_IN",
+        "edgeCollectionName": "acted_in",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Movie",
         "properties": {
           "roles": {"field": "roles", "type": "array"}
-        },
-        "indexes": [
-          {"type": "persistent", "fields": ["relation"], "unique": false, "name": "idx_edges_relation", "vci": true}
-        ]
+        }
       },
       "DIRECTED": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "DIRECTED"
+        "edgeCollectionName": "directed",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Movie"
       },
       "PRODUCED": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "PRODUCED"
+        "edgeCollectionName": "produced",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Movie"
       },
       "WROTE": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "WROTE"
+        "edgeCollectionName": "wrote",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Movie"
       },
       "FOLLOWS": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "FOLLOWS"
+        "edgeCollectionName": "follows",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Person"
       },
       "REVIEWED": {
-        "edgeCollectionName": "edges",
-        "style": "GENERIC_WITH_TYPE",
-        "typeField": "relation",
-        "typeValue": "REVIEWED",
+        "edgeCollectionName": "reviewed",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Movie",
         "properties": {
           "summary": {"field": "summary", "type": "string"},
           "rating": {"field": "rating", "type": "number"}

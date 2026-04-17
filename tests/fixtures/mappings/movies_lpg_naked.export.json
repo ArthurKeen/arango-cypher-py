@@ -81,7 +81,9 @@
     "timestamp": "2026-04-13T00:00:00Z",
     "confidence": 1.0,
     "reviewRequired": false,
-    "warnings": []
+    "warnings": [
+      "No VCI indexes detected on edge collection 'edges'. Traversal performance may be degraded. Consider creating a persistent index on the 'relation' field with vertex-centric indexing enabled."
+    ]
   },
   "physicalMapping": {
     "entities": {
@@ -91,13 +93,9 @@
         "typeField": "type",
         "typeValue": "Person",
         "properties": {
-          "name": {"field": "name", "type": "string", "indexed": true},
+          "name": {"field": "name", "type": "string"},
           "born": {"field": "born", "type": "number"}
-        },
-        "indexes": [
-          {"type": "persistent", "fields": ["type"], "unique": false, "name": "idx_nodes_type"},
-          {"type": "persistent", "fields": ["name"], "unique": false, "name": "idx_nodes_name"}
-        ]
+        }
       },
       "Actor": {
         "collectionName": "nodes",
@@ -105,7 +103,7 @@
         "typeField": "type",
         "typeValue": "Actor",
         "properties": {
-          "name": {"field": "name", "type": "string", "indexed": true},
+          "name": {"field": "name", "type": "string"},
           "born": {"field": "born", "type": "number"}
         }
       },
@@ -115,7 +113,7 @@
         "typeField": "type",
         "typeValue": "Director",
         "properties": {
-          "name": {"field": "name", "type": "string", "indexed": true},
+          "name": {"field": "name", "type": "string"},
           "born": {"field": "born", "type": "number"}
         }
       },
@@ -125,13 +123,10 @@
         "typeField": "type",
         "typeValue": "Movie",
         "properties": {
-          "title": {"field": "title", "type": "string", "indexed": true},
+          "title": {"field": "title", "type": "string"},
           "released": {"field": "released", "type": "number"},
           "tagline": {"field": "tagline", "type": "string"}
-        },
-        "indexes": [
-          {"type": "persistent", "fields": ["title"], "unique": false, "name": "idx_nodes_title"}
-        ]
+        }
       }
     },
     "relationships": {
@@ -142,10 +137,7 @@
         "typeValue": "ACTED_IN",
         "properties": {
           "roles": {"field": "roles", "type": "array"}
-        },
-        "indexes": [
-          {"type": "persistent", "fields": ["relation"], "unique": false, "name": "idx_edges_relation", "vci": true}
-        ]
+        }
       },
       "DIRECTED": {
         "edgeCollectionName": "edges",

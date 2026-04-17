@@ -1,0 +1,75 @@
+version: 1
+cases:
+- id: C090
+  name: outbound KNOWS with domain/range skips IS_SAME_COLLECTION
+  mapping_fixture: pg_typed
+  extensions_enabled: false
+  cypher: 'MATCH (p1:Person)-[:KNOWS]->(p2:Person) RETURN p1, p2
+
+    '
+  expected:
+    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': knows
+- id: C091
+  name: inbound KNOWS with domain/range skips IS_SAME_COLLECTION
+  mapping_fixture: pg_typed
+  extensions_enabled: false
+  cypher: 'MATCH (p1:Person)<-[:KNOWS]-(p2:Person) RETURN p1, p2
+
+    '
+  expected:
+    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 INBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': knows
+- id: C092
+  name: undirected KNOWS with domain/range skips IS_SAME_COLLECTION
+  mapping_fixture: pg_typed
+  extensions_enabled: false
+  cypher: 'MATCH (p1:Person)-[:KNOWS]-(p2:Person) RETURN p1, p2
+
+    '
+  expected:
+    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 ANY p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': knows
+- id: C093
+  name: KNOWS with WHERE still skips IS_SAME_COLLECTION
+  mapping_fixture: pg_typed
+  extensions_enabled: false
+  cypher: 'MATCH (p1:Person)-[:KNOWS]->(p2:Person) WHERE p2.age > 30 RETURN p1.name, p2.name
+
+    '
+  expected:
+    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    FILTER (p2.age != null AND p2.age > 30)\n    RETURN {name: p1.name, p2_name: p2.name}\n"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': knows
+- id: C094
+  name: cross-type source still skips filter (range guarantees target)
+  mapping_fixture: pg_typed
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:KNOWS]->(p:Person) RETURN u, p
+
+    '
+  expected:
+    aql: "WITH persons, users\nFOR u IN @@uCollection\n  FOR p, r IN 1..1 OUTBOUND u @@edgeCollection\n    RETURN {u: u, p: p}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': knows
+- id: C095
+  name: no domain/range keeps IS_SAME_COLLECTION (pg fixture without domain/range)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User)-[:FOLLOWS]->(v:User) RETURN u, v
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users

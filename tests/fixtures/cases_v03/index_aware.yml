@@ -1,0 +1,42 @@
+# Golden tests for WP-18: Index-aware transpilation
+
+##############################################################################
+# VCI warning for LPG with indexes (should NOT warn)
+##############################################################################
+- id: vci_present_no_warning
+  description: "LPG mapping with VCI on edges — should produce no warnings"
+  cypher: >
+    MATCH (n:Person)-[:ACTED_IN]->(m:Movie)
+    RETURN n.name, m.title
+  mapping_fixture: movies_lpg
+  expect_no_warnings: true
+  expect_aql_contains:
+    - "OUTBOUND"
+    - "RETURN"
+
+##############################################################################
+# VCI warning for naked LPG (should warn)
+##############################################################################
+- id: vci_missing_warning
+  description: "Naked LPG mapping without VCI — should produce warning"
+  cypher: >
+    MATCH (n:Person)-[:ACTED_IN]->(m:Movie)
+    RETURN n.name, m.title
+  mapping_fixture: movies_lpg_naked
+  expect_warnings_contain: "no VCI"
+  expect_aql_contains:
+    - "OUTBOUND"
+    - "RETURN"
+
+##############################################################################
+# PG mapping — DEDICATED_COLLECTION style — no VCI warning expected
+##############################################################################
+- id: pg_dedicated_no_warning
+  description: "PG mapping uses DEDICATED_COLLECTION — no VCI needed"
+  cypher: >
+    MATCH (u:User)-[:FOLLOWS]->(f:User)
+    RETURN u.name, f.name
+  mapping_fixture: pg
+  expect_no_warnings: true
+  expect_aql_contains:
+    - "OUTBOUND"

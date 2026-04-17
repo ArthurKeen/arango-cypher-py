@@ -32,13 +32,14 @@ cases:
       LIMIT 10
     expected:
       aql: |
+        WITH docs, persons, places, users
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-          COLLECT u_1 = u AGGREGATE degree = COUNT(v)
-          SORT degree DESC
-          LIMIT 10
-          RETURN {id: u_1.id, degree: degree}
+            COLLECT u_1 = u AGGREGATE degree = COUNT(v)
+            SORT degree DESC
+            LIMIT 10
+            RETURN {id: u_1.id, degree: degree}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
@@ -140,11 +141,12 @@ cases:
       RETURN city, c
     expected:
       aql: |
+        WITH docs, persons, places, users
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-          COLLECT city = v.city AGGREGATE c = COUNT(1)
-          RETURN {city: city, c: c}
+            COLLECT city = v.city AGGREGATE c = COUNT(1)
+            RETURN {city: city, c: c}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
@@ -166,7 +168,7 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT city = u.city AGGREGATE c = COUNT(1)
-          FILTER (c > 1)
+          FILTER (c != null AND c > 1)
           SORT c DESC
           LIMIT 1, 1
           RETURN {city: city, c: c}

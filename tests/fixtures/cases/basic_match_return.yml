@@ -54,7 +54,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.age >= 21)
+          FILTER (n.age != null AND n.age >= 21)
           RETURN {name: n.name, age: n.age}
       bind_vars:
         "@collection": users
@@ -336,7 +336,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.id == "u1")
+          FILTER (LOWER(n.id) == LOWER("u1"))
           RETURN n.id
       bind_vars:
         "@collection": users

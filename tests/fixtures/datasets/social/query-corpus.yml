@@ -1,0 +1,72 @@
+# Social dataset query corpus
+# Used for UI sample queries and integration testing
+# Mapping fixtures: pg.export.json (PG), lpg.export.json (LPG), hybrid.export.json (Hybrid)
+
+- id: social_001
+  description: "Find user by name"
+  cypher: 'MATCH (u:User {name: "Alice"}) RETURN u.name, u.age'
+  expected_min_count: 1
+
+- id: social_002
+  description: "All users ordered by name"
+  cypher: 'MATCH (u:User) RETURN u.name ORDER BY u.name'
+  expected_min_count: 6
+
+- id: social_003
+  description: "Users in Boston"
+  cypher: >
+    MATCH (u:User)
+    WHERE u.city = "Boston"
+    RETURN u.name ORDER BY u.name
+  expected_min_count: 3
+
+- id: social_004
+  description: "Who does Alice follow?"
+  cypher: >
+    MATCH (a:User {name: "Alice"})-[:FOLLOWS]->(b:User)
+    RETURN b.name ORDER BY b.name
+  expected_min_count: 2
+
+- id: social_005
+  description: "Users older than 25"
+  cypher: >
+    MATCH (u:User)
+    WHERE u.age > 25
+    RETURN u.name, u.age ORDER BY u.age DESC
+  expected_min_count: 2
+
+- id: social_006
+  description: "Count users by city"
+  cypher: >
+    MATCH (u:User)
+    RETURN u.city, count(u) AS cnt
+    ORDER BY cnt DESC
+  expected_min_count: 3
+
+- id: social_007
+  description: "Active users only"
+  cypher: >
+    MATCH (u:User)
+    WHERE u.active = true
+    RETURN u.name ORDER BY u.name
+  expected_min_count: 5
+
+- id: social_008
+  description: "Users with email"
+  cypher: >
+    MATCH (u:User)
+    WHERE u.email IS NOT NULL
+    RETURN u.name, u.email ORDER BY u.name
+  expected_min_count: 2
+
+- id: social_009
+  description: "Mutual followers"
+  cypher: >
+    MATCH (a:User)-[:FOLLOWS]->(b:User)-[:FOLLOWS]->(c:User)
+    RETURN a.name, b.name, c.name
+  expected_min_count: 1
+
+- id: social_010
+  description: "Users with LIMIT"
+  cypher: 'MATCH (u:User) RETURN u.name ORDER BY u.name LIMIT 3'
+  expected_min_count: 3

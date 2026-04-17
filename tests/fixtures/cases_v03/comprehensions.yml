@@ -1,0 +1,41 @@
+- id: list_comp_filter_map
+  description: "List comprehension with WHERE and map expression"
+  cypher: "MATCH (p:Person) RETURN [x IN p.roles WHERE x <> 'extra' | x]"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "FOR x IN p.roles"
+    - "FILTER"
+    - "RETURN x"
+
+- id: list_comp_map_only
+  description: "List comprehension with map expression but no WHERE"
+  cypher: "MATCH (p:Person) RETURN [x IN [1,2,3] | x * 2]"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "FOR x IN"
+    - "RETURN (x * 2)"
+
+- id: pattern_comp_basic
+  description: "Pattern comprehension with movie titles"
+  cypher: "MATCH (p:Person) RETURN p.name, [(p)-[:ACTED_IN]->(m:Movie) | m.title] AS movies"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "FOR m"
+    - "OUTBOUND"
+    - "RETURN m.title"
+
+- id: pattern_comp_directed
+  description: "Pattern comprehension with DIRECTED relationship"
+  cypher: "MATCH (p:Person) RETURN [(p)-[:DIRECTED]->(m:Movie) | m.title] AS directed"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "OUTBOUND"
+    - "RETURN m.title"
+
+- id: list_comp_in_where
+  description: "List comprehension used in WHERE clause"
+  cypher: "MATCH (p:Person) WHERE length([x IN [1,2,3] | x]) > 0 RETURN p.name"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "FOR x IN"
+    - "RETURN x"

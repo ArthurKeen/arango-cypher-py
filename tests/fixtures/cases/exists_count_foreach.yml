@@ -1,0 +1,61 @@
+version: 1
+cases:
+- id: C340
+  name: exists subquery outbound
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User) WHERE EXISTS { MATCH (u)-[:FOLLOWS]->(m:User) } RETURN u.name
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0)\n  RETURN u.name\n"
+    bind_vars:
+      '@collection': users
+      '@sqEdge': follows
+- id: C341
+  name: exists subquery negated
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User) WHERE NOT EXISTS { MATCH (u)-[:FOLLOWS]->(m:User) } RETURN u.name
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (NOT (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0))\n  RETURN u.name\n"
+    bind_vars:
+      '@collection': users
+      '@sqEdge': follows
+- id: C342
+  name: count subquery in return
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User) RETURN u.name, COUNT { MATCH (u)-[:FOLLOWS]->(m:User) } AS followerCount
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  RETURN {name: u.name, followerCount: LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1)}\n"
+    bind_vars:
+      '@collection': users
+      '@sqEdge': follows
+- id: C343
+  name: count subquery in where
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User) WHERE COUNT { MATCH (u)-[:FOLLOWS]->(m:User) } > 5 RETURN u.name
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) != null AND LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 5)\n  RETURN u.name\n"
+    bind_vars:
+      '@collection': users
+      '@sqEdge': follows
+- id: C344
+  name: foreach with set
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (u:User) FOREACH (x IN u.tags | SET x.seen = true)
+
+    '
+  expected:
+    aql: "FOR u IN @@collection\n  FOR x IN u.tags\n    UPDATE x WITH {seen: true} IN @@collection\n"
+    bind_vars:
+      '@collection': users

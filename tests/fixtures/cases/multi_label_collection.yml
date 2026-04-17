@@ -1,0 +1,28 @@
+version: 1
+cases:
+- id: C610
+  name: Multi-label COLLECTION-style node-only match
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:Person:User) RETURN n
+
+    '
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN n"
+    bind_vars:
+      '@collection': users
+- id: C611
+  name: Multi-label COLLECTION-style with relationship
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Person:User)-[:FOLLOWS]->(b:User) RETURN a, b
+
+    '
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR a IN @@uCollection\n  FOR b, r IN\
+      \ 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ b)\n    RETURN {a: a, b: b}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users

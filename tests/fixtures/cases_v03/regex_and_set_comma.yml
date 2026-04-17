@@ -1,0 +1,41 @@
+- id: regex_basic
+  description: "Basic regex match with =~"
+  cypher: "MATCH (n:Person) WHERE n.name =~ '.*Alice.*' RETURN n.name"
+  mapping: movies_lpg
+  expect_aql_contains:
+    - "REGEX_TEST(n.name,"
+    - "'.*Alice.*'"
+
+- id: regex_negated
+  description: "Negated regex match"
+  cypher: "MATCH (n:Person) WHERE NOT n.name =~ '.*Bob.*' RETURN n.name"
+  mapping: movies_lpg
+  expect_aql_contains:
+    - "NOT"
+    - "REGEX_TEST(n.name,"
+
+- id: regex_pg_mapping
+  description: "Regex with PG mapping"
+  cypher: "MATCH (p:Person) WHERE p.name =~ '^T.*' RETURN p.name"
+  mapping: movies_pg
+  expect_aql_contains:
+    - "REGEX_TEST(p.name,"
+
+- id: set_comma_multi_properties
+  description: "SET with comma-separated property assignments"
+  cypher: "MATCH (n:Person {name: 'Alice'}) SET n.age = 30, n.city = 'NYC' RETURN n"
+  mapping: movies_lpg
+  expect_aql_contains:
+    - "UPDATE n WITH"
+    - "age: 30"
+    - "city: 'NYC'"
+
+- id: set_comma_three_properties
+  description: "SET with three comma-separated properties"
+  cypher: "MATCH (n:Person {name: 'Bob'}) SET n.age = 25, n.city = 'LA', n.active = true RETURN n"
+  mapping: movies_lpg
+  expect_aql_contains:
+    - "UPDATE n WITH"
+    - "age: 25"
+    - "city: 'LA'"
+    - "active: true"

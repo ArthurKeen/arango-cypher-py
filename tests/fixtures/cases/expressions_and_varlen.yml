@@ -9,7 +9,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER ((n.age + 1) > 25)
+          FILTER ((n.age + 1) != null AND (n.age + 1) > 25)
           RETURN n.name
       bind_vars:
         "@collection": users
@@ -36,7 +36,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.score > (-1))
+          FILTER (n.score != null AND (-1) != null AND n.score > (-1))
           RETURN n.name
       bind_vars:
         "@collection": users
@@ -49,10 +49,11 @@ cases:
       MATCH (u:User)-[:FOLLOWS*1..2]->(v:User) RETURN u.id, v.id
     expected:
       aql: |
+        WITH docs, persons, places, users
         FOR u IN @@uCollection
           FOR v, r IN 1..2 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-          RETURN {id: u.id, v_id: v.id}
+            RETURN {id: u.id, v_id: v.id}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
@@ -66,10 +67,11 @@ cases:
       MATCH (u:User)-[:FOLLOWS*1..3]->(v:User) RETURN u.id, v.id
     expected:
       aql: |
+        WITH docs, persons, places, users
         FOR u IN @@uCollection
           FOR v, r IN 1..3 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-          RETURN {id: u.id, v_id: v.id}
+            RETURN {id: u.id, v_id: v.id}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
@@ -83,10 +85,11 @@ cases:
       MATCH (u:User)-[:FOLLOWS*]->(v:User) RETURN u.id, v.id
     expected:
       aql: |
+        WITH docs, persons, places, users
         FOR u IN @@uCollection
           FOR v, r IN 1..10 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-          RETURN {id: u.id, v_id: v.id}
+            RETURN {id: u.id, v_id: v.id}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows

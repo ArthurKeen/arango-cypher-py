@@ -1,0 +1,51 @@
+# Golden tests for WP-11: Named paths + path functions
+
+- id: named_path_basic
+  description: "Named path p = (a)-[:FOLLOWS]->(b) with RETURN p"
+  cypher: >
+    MATCH p = (u:User)-[:FOLLOWS]->(f:User)
+    RETURN p
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LET p ="
+    - "nodes:"
+    - "edges:"
+    - "RETURN"
+
+- id: nodes_function
+  description: "nodes(p) returns list of node variables"
+  cypher: >
+    MATCH p = (u:User)-[:FOLLOWS]->(f:User)
+    RETURN nodes(p) AS pathNodes
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "p.nodes"
+
+- id: relationships_function
+  description: "relationships(p) returns list of edge variables"
+  cypher: >
+    MATCH p = (u:User)-[:FOLLOWS]->(f:User)
+    RETURN relationships(p) AS pathRels
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "p.edges"
+
+- id: length_path_function
+  description: "length(p) returns number of relationships"
+  cypher: >
+    MATCH p = (u:User)-[:FOLLOWS]->(f:User)
+    RETURN length(p) AS pathLen
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LENGTH(p.edges)"
+
+- id: named_path_multi_hop
+  description: "Named path with multi-hop traversal"
+  cypher: >
+    MATCH p = (u:User)-[:FOLLOWS]->(f:User)-[:FOLLOWS]->(ff:User)
+    RETURN nodes(p) AS n, length(p) AS len
+  mapping_fixture: pg
+  expect_aql_contains:
+    - "LET p ="
+    - "p.nodes"
+    - "LENGTH(p.edges)"

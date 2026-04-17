@@ -1,0 +1,64 @@
+version: 1
+cases:
+- id: ICIJ001
+  name: find entities by jurisdiction
+  mapping_fixture: icij_paradise_papers
+  extensions_enabled: false
+  cypher: |
+    MATCH (e:Entity) WHERE e.jurisdiction = "BVI" RETURN e.name, e.status
+  expected:
+    aql: "FOR e IN @@collection\n  FILTER (e.jurisdiction == \"BVI\")\n  RETURN {name: e.name, status: e.status}\n"
+    bind_vars:
+      '@collection': Entity
+
+- id: ICIJ002
+  name: find officers of entity by name
+  mapping_fixture: icij_paradise_papers
+  extensions_enabled: false
+  cypher: |
+    MATCH (o:Officer)-[:OFFICER_OF]->(e:Entity) WHERE e.name = "Acme Holdings Ltd" RETURN o.name
+  expected:
+    aql: "FOR e IN @@collection_1\n  FILTER (e.name == \"Acme Holdings Ltd\")\n  FOR o IN 1..1 INBOUND e @@edge_collection\n    FILTER IS_SAME_COLLECTION(@@collection, o)\n    RETURN o.name\n"
+    bind_vars:
+      '@collection': Officer
+      '@collection_1': Entity
+      '@edge_collection': officer_of
+
+- id: ICIJ003
+  name: two-hop officer to entity to address
+  mapping_fixture: icij_paradise_papers
+  extensions_enabled: false
+  cypher: |
+    MATCH (o:Officer)-[:OFFICER_OF]->(e:Entity)-[:REGISTERED_ADDRESS]->(a:Address) RETURN o.name, e.name, a.address
+  expected:
+    aql: "FOR e IN @@collection_1\n  FOR o IN 1..1 INBOUND e @@edge_collection\n    FILTER IS_SAME_COLLECTION(@@collection, o)\n    FOR a IN 1..1 OUTBOUND e @@edge_collection_1\n      FILTER IS_SAME_COLLECTION(@@collection_2, a)\n      RETURN {name: o.name, name_1: e.name, address: a.address}\n"
+    bind_vars:
+      '@collection': Officer
+      '@collection_1': Entity
+      '@collection_2': Address
+      '@edge_collection': officer_of
+      '@edge_collection_1': registered_address
+
+- id: ICIJ004
+  name: count entities by jurisdiction
+  mapping_fixture: icij_paradise_papers
+  extensions_enabled: false
+  cypher: |
+    MATCH (e:Entity) RETURN e.jurisdiction AS jurisdiction, count(e) AS total ORDER BY total DESC
+  expected:
+    aql: "FOR e IN @@collection\n  COLLECT jurisdiction = e.jurisdiction WITH COUNT INTO total\n  SORT total DESC\n  RETURN {jurisdiction: jurisdiction, total: total}\n"
+    bind_vars:
+      '@collection': Entity
+
+- id: ICIJ005
+  name: find intermediaries connected to entities
+  mapping_fixture: icij_paradise_papers
+  extensions_enabled: false
+  cypher: |
+    MATCH (i:Intermediary)-[:INTERMEDIARY_OF]->(e:Entity) RETURN i.name, e.name, e.jurisdiction
+  expected:
+    aql: "FOR e IN @@collection_1\n  FOR i IN 1..1 INBOUND e @@edge_collection\n    FILTER IS_SAME_COLLECTION(@@collection, i)\n    RETURN {name: i.name, name_1: e.name, jurisdiction: e.jurisdiction}\n"
+    bind_vars:
+      '@collection': Intermediary
+      '@collection_1': Entity
+      '@edge_collection': intermediary_of
