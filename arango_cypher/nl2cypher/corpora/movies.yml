@@ -95,3 +95,24 @@ examples:
     cypher: >
       MATCH (actor:Person)-[:ACTED_IN]->(m:Movie {title: "Apollo 13"})<-[:DIRECTED]-(director:Person)
       RETURN actor.name, director.name ORDER BY actor.name
+
+  # Role-noun resolution: "actors" / "directors" / "writers" / "producers" /
+  # "reviewers" are NOT separate Person subtypes in this schema -- they're
+  # Person nodes joined to a Movie via the matching role edge.  These three
+  # examples teach the LLM the canonical "all <role>" rewrite so questions
+  # like "List all actors" don't degenerate to `MATCH (p:Person) RETURN p.name`
+  # (which would silently include directors / writers / producers / reviewers).
+  - question: "List all actors?"
+    cypher: >
+      MATCH (p:Person)-[:ACTED_IN]->(:Movie)
+      RETURN DISTINCT p.name ORDER BY p.name
+
+  - question: "Who are all the directors?"
+    cypher: >
+      MATCH (p:Person)-[:DIRECTED]->(:Movie)
+      RETURN DISTINCT p.name ORDER BY p.name
+
+  - question: "List every writer in the database?"
+    cypher: >
+      MATCH (p:Person)-[:WROTE]->(:Movie)
+      RETURN DISTINCT p.name ORDER BY p.name
