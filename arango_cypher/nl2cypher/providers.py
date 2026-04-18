@@ -8,7 +8,7 @@ the prompt-construction and schema-analysis code in ``_core`` and
 from __future__ import annotations
 
 import os
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -79,11 +79,16 @@ class _BaseChatProvider:
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-        usage = data.get("usage", {})
+        usage = data.get("usage", {}) or {}
+        details = usage.get("prompt_tokens_details") or {}
+        cached = 0
+        if isinstance(details, dict):
+            cached = int(details.get("cached_tokens", 0) or 0)
         return content, {
-            "prompt_tokens": usage.get("prompt_tokens", 0),
-            "completion_tokens": usage.get("completion_tokens", 0),
-            "total_tokens": usage.get("total_tokens", 0),
+            "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+            "total_tokens": int(usage.get("total_tokens", 0) or 0),
+            "cached_tokens": cached,
         }
 
 
@@ -145,9 +150,98 @@ class OpenRouterProvider(_BaseChatProvider):
         return self._chat(system, user)
 
 
-# TODO(WP-25.4): AnthropicProvider goes here — prompt-caching wave will
-# add a Claude-native provider that opts into Anthropic's prompt_cache
-# header so the schema-first prefix benefits from server-side caching.
+_ANTHROPIC_CACHE_BREAKPOINT = "## Examples"
+"""Boundary between the cached prefix (prelude + schema) and the
+per-request suffix (few-shot examples, resolved entities, user question).
+
+PromptBuilder renders ``## Examples`` as the first *per-question*
+section, so everything above that header is static per mapping and a
+safe target for Anthropic's ``cache_control: {type: "ephemeral"}``
+directive.  If neither WP-25.1 few-shot examples nor WP-25.2 resolved
+entities are present, the whole system prompt is static and we mark it
+all cached.
+"""
+
+
+def split_system_for_anthropic_cache(system: str) -> list[dict[str, Any]]:
+    """Produce Anthropic's `system: [...]` content blocks for prompt caching.
+
+    Splits ``system`` at the first :data:`_ANTHROPIC_CACHE_BREAKPOINT`
+    (``## Examples``) into a cached prefix and an uncached suffix.  When
+    no breakpoint is present the whole string is a single cached block.
+
+    Returned shape matches Anthropic's Messages API::
+
+        [
+          {"type": "text", "text": "<prelude + schema>",
+           "cache_control": {"type": "ephemeral"}},
+          {"type": "text", "text": "<examples + resolved entities>"},
+        ]
+
+    This is exposed as a standalone function so the future
+    :class:`AnthropicProvider` and downstream tests can share the exact
+    same split logic.
+    """
+    if not system:
+        return [{"type": "text", "text": "", "cache_control": {"type": "ephemeral"}}]
+    idx = system.find(_ANTHROPIC_CACHE_BREAKPOINT)
+    if idx == -1:
+        return [{
+            "type": "text",
+            "text": system,
+            "cache_control": {"type": "ephemeral"},
+        }]
+    prefix = system[:idx].rstrip("\n")
+    suffix = system[idx:]
+    blocks: list[dict[str, Any]] = [{
+        "type": "text",
+        "text": prefix,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    if suffix:
+        blocks.append({"type": "text", "text": suffix})
+    return blocks
+
+
+class AnthropicProvider:
+    """Stub Claude provider exposing Anthropic's `cache_control` shape (WP-25.4).
+
+    Not wired end-to-end yet — the point of this class is to pin the
+    *interface* for future work so downstream callers can rely on the
+    cache-control split even before the HTTP path is implemented.  Call
+    :meth:`build_system_blocks` to get the Anthropic-style payload that a
+    full implementation would pass as the ``system`` field of the
+    Messages API.
+
+    The standalone :func:`split_system_for_anthropic_cache` is the
+    source of truth for the split logic; this class is a thin wrapper
+    that records construction-time config so an HTTP path can be added
+    later without changing the public surface.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self.model = model or os.environ.get(
+            "ANTHROPIC_MODEL", "claude-3-5-sonnet-latest",
+        )
+
+    def build_system_blocks(self, system: str) -> list[dict[str, Any]]:
+        """Return Anthropic `system=[...]` blocks with cache_control markers."""
+        return split_system_for_anthropic_cache(system)
+
+    def generate(
+        self, system: str, user: str,
+    ) -> tuple[str, dict[str, int]]:  # pragma: no cover - stub
+        raise NotImplementedError(
+            "AnthropicProvider is a stub (WP-25.4). Wire up anthropic-py "
+            "in a follow-up and pass build_system_blocks(system) as the "
+            "`system` field of the Messages API request."
+        )
 
 
 def get_llm_provider() -> OpenAIProvider | OpenRouterProvider | None:

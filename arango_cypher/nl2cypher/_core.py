@@ -33,6 +33,14 @@ class NL2CypherResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     retries: int = 0
+    cached_tokens: int = 0
+    """Prompt tokens served from the provider's prefix cache (WP-25.4).
+
+    Populated when the LLM provider surfaces a ``cached_tokens`` field
+    on its usage payload (OpenAI's ``prompt_tokens_details.cached_tokens``,
+    Anthropic's ``cache_read_input_tokens``, …).  ``0`` for rule-based
+    results and for providers that don't expose cache telemetry.
+    """
 
 
 def _property_quality_hint(prop_meta: dict[str, Any] | None) -> str:
@@ -441,7 +449,12 @@ def _call_llm_with_retry(
     )
     best_cypher = ""
     best_content = ""
-    total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    total_usage: dict[str, int] = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+    }
     for attempt in range(1 + max_retries):
         try:
             system = builder.render_system()
@@ -451,7 +464,7 @@ def _call_llm_with_retry(
             if isinstance(result, tuple):
                 content, usage = result
                 for k in total_usage:
-                    total_usage[k] += usage.get(k, 0)
+                    total_usage[k] += int(usage.get(k, 0) or 0)
             else:
                 content = result
 
@@ -480,6 +493,7 @@ def _call_llm_with_retry(
                         completion_tokens=total_usage["completion_tokens"],
                         total_tokens=total_usage["total_tokens"],
                         retries=attempt,
+                        cached_tokens=total_usage["cached_tokens"],
                     )
                 best_cypher = cypher
                 best_content = content
@@ -516,6 +530,7 @@ def _call_llm_with_retry(
             completion_tokens=total_usage["completion_tokens"],
             total_tokens=total_usage["total_tokens"],
             retries=max_retries,
+            cached_tokens=total_usage["cached_tokens"],
         )
     return None
 

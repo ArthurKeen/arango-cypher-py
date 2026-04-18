@@ -49,13 +49,16 @@ from ._core import (
 from .entity_resolution import EntityResolver, ResolvedEntity
 from .fewshot import BM25Retriever, FewShotIndex, Retriever
 from .providers import (
+    AnthropicProvider,
     LLMProvider,
     OpenAIProvider,
     OpenRouterProvider,
     get_llm_provider,
+    split_system_for_anthropic_cache,
 )
 
 __all__ = [
+    "AnthropicProvider",
     "BM25Retriever",
     "EntityResolver",
     "FewShotIndex",
@@ -73,5 +76,6 @@ __all__ = [
     "get_llm_provider",
     "nl_to_aql",
     "nl_to_cypher",
+    "split_system_for_anthropic_cache",
     "suggest_nl_queries",
 ]

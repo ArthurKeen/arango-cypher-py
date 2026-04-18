@@ -32,6 +32,11 @@ class NL2AqlResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_tokens: int = 0
+    """Prompt tokens served from the provider's prefix cache (WP-25.4).
+
+    Mirrors :attr:`NL2CypherResult.cached_tokens`; see that docstring.
+    """
 
 
 _AQL_PROMPT_TEMPLATE = """You are an ArangoDB AQL query expert. Given a natural language question and a database schema, generate a valid AQL query.
@@ -374,7 +379,12 @@ def _call_llm_for_aql(
     """
     system = _AQL_PROMPT_TEMPLATE.format(schema=schema_summary)
     last_error = ""
-    total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    total_usage: dict[str, int] = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+    }
     for attempt in range(1 + max_retries):
         try:
             user = question
@@ -389,7 +399,7 @@ def _call_llm_for_aql(
             if isinstance(result, tuple):
                 content, usage = result
                 for k in total_usage:
-                    total_usage[k] += usage.get(k, 0)
+                    total_usage[k] += int(usage.get(k, 0) or 0)
             else:
                 content = result
 
@@ -409,6 +419,7 @@ def _call_llm_for_aql(
                     prompt_tokens=total_usage["prompt_tokens"],
                     completion_tokens=total_usage["completion_tokens"],
                     total_tokens=total_usage["total_tokens"],
+                    cached_tokens=total_usage["cached_tokens"],
                 )
 
             last_error = err_msg or "generated text did not parse as AQL"

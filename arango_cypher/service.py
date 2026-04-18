@@ -850,6 +850,8 @@ def nl2cypher_endpoint(req: NL2CypherRequest, _: None = Depends(_check_nl_rate_l
         "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,
         "total_tokens": result.total_tokens,
+        "cached_tokens": result.cached_tokens,
+        "retries": result.retries,
     }
 
 
@@ -904,6 +906,7 @@ def nl2aql_endpoint(req: NL2AqlRequest, _: None = Depends(_check_nl_rate_limit))
         "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,
         "total_tokens": result.total_tokens,
+        "cached_tokens": result.cached_tokens,
     }
 
 
