@@ -10,7 +10,6 @@ from arango_query_core.mapping import MappingBundle
 
 from .providers import (
     LLMProvider,
-    _BaseChatProvider,
     _get_default_provider,
 )
 
@@ -1059,10 +1058,15 @@ Rules:
 
 def _llm_suggest_nl_queries(
     bundle: MappingBundle,
-    provider: _BaseChatProvider,
+    provider: LLMProvider,
     count: int = 8,
 ) -> list[str]:
-    """Ask the LLM to propose representative NL queries for the schema."""
+    """Ask the LLM to propose representative NL queries for the schema.
+
+    Uses the public ``LLMProvider.generate`` protocol so any provider
+    works — including :class:`~arango_cypher.nl2cypher.AnthropicProvider`,
+    which does not subclass ``_BaseChatProvider``.
+    """
     schema_summary = _build_schema_summary(bundle)
     system = _SUGGEST_PROMPT_TEMPLATE.format(schema=schema_summary)
     user = (
@@ -1070,7 +1074,8 @@ def _llm_suggest_nl_queries(
         "Return only the questions, one per line."
     )
     try:
-        content, _usage = provider._chat(system, user)
+        result = provider.generate(system, user)
+        content = result[0] if isinstance(result, tuple) else result
     except Exception as exc:
         logger.info("LLM suggest_nl_queries failed: %s", exc)
         return []

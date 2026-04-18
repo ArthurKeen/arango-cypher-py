@@ -10,7 +10,7 @@ the schema, and the transpiler converts it to AQL. This preserves the PRD
 |---|---|
 | `_core.py` | Schema summarization, `PromptBuilder`, rule-based fallback, `nl_to_cypher()`, `suggest_nl_queries()` |
 | `_aql.py` | Direct `nl_to_aql()` (exposes physical mapping — deliberately separate from the Cypher path) |
-| `providers.py` | `LLMProvider` protocol + `OpenAIProvider` / `OpenRouterProvider` / `AnthropicProvider` (stub) |
+| `providers.py` | `LLMProvider` protocol + `OpenAIProvider` / `OpenRouterProvider` / `AnthropicProvider` (Messages API + native prompt caching) |
 | `fewshot.py` | `FewShotIndex` + `BM25Retriever` (WP-25.1) |
 | `entity_resolution.py` | `EntityResolver` for pre-flight entity resolution (WP-25.2) |
 | `corpora/*.yml` | Seed corpora for the default few-shot index |
@@ -37,8 +37,15 @@ The schema-first layout lets provider-side prefix caching kick in:
   marker on each cached content block. `split_system_for_anthropic_cache()`
   splits the system prompt at the `## Examples` breakpoint (the first
   per-question section): the prefix goes in a cached block, the suffix
-  in an uncached block. `AnthropicProvider.build_system_blocks()` wraps
-  this split as the `system=[...]` payload the Messages API expects.
+  in an uncached block. `AnthropicProvider.generate()` POSTs to
+  `/v1/messages` with that split as the `system=[...]` payload, then
+  reads `usage.cache_read_input_tokens` from the response and surfaces
+  it as `cached_tokens` on the result — same shape as the OpenAI path
+  so downstream telemetry stays provider-agnostic. Configured via
+  `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`
+  (default model: `claude-3-5-sonnet-latest`). Auto-detected by
+  `get_llm_provider()` when no OpenAI/OpenRouter key is present, or
+  selected explicitly via `LLM_PROVIDER=anthropic`.
 
 ## Reading `cached_tokens`
 

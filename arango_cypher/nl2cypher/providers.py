@@ -203,32 +203,69 @@ def split_system_for_anthropic_cache(system: str) -> list[dict[str, Any]]:
     return blocks
 
 
+_ANTHROPIC_API_VERSION = "2023-06-01"
+"""Anthropic Messages API version pinned for cache_control support.
+
+``cache_control: {type: "ephemeral"}`` has been GA on this version since
+prompt-caching launched; bumping the pin is a deliberate decision and
+should be done in a single commit so any field-name renames in the
+``usage`` payload are caught by the unit tests below.
+"""
+
+
 class AnthropicProvider:
-    """Stub Claude provider exposing Anthropic's `cache_control` shape (WP-25.4).
+    """Claude provider with Anthropic-native prompt caching (WP-25.4).
 
-    Not wired end-to-end yet — the point of this class is to pin the
-    *interface* for future work so downstream callers can rely on the
-    cache-control split even before the HTTP path is implemented.  Call
-    :meth:`build_system_blocks` to get the Anthropic-style payload that a
-    full implementation would pass as the ``system`` field of the
-    Messages API.
+    Hits ``POST /v1/messages`` directly via ``requests`` — same approach
+    as :class:`_BaseChatProvider` for OpenAI-compatible endpoints — so
+    the ``anthropic`` SDK is **not** a runtime dependency.  Reads
+    configuration from constructor args or environment variables:
 
-    The standalone :func:`split_system_for_anthropic_cache` is the
-    source of truth for the split logic; this class is a thin wrapper
-    that records construction-time config so an HTTP path can be added
-    later without changing the public surface.
+      - ``api_key``  / ``ANTHROPIC_API_KEY``
+      - ``base_url`` / ``ANTHROPIC_BASE_URL`` (default: api.anthropic.com)
+      - ``model``    / ``ANTHROPIC_MODEL``    (default: claude-3-5-sonnet-latest)
+
+    The system prompt is split via
+    :func:`split_system_for_anthropic_cache` into a cached prefix
+    (``prelude + schema``) and an uncached suffix (``examples + resolved
+    entities``) before being sent as the Messages API ``system=[...]``
+    field.  This is what makes the cache hit on the second of two
+    identical requests with the same schema.
+
+    Returned usage dict mirrors OpenAI's shape so the rest of the
+    pipeline stays provider-agnostic:
+
+      - ``prompt_tokens``     = input_tokens + cache_read + cache_creation
+      - ``completion_tokens`` = output_tokens
+      - ``total_tokens``      = prompt + completion
+      - ``cached_tokens``     = cache_read_input_tokens
+
+    The OpenAI ``prompt_tokens`` semantics include cached tokens; we
+    follow the same convention here so dashboards and the eval gate
+    don't need provider-specific arithmetic.
     """
 
     def __init__(
         self,
         *,
         api_key: str | None = None,
+        base_url: str | None = None,
         model: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+        timeout: int = 30,
     ) -> None:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        self.base_url = (
+            base_url
+            or os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+        ).rstrip("/")
         self.model = model or os.environ.get(
             "ANTHROPIC_MODEL", "claude-3-5-sonnet-latest",
         )
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.timeout = timeout
 
     def build_system_blocks(self, system: str) -> list[dict[str, Any]]:
         """Return Anthropic `system=[...]` blocks with cache_control markers."""
@@ -236,25 +273,85 @@ class AnthropicProvider:
 
     def generate(
         self, system: str, user: str,
-    ) -> tuple[str, dict[str, int]]:  # pragma: no cover - stub
-        raise NotImplementedError(
-            "AnthropicProvider is a stub (WP-25.4). Wire up anthropic-py "
-            "in a follow-up and pass build_system_blocks(system) as the "
-            "`system` field of the Messages API request."
+    ) -> tuple[str, dict[str, int]]:
+        """Call the Messages API and return ``(content, usage_dict)``.
+
+        Raises ``requests.HTTPError`` on non-2xx responses so the
+        retry loop in :func:`_call_llm_with_retry` can surface the
+        message in its retry-context the same way it does for OpenAI
+        failures.
+        """
+        import requests
+
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": _ANTHROPIC_API_VERSION,
+            "content-type": "application/json",
+        }
+        body = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": self.build_system_blocks(system),
+            "messages": [{"role": "user", "content": user}],
+            "temperature": self.temperature,
+        }
+        resp = requests.post(
+            f"{self.base_url}/messages",
+            headers=headers,
+            json=body,
+            timeout=self.timeout,
         )
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = _extract_anthropic_text(data)
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("input_tokens", 0) or 0)
+        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+        cache_creation = int(usage.get("cache_creation_input_tokens", 0) or 0)
+        output_tokens = int(usage.get("output_tokens", 0) or 0)
+        prompt_tokens = input_tokens + cache_read + cache_creation
+        return text, {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": prompt_tokens + output_tokens,
+            "cached_tokens": cache_read,
+        }
 
 
-def get_llm_provider() -> OpenAIProvider | OpenRouterProvider | None:
+def _extract_anthropic_text(data: dict[str, Any]) -> str:
+    """Concatenate ``text`` content blocks from a Messages API response.
+
+    Tool-use blocks and other non-text content are skipped; the NL→Cypher
+    pipeline only consumes textual completions, and the prompt never
+    asks Claude to call a tool.
+    """
+    blocks = data.get("content") or []
+    parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "text":
+            parts.append(str(block.get("text") or ""))
+    return "".join(parts)
+
+
+def get_llm_provider() -> LLMProvider | None:
     """Create an LLM provider from environment configuration.
 
     Resolution order:
+
     1. ``LLM_PROVIDER=openai``      → :class:`OpenAIProvider`
     2. ``LLM_PROVIDER=openrouter``  → :class:`OpenRouterProvider`
-    3. Auto-detect: if ``OPENROUTER_API_KEY`` is set and ``OPENAI_API_KEY``
-       is not, use :class:`OpenRouterProvider`; otherwise
-       :class:`OpenAIProvider`.
+    3. ``LLM_PROVIDER=anthropic``   → :class:`AnthropicProvider`
+    4. Auto-detect on key presence, in this priority order:
+       ``OPENAI_API_KEY`` > ``OPENROUTER_API_KEY`` > ``ANTHROPIC_API_KEY``.
 
-    Returns ``None`` when no API key is available.
+    OpenAI takes priority on auto-detect because it is the most-tested
+    path in WP-25 and the eval gate baseline is calibrated against it;
+    Anthropic is opt-in via ``LLM_PROVIDER=anthropic`` until a baseline
+    refresh pass calibrates the gate against Claude as well.
+
+    Returns ``None`` when no API key is available for the chosen
+    provider (or for any provider, in auto-detect mode).
     """
     explicit = os.environ.get("LLM_PROVIDER", "").lower().strip()
     if explicit == "openrouter":
@@ -263,21 +360,27 @@ def get_llm_provider() -> OpenAIProvider | OpenRouterProvider | None:
     if explicit == "openai":
         p = OpenAIProvider()
         return p if p.api_key else None
+    if explicit == "anthropic":
+        a = AnthropicProvider()
+        return a if a.api_key else None
 
     has_openai = bool(os.environ.get("OPENAI_API_KEY", ""))
     has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY", ""))
-    if has_openrouter and not has_openai:
-        return OpenRouterProvider()
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
     if has_openai:
         return OpenAIProvider()
+    if has_openrouter:
+        return OpenRouterProvider()
+    if has_anthropic:
+        return AnthropicProvider()
     return None
 
 
-_DEFAULT_PROVIDER: _BaseChatProvider | None = None
+_DEFAULT_PROVIDER: LLMProvider | None = None
 _DEFAULT_PROVIDER_RESOLVED = False
 
 
-def _get_default_provider() -> _BaseChatProvider | None:
+def _get_default_provider() -> LLMProvider | None:
     """Lazily create a default LLM provider via :func:`get_llm_provider`."""
     global _DEFAULT_PROVIDER, _DEFAULT_PROVIDER_RESOLVED
     if _DEFAULT_PROVIDER_RESOLVED:

@@ -224,11 +224,215 @@ class TestAnthropicCacheControl:
         assert "SCHEMA" in blocks[0]["text"]
         assert "Examples" in blocks[1]["text"]
 
-    def test_provider_generate_is_not_implemented(self) -> None:
-        """The HTTP path is deliberately unwired — downstream tests should skip."""
-        provider = AnthropicProvider(api_key="fake")
-        with pytest.raises(NotImplementedError):
-            provider.generate("s", "u")
+    def test_provider_generate_posts_to_messages_api(self) -> None:
+        """generate() POSTs to /v1/messages with the cache-control system blocks."""
+        provider = AnthropicProvider(api_key="fake-key", model="claude-3-5-sonnet-latest")
+
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            @staticmethod
+            def json():
+                return {
+                    "id": "msg_x",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-5-sonnet-latest",
+                    "content": [
+                        {"type": "text", "text": "MATCH (n) RETURN n"},
+                    ],
+                    "usage": {
+                        "input_tokens": 32,
+                        "output_tokens": 16,
+                        "cache_creation_input_tokens": 1024,
+                        "cache_read_input_tokens": 0,
+                    },
+                }
+
+        def _capture(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return _Resp()
+
+        with patch("requests.post", side_effect=_capture):
+            content, usage = provider.generate(
+                "Prelude\n\nSCHEMA\n\n## Examples\nQ: x", "user question",
+            )
+
+        assert content == "MATCH (n) RETURN n"
+        assert captured["url"].endswith("/v1/messages")
+        headers = captured["headers"]
+        assert headers["x-api-key"] == "fake-key"
+        assert headers["anthropic-version"]
+        body = captured["json"]
+        assert body["model"] == "claude-3-5-sonnet-latest"
+        assert body["messages"] == [{"role": "user", "content": "user question"}]
+        assert isinstance(body["system"], list)
+        assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+        assert "SCHEMA" in body["system"][0]["text"]
+        assert usage["completion_tokens"] == 16
+        assert usage["cached_tokens"] == 0
+        assert usage["prompt_tokens"] == 32 + 0 + 1024
+        assert usage["total_tokens"] == usage["prompt_tokens"] + 16
+
+    def test_provider_generate_surfaces_cache_read_tokens(self) -> None:
+        """Second-request cache hits land in cached_tokens for downstream telemetry."""
+        provider = AnthropicProvider(api_key="fake-key")
+
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            @staticmethod
+            def json():
+                return {
+                    "content": [{"type": "text", "text": "OK"}],
+                    "usage": {
+                        "input_tokens": 32,
+                        "output_tokens": 8,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 1024,
+                    },
+                }
+
+        with patch("requests.post", return_value=_Resp()):
+            _, usage = provider.generate("system", "user")
+        assert usage["cached_tokens"] == 1024
+        assert usage["prompt_tokens"] == 32 + 1024 + 0
+
+    def test_provider_handles_missing_usage_keys(self) -> None:
+        """A provider response that omits cache fields returns 0, not a crash."""
+        provider = AnthropicProvider(api_key="fake-key")
+
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            @staticmethod
+            def json():
+                return {
+                    "content": [{"type": "text", "text": "OK"}],
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                }
+
+        with patch("requests.post", return_value=_Resp()):
+            _, usage = provider.generate("system", "user")
+        assert usage["cached_tokens"] == 0
+        assert usage["prompt_tokens"] == 10
+        assert usage["total_tokens"] == 15
+
+    def test_provider_concatenates_text_blocks_and_skips_others(self) -> None:
+        """Multiple text content blocks are joined; non-text blocks are skipped."""
+        provider = AnthropicProvider(api_key="fake-key")
+
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            @staticmethod
+            def json():
+                return {
+                    "content": [
+                        {"type": "text", "text": "Hello "},
+                        {"type": "tool_use", "id": "x", "name": "noop", "input": {}},
+                        {"type": "text", "text": "world"},
+                    ],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+
+        with patch("requests.post", return_value=_Resp()):
+            content, _ = provider.generate("system", "user")
+        assert content == "Hello world"
+
+
+class TestProviderResolution:
+    """get_llm_provider should resolve Anthropic via explicit and auto-detect paths."""
+
+    def test_explicit_anthropic_with_key_returns_anthropic_provider(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from arango_cypher.nl2cypher import get_llm_provider
+
+        monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "ak")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        provider = get_llm_provider()
+        assert isinstance(provider, AnthropicProvider)
+        assert provider.api_key == "ak"
+
+    def test_explicit_anthropic_without_key_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from arango_cypher.nl2cypher import get_llm_provider
+
+        monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        assert get_llm_provider() is None
+
+    def test_autodetect_falls_back_to_anthropic_when_only_anthropic_key_set(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from arango_cypher.nl2cypher import get_llm_provider
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "ak")
+        provider = get_llm_provider()
+        assert isinstance(provider, AnthropicProvider)
+
+    def test_autodetect_prefers_openai_over_anthropic(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OpenAI wins on auto-detect because the eval gate baseline is calibrated to it."""
+        from arango_cypher.nl2cypher import OpenAIProvider, get_llm_provider
+
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "ok")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "ak")
+        provider = get_llm_provider()
+        assert isinstance(provider, OpenAIProvider)
+
+
+class TestAnthropicLiveSmoke:
+    """Opt-in real-API smoke test (requires ANTHROPIC_API_KEY)."""
+
+    @pytest.mark.skipif(
+        not __import__("os").environ.get("ANTHROPIC_API_KEY"),
+        reason="ANTHROPIC_API_KEY not set; skipping live Anthropic smoke",
+    )
+    def test_live_cache_hit_on_second_identical_request(self) -> None:
+        """Two identical calls in a row should yield ``cached_tokens > 0`` on the second.
+
+        Anthropic's prompt caching has a minimum prefix length (~1024
+        tokens for Sonnet at the time of writing).  We pad the system
+        prompt past that threshold with a long static block so the
+        cache marker on the prefix actually takes effect.
+        """
+        provider = AnthropicProvider()
+        padding = "Static schema padding line.\n" * 200
+        system = f"You are a helpful assistant.\n\n{padding}"
+        user = "Reply with exactly the word OK and nothing else."
+
+        _, usage1 = provider.generate(system, user)
+        _, usage2 = provider.generate(system, user)
+        assert usage2["cached_tokens"] > 0, (
+            f"expected cache hit on second request, got usage={usage2}; "
+            f"first request usage was {usage1}"
+        )
 
 
 class TestCachedTokensSerializationShape:
