@@ -1,21 +1,52 @@
 {
-  "_comment": "Baseline for the NL->Cypher regression gate (WP-25.5). Refresh by running `python -m tests.nl2cypher.eval.runner --config full --baseline` with a live LLM, reviewing the resulting report, and committing this file with an explanation of deltas in the PR. Until a real baseline is captured, the figures below are placeholders tuned to be permissive so the gate passes on first run; replace them before enforcing in CI.",
   "config_name": "full",
-  "generated_at": "2024-01-01T00:00:00Z",
-  "case_count": 13,
-  "parse_ok_rate": 0.85,
-  "pattern_match_rate": 0.70,
+  "generated_at": "2026-04-18T20:41:56Z",
+  "case_count": 31,
+  "results": [],
+  "parse_ok_rate": 1.0,
+  "pattern_match_rate": 0.8709677419354839,
   "explain_ok_rate": null,
   "row_match_rate": null,
-  "tokens_mean": 800.0,
-  "cached_tokens_mean": 0.0,
-  "retries_mean": 0.3,
-  "latency_mean_ms": 2500.0,
+  "tokens_mean": 445.4193548387097,
+  "cached_tokens_mean": 0,
+  "retries_mean": 0,
+  "latency_mean_ms": 1351.7370967741936,
   "by_category": {
-    "baseline": {"n": 5, "parse_ok_rate": 1.0, "pattern_match_rate": 0.8, "tokens_mean": 800, "retries_mean": 0.2},
-    "few_shot_bait": {"n": 3, "parse_ok_rate": 0.9, "pattern_match_rate": 0.7, "tokens_mean": 900, "retries_mean": 0.3},
-    "typo": {"n": 2, "parse_ok_rate": 0.75, "pattern_match_rate": 0.5, "tokens_mean": 850, "retries_mean": 0.5},
-    "hallucination_bait": {"n": 3, "parse_ok_rate": 0.75, "pattern_match_rate": 0.6, "tokens_mean": 750, "retries_mean": 0.4}
+    "baseline": {
+      "n": 9,
+      "parse_ok_rate": 1.0,
+      "pattern_match_rate": 1.0,
+      "tokens_mean": 433.3333333333333,
+      "retries_mean": 0
+    },
+    "few_shot_bait": {
+      "n": 6,
+      "parse_ok_rate": 1.0,
+      "pattern_match_rate": 1.0,
+      "tokens_mean": 457,
+      "retries_mean": 0
+    },
+    "hallucination_bait": {
+      "n": 7,
+      "parse_ok_rate": 1.0,
+      "pattern_match_rate": 1.0,
+      "tokens_mean": 434.14285714285717,
+      "retries_mean": 0
+    },
+    "multi_hop": {
+      "n": 3,
+      "parse_ok_rate": 1.0,
+      "pattern_match_rate": 1.0,
+      "tokens_mean": 485,
+      "retries_mean": 0
+    },
+    "typo": {
+      "n": 6,
+      "parse_ok_rate": 1.0,
+      "pattern_match_rate": 0.3333333333333333,
+      "tokens_mean": 445.3333333333333,
+      "retries_mean": 0
+    }
   },
-  "results": []
+  "_comment": "Baseline for the NL->Cypher regression gate. Regenerate with `python -m tests.nl2cypher.eval.runner --config full --baseline`."
 }
