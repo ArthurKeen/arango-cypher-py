@@ -1034,3 +1034,29 @@ if _UI_DIR.is_dir():
         return FileResponse(_UI_DIR / "index.html")
 
     app.mount("/ui", StaticFiles(directory=str(_UI_DIR), html=True), name="ui")
+
+    # The Vite build emits root-relative URLs (`/assets/...`, `/favicon.svg`,
+    # `/icons.svg`) to match its dev server (`port: 5173`, no `base: '/ui/'`).
+    # Mount them at the app root so the production-mode `/ui` page can load
+    # its JS / CSS / icons without a rebuild.
+    _UI_ASSETS = _UI_DIR / "assets"
+    if _UI_ASSETS.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(_UI_ASSETS)),
+            name="ui_assets",
+        )
+
+    for _icon in ("favicon.svg", "icons.svg"):
+        _icon_path = _UI_DIR / _icon
+        if _icon_path.is_file():
+            def _make_icon_route(path: Path):
+                async def _serve_icon() -> FileResponse:
+                    return FileResponse(path)
+                return _serve_icon
+
+            app.add_api_route(
+                f"/{_icon}",
+                _make_icon_route(_icon_path),
+                include_in_schema=False,
+            )
