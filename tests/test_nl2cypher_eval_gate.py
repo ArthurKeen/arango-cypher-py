@@ -268,10 +268,15 @@ def test_gate_against_baseline() -> None:
     """Live regression gate: fresh run must not regress beyond baseline.
 
     Enable with ``RUN_NL2CYPHER_EVAL=1 OPENAI_API_KEY=... pytest``.
-    The baseline is committed at
-    ``tests/nl2cypher/eval/baseline.json`` — refresh by running the
-    runner with the ``full`` config and copying the fresh report over
-    the baseline (and writing a PR explaining why).
+    Set ``NL2CYPHER_EVAL_USE_DB=1`` (in addition) to also engage the
+    live ArangoDB so WP-25.2 entity resolution and WP-25.3 EXPLAIN-grounded
+    retry actually run — requires ``ARANGO_URL`` / ``ARANGO_USER`` /
+    ``ARANGO_PASS`` and seeded fixture databases (see runner CLI's
+    ``--with-db`` flag and ``open_eval_db_handles`` for the env-var contract).
+
+    The baseline is committed at ``tests/nl2cypher/eval/baseline.json`` —
+    refresh by running the runner with the ``full`` config (and ideally
+    ``--with-db``) and copying the fresh report over the baseline.
     """
     if not BASELINE_PATH.exists():
         pytest.skip(f"baseline not present at {BASELINE_PATH}; create it first")
@@ -287,7 +292,18 @@ def test_gate_against_baseline() -> None:
         (c for c in load_configs() if c.get("name") == "full"),
         {"name": "full"},
     )
-    report = run_eval(config=full_cfg, provider=provider, cases=load_corpus())
+
+    db_for_fixture: dict = {}
+    if os.environ.get("NL2CYPHER_EVAL_USE_DB") == "1":
+        from tests.nl2cypher.eval.runner import open_eval_db_handles
+        db_for_fixture = open_eval_db_handles()
+
+    report = run_eval(
+        config=full_cfg,
+        provider=provider,
+        cases=load_corpus(),
+        db_for_fixture=db_for_fixture,
+    )
     fresh = report.to_dict()
 
     assert fresh["case_count"] > 0
@@ -302,3 +318,184 @@ def test_gate_against_baseline() -> None:
 def test_corpus_file_exists() -> None:
     """Sanity check: corpus.yml must ship with the package."""
     assert CORPUS_PATH.exists(), f"missing {CORPUS_PATH}"
+
+
+class TestRunnerDbPlumbing:
+    """WP-25.5 follow-up: per-fixture DB handles + corrected gating."""
+
+    def test_run_case_routes_db_by_fixture(self) -> None:
+        """``db_for_fixture`` must thread the right DB into nl_to_cypher per case."""
+        from unittest.mock import patch
+
+        from tests.nl2cypher.eval.runner import EvalCase, run_case
+
+        movies_db = object()
+        northwind_db = object()
+        captured: list[Any] = []
+
+        def _fake_nl_to_cypher(question: str, **kwargs):  # noqa: ARG001
+            captured.append(kwargs.get("db"))
+            from arango_cypher.nl2cypher import NL2CypherResult
+            return NL2CypherResult(cypher="MATCH (n) RETURN n", source="llm")
+
+        case_movies = EvalCase(
+            id="m", mapping_fixture="movies_pg",
+            question="x", expected_patterns=[], category="baseline",
+        )
+        case_nw = EvalCase(
+            id="n", mapping_fixture="northwind_pg",
+            question="y", expected_patterns=[], category="baseline",
+        )
+        cfg = {"name": "full", "use_entity_resolution": True, "use_execution_grounded": True}
+        with patch("tests.nl2cypher.eval.runner.nl_to_cypher", side_effect=_fake_nl_to_cypher):
+            run_case(case_movies, provider=None, config=cfg,
+                     db_for_fixture={"movies_pg": movies_db, "northwind_pg": northwind_db})
+            run_case(case_nw, provider=None, config=cfg,
+                     db_for_fixture={"movies_pg": movies_db, "northwind_pg": northwind_db})
+
+        assert captured == [movies_db, northwind_db]
+
+    def test_run_case_no_db_falls_back_to_none(self) -> None:
+        """Empty map + no legacy db => nl_to_cypher receives db=None."""
+        from unittest.mock import patch
+
+        from tests.nl2cypher.eval.runner import EvalCase, run_case
+
+        captured: list[Any] = []
+
+        def _fake_nl_to_cypher(question: str, **kwargs):  # noqa: ARG001
+            captured.append(kwargs.get("db"))
+            from arango_cypher.nl2cypher import NL2CypherResult
+            return NL2CypherResult(cypher="MATCH (n) RETURN n", source="llm")
+
+        case = EvalCase(
+            id="x", mapping_fixture="movies_pg",
+            question="q", expected_patterns=[], category="baseline",
+        )
+        cfg = {"name": "full", "use_entity_resolution": True, "use_execution_grounded": True}
+        with patch("tests.nl2cypher.eval.runner.nl_to_cypher", side_effect=_fake_nl_to_cypher):
+            run_case(case, provider=None, config=cfg, db_for_fixture={})
+
+        assert captured == [None]
+
+    def test_run_case_legacy_single_db_still_works(self) -> None:
+        """Pre-WP-25.5-followup tests that pass `db=` keep working."""
+        from unittest.mock import patch
+
+        from tests.nl2cypher.eval.runner import EvalCase, run_case
+
+        legacy_db = object()
+        captured: list[Any] = []
+
+        def _fake_nl_to_cypher(question: str, **kwargs):  # noqa: ARG001
+            captured.append(kwargs.get("db"))
+            from arango_cypher.nl2cypher import NL2CypherResult
+            return NL2CypherResult(cypher="MATCH (n) RETURN n", source="llm")
+
+        case = EvalCase(
+            id="x", mapping_fixture="movies_pg",
+            question="q", expected_patterns=[], category="baseline",
+        )
+        cfg = {"name": "full", "use_entity_resolution": True, "use_execution_grounded": True}
+        with patch("tests.nl2cypher.eval.runner.nl_to_cypher", side_effect=_fake_nl_to_cypher):
+            run_case(case, provider=None, config=cfg, db=legacy_db)
+
+        assert captured == [legacy_db]
+
+    def test_run_case_passes_db_for_entity_resolution_only(self) -> None:
+        """Bug fix: db must reach nl_to_cypher when use_entity_resolution=True
+        even if use_execution_grounded=False (the few_shot_plus_entity config).
+        """
+        from unittest.mock import patch
+
+        from tests.nl2cypher.eval.runner import EvalCase, run_case
+
+        my_db = object()
+        captured: list[Any] = []
+
+        def _fake_nl_to_cypher(question: str, **kwargs):  # noqa: ARG001
+            captured.append(kwargs.get("db"))
+            from arango_cypher.nl2cypher import NL2CypherResult
+            return NL2CypherResult(cypher="MATCH (n) RETURN n", source="llm")
+
+        case = EvalCase(
+            id="x", mapping_fixture="movies_pg",
+            question="q", expected_patterns=[], category="baseline",
+        )
+        cfg = {
+            "name": "few_shot_plus_entity",
+            "use_fewshot": True,
+            "use_entity_resolution": True,
+            "use_execution_grounded": False,
+        }
+        with patch("tests.nl2cypher.eval.runner.nl_to_cypher", side_effect=_fake_nl_to_cypher):
+            run_case(case, provider=None, config=cfg,
+                     db_for_fixture={"movies_pg": my_db})
+
+        assert captured == [my_db]
+
+    def test_run_case_skips_db_when_neither_flag_set(self) -> None:
+        """zero_shot config should NOT receive a DB even if one is available."""
+        from unittest.mock import patch
+
+        from tests.nl2cypher.eval.runner import EvalCase, run_case
+
+        my_db = object()
+        captured: list[Any] = []
+
+        def _fake_nl_to_cypher(question: str, **kwargs):  # noqa: ARG001
+            captured.append(kwargs.get("db"))
+            from arango_cypher.nl2cypher import NL2CypherResult
+            return NL2CypherResult(cypher="MATCH (n) RETURN n", source="llm")
+
+        case = EvalCase(
+            id="x", mapping_fixture="movies_pg",
+            question="q", expected_patterns=[], category="baseline",
+        )
+        cfg = {
+            "name": "zero_shot",
+            "use_fewshot": False,
+            "use_entity_resolution": False,
+            "use_execution_grounded": False,
+        }
+        with patch("tests.nl2cypher.eval.runner.nl_to_cypher", side_effect=_fake_nl_to_cypher):
+            run_case(case, provider=None, config=cfg,
+                     db_for_fixture={"movies_pg": my_db})
+
+        assert captured == [None]
+
+
+class TestOpenEvalDbHandles:
+    """The env-var-driven DB connection helper."""
+
+    def test_no_arango_url_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tests.nl2cypher.eval.runner import open_eval_db_handles
+
+        monkeypatch.delenv("ARANGO_URL", raising=False)
+        assert open_eval_db_handles() == {}
+
+    def test_per_fixture_env_override(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``NL2CYPHER_EVAL_<FIXTURE>_DB`` overrides the default name."""
+        from tests.nl2cypher.eval.runner import _fixture_db_name
+
+        monkeypatch.setenv("NL2CYPHER_EVAL_MOVIES_PG_DB", "my_movies_db")
+        assert _fixture_db_name("movies_pg") == "my_movies_db"
+
+    def test_unknown_fixture_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tests.nl2cypher.eval.runner import _fixture_db_name
+
+        monkeypatch.delenv("NL2CYPHER_EVAL_UNKNOWN_DB", raising=False)
+        assert _fixture_db_name("unknown") is None
+
+    def test_default_fixture_names(self) -> None:
+        from tests.nl2cypher.eval.runner import _fixture_db_name
+
+        # Defaults map both shipped fixtures
+        assert _fixture_db_name("movies_pg")
+        assert _fixture_db_name("northwind_pg")

@@ -12,9 +12,12 @@ production sweeps can pass a real :class:`~arango_cypher.nl2cypher.OpenAIProvide
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 import statistics
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,10 +30,84 @@ from arango_cypher.nl2cypher import (
 )
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+logger = logging.getLogger(__name__)
+
 EVAL_DIR = Path(__file__).parent
 CORPUS_PATH = EVAL_DIR / "corpus.yml"
 CONFIGS_PATH = EVAL_DIR / "configs.yml"
 REPORTS_DIR = EVAL_DIR / "reports"
+
+#: Default database name per mapping fixture.  Override via env vars
+#: ``NL2CYPHER_EVAL_<FIXTURE>_DB`` (uppercased) for a custom layout —
+#: e.g. ``NL2CYPHER_EVAL_MOVIES_PG_DB=my_movies_db``.
+_DEFAULT_FIXTURE_DBS: dict[str, str] = {
+    "movies_pg": "nl2cypher_eval_movies_pg",
+    "northwind_pg": "northwind_cross_test",
+}
+
+
+def _fixture_db_name(fixture: str) -> str | None:
+    """Return the database name to use for *fixture*, honoring env overrides.
+
+    Returns ``None`` when no default exists and no override is set —
+    the runner then falls back to its no-DB code path for that fixture.
+    """
+    env_var = f"NL2CYPHER_EVAL_{fixture.upper()}_DB"
+    override = os.environ.get(env_var)
+    if override:
+        return override
+    return _DEFAULT_FIXTURE_DBS.get(fixture)
+
+
+def open_eval_db_handles(
+    *,
+    fixtures: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a ``{fixture: StandardDatabase}`` map from ``ARANGO_*`` env vars.
+
+    Reads ``ARANGO_URL`` / ``ARANGO_USER`` / ``ARANGO_PASS`` and opens
+    one connection per fixture against the database resolved by
+    :func:`_fixture_db_name`.  Fixtures whose database doesn't exist are
+    silently skipped so the runner falls back to no-DB for them — the
+    caller can inspect the returned map's keys to see which fixtures
+    actually got a live DB.
+
+    Returns ``{}`` when ``ARANGO_URL`` isn't set or python-arango isn't
+    importable, so the function is always safe to call.
+
+    *fixtures* defaults to the keys of :data:`_DEFAULT_FIXTURE_DBS` plus
+    any env-override-only fixtures discoverable via the corpus.
+    """
+    url = os.environ.get("ARANGO_URL")
+    if not url:
+        return {}
+    try:
+        from arango import ArangoClient
+    except ImportError:
+        logger.info("python-arango not installed; eval runner falling back to no-DB mode")
+        return {}
+
+    user = os.environ.get("ARANGO_USER", "root")
+    password = os.environ.get("ARANGO_PASS", "")
+    fixture_list = fixtures if fixtures is not None else list(_DEFAULT_FIXTURE_DBS.keys())
+
+    client = ArangoClient(hosts=url)
+    handles: dict[str, Any] = {}
+    for fx in fixture_list:
+        db_name = _fixture_db_name(fx)
+        if not db_name:
+            continue
+        try:
+            db = client.db(db_name, username=user, password=password)
+            db.version()
+        except Exception as exc:
+            logger.info(
+                "Eval runner: skipping %s (cannot open DB %r): %s",
+                fx, db_name, exc,
+            )
+            continue
+        handles[fx] = db
+    return handles
 
 
 @dataclass
@@ -148,9 +225,36 @@ def run_case(
     provider: LLMProvider | None,
     config: dict[str, Any],
     db: Any | None = None,
+    db_for_fixture: Mapping[str, Any] | None = None,
 ) -> CaseResult:
-    """Run one eval case and collect metrics."""
+    """Run one eval case and collect metrics.
+
+    The DB used for WP-25.2 entity resolution and WP-25.3 EXPLAIN-grounded
+    retry is resolved as follows:
+
+    1. ``db_for_fixture[case.mapping_fixture]`` if present — the
+       per-fixture map produced by :func:`open_eval_db_handles`.
+    2. ``db`` if non-None — back-compat for tests that pass a single DB.
+    3. ``None`` — runner stays in no-DB mode for this case.
+
+    The resolved DB is then passed to :func:`nl_to_cypher` whenever
+    *either* ``use_entity_resolution`` *or* ``use_execution_grounded`` is
+    set; previously it was gated on ``use_execution_grounded`` alone, so
+    the ``few_shot_plus_entity`` config silently skipped WP-25.2.
+    """
     mapping = mapping_bundle_for(case.mapping_fixture)
+    case_db: Any | None = None
+    if db_for_fixture and case.mapping_fixture in db_for_fixture:
+        case_db = db_for_fixture[case.mapping_fixture]
+    elif db is not None:
+        case_db = db
+
+    needs_db = bool(
+        config.get("use_execution_grounded")
+        or config.get("use_entity_resolution", True),
+    )
+    db_for_call = case_db if needs_db else None
+
     t0 = time.perf_counter()
     try:
         res = nl_to_cypher(
@@ -160,7 +264,7 @@ def run_case(
             llm_provider=provider,
             use_fewshot=bool(config.get("use_fewshot", True)),
             use_entity_resolution=bool(config.get("use_entity_resolution", True)),
-            db=db if config.get("use_execution_grounded") else None,
+            db=db_for_call,
         )
     except Exception as exc:
         return CaseResult(
@@ -205,12 +309,26 @@ def run_eval(
     provider: LLMProvider | None,
     cases: list[EvalCase] | None = None,
     db: Any | None = None,
+    db_for_fixture: Mapping[str, Any] | None = None,
 ) -> Report:
-    """Run the full corpus under *config* and return a :class:`Report`."""
+    """Run the full corpus under *config* and return a :class:`Report`.
+
+    Pass *db_for_fixture* (typically from :func:`open_eval_db_handles`)
+    to engage WP-25.2 entity resolution and/or WP-25.3 EXPLAIN-grounded
+    retry per case.  *db* is the legacy single-handle parameter and is
+    used as a fallback when no per-fixture handle is registered.
+    """
     if cases is None:
         cases = load_corpus()
     results: list[CaseResult] = [
-        run_case(c, provider=provider, config=config, db=db) for c in cases
+        run_case(
+            c,
+            provider=provider,
+            config=config,
+            db=db,
+            db_for_fixture=db_for_fixture,
+        )
+        for c in cases
     ]
 
     def _rate(key: str) -> float:
@@ -313,6 +431,7 @@ __all__ = [
     "Report",
     "load_configs",
     "load_corpus",
+    "open_eval_db_handles",
     "run_case",
     "run_eval",
     "save_report",
@@ -340,6 +459,14 @@ def _main(argv: list[str] | None = None) -> int:
         help="Overwrite tests/nl2cypher/eval/baseline.json with the fresh report "
         "(summary only, no per-case rows).",
     )
+    parser.add_argument(
+        "--with-db",
+        action="store_true",
+        help="Open an ArangoDB connection per mapping fixture (driven by "
+        "ARANGO_URL / ARANGO_USER / ARANGO_PASS env vars and the "
+        "NL2CYPHER_EVAL_<FIXTURE>_DB overrides) so WP-25.2 entity resolution "
+        "and WP-25.3 EXPLAIN-grounded retry actually engage.",
+    )
     args = parser.parse_args(argv)
 
     from arango_cypher.nl2cypher import get_llm_provider
@@ -358,7 +485,21 @@ def _main(argv: list[str] | None = None) -> int:
         print(f"Unknown config {args.config!r}; available: {sorted(cfgs)}")
         return 2
 
-    report = run_eval(config=cfg, provider=provider)
+    db_for_fixture: dict[str, Any] = {}
+    if args.with_db:
+        db_for_fixture = open_eval_db_handles()
+        if db_for_fixture:
+            print(
+                "Live DB enabled for fixtures: "
+                + ", ".join(sorted(db_for_fixture)),
+            )
+        else:
+            print(
+                "--with-db requested but no DB handles opened (check ARANGO_URL / "
+                "ARANGO_USER / ARANGO_PASS); falling back to no-DB mode.",
+            )
+
+    report = run_eval(config=cfg, provider=provider, db_for_fixture=db_for_fixture)
     json_path, md_path = save_report(report)
     print(f"Wrote {json_path}")
     print(f"Wrote {md_path}")
