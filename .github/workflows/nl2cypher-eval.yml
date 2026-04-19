@@ -1,0 +1,124 @@
+name: NL2Cypher eval gate
+
+# Nightly regression gate for the WP-25 NL->Cypher pipeline.
+#
+# Runs the same `tests/test_nl2cypher_eval_gate.py::test_gate_against_baseline`
+# that developers can run locally with `RUN_NL2CYPHER_EVAL=1
+# NL2CYPHER_EVAL_USE_DB=1`, but on a fresh ArangoDB seeded with the
+# movies_pg + northwind_pg fixtures, against a real OpenAI provider.
+#
+# Cost per run is small (~$0.05 at gpt-4o-mini for 31 cases), so we
+# schedule nightly and also expose a manual trigger.  Failures here
+# should be triaged but DO NOT block PRs (this workflow is not part of
+# the PR check matrix).
+
+on:
+  schedule:
+    # 06:00 UTC daily ~= 02:00 ET / 23:00 PT.  Picks up corpus / config /
+    # baseline drift overnight so the team sees regressions at standup.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    # Manual trigger for ad-hoc baseline refreshes / reproducibility checks.
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      arangodb:
+        image: arangodb/arangodb:3.11
+        env:
+          ARANGO_ROOT_PASSWORD: openSesame
+        ports:
+          - 28529:8529
+        options: >-
+          --health-cmd "wget -qO- --header='Content-Type: application/json' --post-data '{\"username\":\"root\",\"password\":\"openSesame\"}' http://127.0.0.1:8529/_open/auth >/dev/null 2>&1"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 40
+
+    env:
+      # Connection - matches `tests/integration/conftest.py` defaults.
+      ARANGO_URL: http://localhost:28529
+      ARANGO_USER: root
+      ARANGO_PASS: openSesame
+
+      # Engage the live gate + per-fixture DB plumbing (Wave 4g) and the
+      # WP-25.2 / WP-25.3 codepaths.
+      RUN_NL2CYPHER_EVAL: "1"
+      NL2CYPHER_EVAL_USE_DB: "1"
+
+      # Per-fixture DB names default to nl2cypher_eval_movies_pg /
+      # northwind_cross_test in `runner._DEFAULT_FIXTURE_DBS`.  We seed
+      # exactly those names below so no override is needed.
+
+      # LLM provider.  At least one of these secrets must be set for the
+      # workflow to do meaningful work; if neither is configured the gate
+      # test self-skips and the job exits 0 (so a brand-new fork doesn't
+      # red-light on day one).
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package + dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Seed eval fixtures into ArangoDB
+        # Uses the same seeders the integration suite uses, so they stay
+        # in lockstep with the schema fixtures.  Idempotent: truncates
+        # before insert, so re-runs are clean.
+        run: |
+          python - <<'PY'
+          import os
+          from arango import ArangoClient
+          from tests.integration.datasets import (
+              seed_movies_pg_dataset,
+              seed_northwind_dataset,
+          )
+
+          client = ArangoClient(hosts=os.environ["ARANGO_URL"])
+          user = os.environ["ARANGO_USER"]
+          password = os.environ["ARANGO_PASS"]
+          sys_db = client.db("_system", username=user, password=password)
+
+          for db_name, seeder in (
+              ("nl2cypher_eval_movies_pg", seed_movies_pg_dataset),
+              ("northwind_cross_test", seed_northwind_dataset),
+          ):
+              if not sys_db.has_database(db_name):
+                  sys_db.create_database(db_name)
+                  print(f"created {db_name}")
+              else:
+                  print(f"reusing {db_name}")
+              db = client.db(db_name, username=user, password=password)
+              seeder(db)
+              cols = sorted(c["name"] for c in db.collections() if not c["name"].startswith("_"))
+              print(f"  collections in {db_name}: {cols}")
+          PY
+
+      - name: Run NL->Cypher regression gate
+        # The gate test self-skips if no LLM provider is configured,
+        # which is the right behavior for unforked clones.
+        run: |
+          pytest tests/test_nl2cypher_eval_gate.py::test_gate_against_baseline \
+            -v --tb=short
+
+      - name: Upload eval report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nl2cypher-eval-reports
+          path: tests/nl2cypher/eval/reports/
+          if-no-files-found: ignore
+          retention-days: 14
