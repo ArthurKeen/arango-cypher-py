@@ -1,0 +1,112 @@
+# openCypher TCK coverage — measured
+
+> Measurement date: 2026-04-20
+> Methodology: translation-only dry run (`python tests/tck/analyze_coverage.py`). Each scenario's main Cypher query is parsed and translated; scenarios that translate successfully (or correctly reject an error-expected input) count as passable. No DB execution — this is an upper bound on what the runner could achieve with a live ArangoDB.
+
+## Headline numbers
+
+| Subset | Passable | Pass rate |
+|--------|----------|-----------|
+| **Full TCK** (all 3,861 scenarios) | 1,245 / 3,861 | **32.2 %** |
+| **Core TCK** (excludes out-of-scope: `expressions/temporal`, `expressions/quantifier`, `clauses/call` — 2,201 scenarios) | 1,206 / 2,201 | **54.8 %** |
+| **Clauses-only** (the focused v0 target — excludes all `expressions/` + `useCases/`, 1,199 scenarios) | 792 / 1,199 | **66.1 %** |
+
+The prior PRD entry ("Projected 66.1 %, clause-focused") is confirmed as an accurate measurement of the clauses-only subset. The full-TCK number is lower primarily because of the two out-of-scope expression categories (`temporal`: 1,004 scenarios requiring the TCK's date/time type system; `quantifier`: 604 scenarios requiring existential quantifier syntax). Both are explicitly marked out of scope for v0–v0.4.
+
+## Top translation-failure reasons (actionable)
+
+| Count | Reason | Implication |
+|------:|--------|-------------|
+| 1,560 | `MATCH is required in v0 subset` | Scenario's main query starts with something other than `MATCH` — typically a bare `CREATE`, `WITH`, or `UNWIND`. Largest single lever: relax the leading-clause constraint in the parser, so these scenarios reach the translator. |
+| 475 | `MATCH is required before WITH in v0 subset` | Subset of the above. |
+| 102 | `Relationship type is required in v0 subset` | `MATCH (a)-[r]-(b)` without a `:TYPE`. Could be supported by emitting an `ANY` multi-edge-collection traversal. |
+| 84 | `Relationship detail with a single type is required in v0 subset` | Multi-type edges `-[:A\|B]->`. Requires minor translator change. |
+| 49 | `SET/DELETE requires labeled node in v0` | Write clauses on unlabeled node variables. |
+| 45 | `Updating clauses are not supported in v0` | `SET` / `DELETE` / `REMOVE` edge-case subset. |
+| 28 | `Unsupported function in v0: duration` | `expressions/temporal` — out of scope. |
+| 20 + 10 + 10 | `Cypher syntax error at ...: no viable alternative` | ANTLR grammar gaps. Specific failing texts require inspection. |
+| 15 | `Unsupported function in v0: count` | Standalone `count()` in a context we don't yet accept. |
+| 10 | `Only IN operator is supported in v0` | Custom operators (e.g. `[x, y]` pattern-matching). |
+| 10 | Chained comparisons not supported | `a < b < c` — grammar. |
+| 9 | `Only a single pattern part is supported in v0` | Multi-pattern `MATCH` clauses with comma-separated patterns. |
+
+## Category breakdown
+
+### High-coverage (≥ 70 % passable)
+| Category | Passable | Pass rate |
+|----------|----------|-----------|
+| clauses/return-skip-limit | 30 / 31 | 96.8 % |
+| expressions/boolean | 130 / 150 | 86.7 % |
+| expressions/string | 27 / 32 | 84.4 % |
+| clauses/match | 302 / 381 | 79.3 % |
+| expressions/graph | 47 / 61 | 77.0 % |
+| expressions/pattern | 38 / 50 | 76.0 % |
+| clauses/create | 58 / 78 | 74.4 % |
+| expressions/aggregation | 26 / 35 | 74.3 % |
+| clauses/with-orderBy | 211 / 292 | 72.3 % |
+
+### Medium-coverage (40 – 70 %)
+| Category | Passable | Pass rate |
+|----------|----------|-----------|
+| clauses/return-orderby | 24 / 35 | 68.6 % |
+| expressions/typeConversion | 28 / 47 | 59.6 % |
+| expressions/path | 4 / 7 | 57.1 % |
+| clauses/with-skip-limit | 5 / 9 | 55.6 % |
+| clauses/merge | 41 / 75 | 54.7 % |
+| clauses/return | 34 / 63 | 54.0 % |
+| clauses/union | 6 / 12 | 50.0 % |
+| clauses/unwind | 7 / 14 | 50.0 % |
+| clauses/set | 24 / 53 | 45.3 % |
+| clauses/with | 12 / 29 | 41.4 % |
+| clauses/match-where | 14 / 34 | 41.2 % |
+
+### Low-coverage (< 40 %) — biggest room for improvement
+| Category | Passable | Pass rate | Notes |
+|----------|----------|-----------|-------|
+| clauses/remove | 12 / 33 | 36.4 % | `REMOVE` is partial; additional patterns needed. |
+| expressions/list | 62 / 185 | 33.5 % | List operators; list comprehension edge cases. |
+| expressions/mathematical | 2 / 6 | 33.3 % | Small category, check what's missing. |
+| clauses/delete | 11 / 41 | 26.8 % | Advanced `DELETE` patterns. |
+| expressions/map | 9 / 44 | 20.5 % | Map constructors in various positions. |
+| expressions/literals | 25 / 131 | 19.1 % | Numeric/string literal edge cases. |
+| expressions/null | 8 / 44 | 18.2 % | `null`-in-context handling. |
+| expressions/existentialSubqueries | 1 / 10 | 10.0 % | `EXISTS { }` subquery; partial support today. |
+| expressions/comparison | 6 / 72 | 8.3 % | Chained comparisons + type-coercion corners. |
+| expressions/conditional | 1 / 13 | 7.7 % | `CASE` expressions in edge-case contexts. |
+| clauses/with-where | 1 / 19 | 5.3 % | `WITH` + `WHERE` filter placement edge cases. |
+| useCases/countingSubgraphMatches | 0 / 11 | 0.0 % | Specialized subgraph-counting queries. |
+| expressions/precedence | 0 / 104 | 0.0 % | Operator-precedence torture tests — systematic gap. |
+
+### Out of scope (excluded from Core TCK)
+| Category | Passable | Pass rate | Reason |
+|----------|----------|-----------|--------|
+| expressions/temporal | 25 / 1,004 | 2.5 % | TCK temporal types not implemented. |
+| expressions/quantifier | 12 / 604 | 2.0 % | TCK `ANY`/`ALL`/`SINGLE` quantifiers not implemented. |
+| clauses/call | 2 / 52 | 3.8 % | `CALL` procedure syntax not implemented (handled via `arango.*` extensions, not TCK `CALL`). |
+
+## How to reproduce
+
+```bash
+python tests/tck/analyze_coverage.py
+```
+
+No DB needed; takes ~10 seconds over 220 feature files.
+
+For an end-to-end measurement (requires live ArangoDB):
+
+```bash
+docker compose up -d
+RUN_INTEGRATION=1 RUN_TCK=1 pytest -m tck
+```
+
+End-to-end numbers will be lower than translation-only numbers because the runner still has to seed the graph from the `Given` steps and normalize results against Neo4j conventions (see `tests/tck/normalize.py`). Translation-only is the primary metric tracked here because it isolates the transpiler from the surrounding harness.
+
+## Prioritized follow-ups (if/when TCK uplift is prioritized again)
+
+1. **Accept non-MATCH leading clauses** (≈ +1,560 scenarios now blocked at the leading-clause guard). Standalone `CREATE`, `WITH`, `UNWIND` at top of query. Single largest unlock.
+2. **Multi-type relationships** `-[:A|B]->` (≈ +84 scenarios). Minor translator change — emit a multi-collection traversal or filtered `ANY`.
+3. **Typeless relationships** `-[r]-` (≈ +102 scenarios). Requires iterating all edge collections or using a union subquery — non-trivial but tractable.
+4. **Operator-precedence corpus** (104 scenarios at 0 %). Likely a targeted cluster of grammar rules; investigate whether ANTLR grammar fidelity is the issue.
+5. **Map / literal / null / comparison expression edges** (≈ 230 scenarios combined under 20 %). Long tail; each is a small translator fix.
+
+None of these are currently on the v0.4 plan. They are listed here purely as a triage-ready backlog for a future TCK-uplift sprint.

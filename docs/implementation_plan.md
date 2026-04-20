@@ -385,199 +385,22 @@ Week 6:    Buffer / bug fixes from TCK runs
 
 ---
 
-## v0.3 — Language breadth + UI completeness + datasets
+## v0.3 — Language breadth + UI completeness + datasets (shipped 2026-04-13)
 
-Work packages at higher granularity. Detailed breakdowns should be created when v0.2 nears completion.
+> **Historical reference.** All WP-9 through WP-18 landed between 2026-04-11 and 2026-04-13 as part of the v0.3 wave. The tracking table at the bottom of this document (and the PRD status matrix) is the live source of truth for current status — these summaries are kept for test-fixture discoverability only. The original "v0.3 execution order" block has been removed because it read like a plan for future work; v0.3 is done.
 
-### WP-9: OPTIONAL MATCH full support
-
-**PRD**: §6.4, §7.6
-**Estimate**: 1-2 weeks
-
-- Multi-segment OPTIONAL MATCH: `OPTIONAL MATCH (a)-[:KNOWS]->(b)-[:LIVES_IN]->(c)`
-- Node-only OPTIONAL MATCH: `OPTIONAL MATCH (n:Person {name: "Nobody"})`
-- Leading OPTIONAL MATCH (no prior MATCH)
-- AQL: subquery with `LEFT JOIN`-style fallback to null rows
-
-### WP-10: EXISTS, regex, pattern predicates
-
-**PRD**: §6.4 predicates
-**Estimate**: 1 week
-
-- `WHERE EXISTS(n.email)` → `FILTER n.email != null` (property existence)
-- `WHERE (n)-[:KNOWS]->()` → pattern predicate (subquery existence check)
-- `WHERE n.name =~ "^A.*"` → `FILTER REGEX_TEST(n.name, "^A.*")`
-
-### WP-11: Named paths + path functions
-
-**PRD**: §6.4 patterns, §7.6
-**Estimate**: 1-2 weeks
-
-- `p = (a)-[:KNOWS]->(b)` → `LET p = {vertices: [a, b], edges: [r]}`
-- `length(p)` → `LENGTH(p.edges)`
-- `nodes(p)` / `relationships(p)` → `p.vertices` / `p.edges`
-- Native `shortestPath()` syntax → delegate to existing `arango.shortest_path` procedure
-- Relationship uniqueness enforcement for multi-segment paths
-
-### WP-12: Remaining built-in functions
-
-**PRD**: §6.4 built-in functions
-**Estimate**: 3-5 days
-
-- `head(list)`, `tail(list)`, `last(list)`, `range(start, end, step)`, `reverse(list)`
-- Multi-label matching for COLLECTION-style (currently only LABEL-style)
-
-### WP-13: OWL Turtle round-trip
-
-**PRD**: §5.4
-**Estimate**: 1 week
-**Dependencies**: WP-3
-
-- Add `rdflib` as optional dependency
-- `load_owl_turtle(ttl_string) -> MappingBundle` — parse TTL, extract entity/relationship mappings
-- `generate_owl_turtle(mapping: MappingBundle) -> str` — produce OWL Turtle from enriched mapping
-- Wire into `_mapping_from_dict` in `service.py` to read `owl_turtle` / `owlTurtle`
-- Update `/schema/summary` to include OWL in response
-
-### WP-14: Visual mapping graph editor
-
-**PRD**: §5.6
-**Estimate**: 2 weeks
-
-- Add `cytoscape` + `cytoscape-dagre` to `ui/package.json`
-- New `ui/src/components/MappingGraph.tsx` — Cytoscape.js entity-relationship diagram
-- Entity nodes: rounded rectangles with label, collection badge, property list
-- Relationship edges: labeled arrows with edge collection, style badge
-- Bidirectional sync with JSON mapping editor
-- Toggle between "JSON" and "Visual" views in mapping panel
-- Add/edit/delete entities and relationships via side panel
-
-### WP-15: Results graph view + profile
-
-**PRD**: §4.4.6, §4.4.3C
-**Estimate**: 1-2 weeks
-
-- Add Cytoscape.js for results graph view (nodes + edges from query results)
-- AQL Profile button → `POST /aql-profile` → annotated execution plan tree
-- Color-coded hotspots (nodes with high execution time)
-- Variable-use highlighting in Cypher editor
-
-### WP-16: Datasets expansion
-
-**PRD**: §8.3
-**Estimate**: 1-2 weeks
-**Dependencies**: WP-7
-
-- Add Northwind dataset (convert from Neo4j, extract queries)
-- Run Movies and Northwind query corpus against both LPG and PG mappings
-- Automate dataset download: `scripts/download_neo4j_dataset.py`
-- TCK overall ≥ 25% pass rate
-
-### WP-17: NL-to-Cypher pipeline
-
-**PRD**: §1.1 (architectural principle), §10 v0.3
-**Priority**: Medium — high-value feature but not on critical path for transpiler correctness
-**Estimate**: 2-3 weeks
-**Dependencies**: WP-3 (schema analyzer — provides the conceptual schema the LLM consumes)
-
-#### Architectural context
-
-Per §1.1, the NL2Cypher pipeline operates exclusively against the **logical (conceptual) schema**. The LLM receives entity labels, relationship types, and property names — never collection names, type fields, or AQL. The transpiler handles all physical mapping concerns.
-
-#### Scope
-
-1. **Schema prompt builder** — given a `MappingBundle`, extract a compact textual representation of the conceptual schema suitable for LLM context:
-   - Entity labels with properties and types
-   - Relationship types with domain/range and properties
-   - Example Cypher patterns for each relationship
-2. **LLM adapter interface** — pluggable provider abstraction:
-   - `NL2CypherProvider` protocol: `async def generate(nl_query: str, schema_context: str) -> str`
-   - OpenAI implementation (GPT-4o / GPT-4.1)
-   - Anthropic implementation (Claude)
-   - Local/custom endpoint implementation
-3. **Validation loop** — generated Cypher is parsed by the ANTLR parser before returning; if parsing fails, retry with error feedback (up to 2 retries)
-4. **API endpoint** — `POST /nl2cypher` accepting `{ query: string, mapping?: MappingBundle }` and returning `{ cypher: string, confidence: number }`
-5. **UI integration** — NL input toggle in the query editor: user types natural language, clicks "Generate Cypher", result populates the Cypher editor for review/edit before translation
-
-#### Deliverables
-
-1. `arango_cypher/nl2cypher.py` — schema prompt builder, provider protocol, OpenAI/Anthropic implementations
-2. `arango_cypher/service.py` — `POST /nl2cypher` endpoint
-3. `ui/src/components/NLInput.tsx` — NL input panel with generate button
-4. `tests/test_nl2cypher.py` — unit tests with mocked LLM responses
-5. Golden test corpus: natural language → expected Cypher pairs for regression testing
-
-#### Files
-
-- `arango_cypher/nl2cypher.py` — new
-- `arango_cypher/service.py` — new endpoint
-- `ui/src/components/NLInput.tsx` — new
-- `ui/src/App.tsx` — integrate NL panel
-- `tests/test_nl2cypher.py` — new
-
----
-
-### WP-18: Index-aware transpilation
-
-**PRD**: §5.7, §7.8
-**Priority**: High — directly improves generated AQL quality for LPG graphs
-**Estimate**: 1-2 weeks
-**Dependencies**: WP-3 (schema analyzer for index metadata export)
-
-#### Scope
-
-Add index metadata to the physical mapping model and use it in the transpiler for optimization decisions.
-
-#### Deliverables
-
-1. **`IndexInfo` dataclass** — add to `arango_query_core/mapping.py`:
-   ```python
-   @dataclass(frozen=True)
-   class IndexInfo:
-       type: str  # persistent, hash, fulltext, geo, ttl, inverted
-       fields: tuple[str, ...]
-       unique: bool = False
-       sparse: bool = False
-       name: str = ""
-       vci: bool = False
-   ```
-2. **`MappingResolver.resolve_indexes(label_or_type)`** — returns `list[IndexInfo]` from the entity/relationship mapping
-3. **`MappingResolver.has_vci(rel_type)`** — convenience: checks if any index on the relationship's edge collection has `vci=True`
-4. **VCI-aware traversal** — in `translate_v0.py`, when emitting traversal for `GENERIC_WITH_TYPE`:
-   - If VCI exists on edge type field: emit edge filter (efficient at storage layer)
-   - If no VCI: emit edge filter anyway (still correct) but log a performance warning
-5. **VCI advisory** — in CLI `doctor` and service `/schema/introspect`:
-   - Detect `GENERIC_WITH_TYPE` relationships without VCI
-   - Report as recommendation: "Consider creating a VCI on `edges.relation`"
-   - CLI `doctor --fix` offers to create missing VCI indexes
-6. **Naked-LPG test variant** — add `tests/fixtures/datasets/movies/lpg-naked-data.json` (same data, no `vciIndexes` key) and `tests/fixtures/mappings/movies_lpg_naked.export.json` (no indexes array)
-7. **Index metadata in mapping fixtures** — update `movies_lpg.export.json` and `movies_pg.export.json` to include index arrays
-
-#### Files
-
-- `arango_query_core/mapping.py` — `IndexInfo`, `resolve_indexes()`, `has_vci()`
-- `arango_cypher/translate_v0.py` — VCI-aware traversal logic
-- `arango_cypher/cli.py` — `doctor` VCI advisory
-- `arango_cypher/service.py` — introspect VCI advisory
-- `tests/fixtures/mappings/movies_lpg.export.json` — add indexes
-- `tests/fixtures/mappings/movies_lpg_naked.export.json` — new (no indexes)
-- `tests/fixtures/datasets/movies/lpg-naked-data.json` — new
-- `tests/test_index_aware.py` — new golden + unit tests
-
----
-
-### v0.3 execution order
-
-```
-Weeks 1-2:  WP-9 (OPTIONAL MATCH) + WP-10 (EXISTS/regex) [parallel]
-Week 3:     WP-11 (named paths) + WP-12 (built-in functions) [parallel]
-Weeks 4-5:  WP-14 (visual mapping editor) + WP-13 (OWL round-trip) + WP-18 (index-aware) [parallel]
-Week 6:     WP-15 (graph view + profile) + WP-16 (datasets)
-Weeks 7-8:  WP-17 (NL2Cypher)
-Week 9:     TCK re-run + bug fixes to hit ≥ 25%
-```
-
-**Estimated total: 8-9 weeks.** WP-19 below is tracked in the same version band but is mostly unblocking/documentation work (≤ 3 days) and runs in parallel.
+| WP | Feature | Test fixtures / code |
+|----|---------|----------------------|
+| WP-9 | **OPTIONAL MATCH full support** — multi-segment + node-only + leading OPTIONAL MATCH, subquery with left-join-style fallback | `tests/fixtures/cases_v03/optional_match_full.yml`, `tests/fixtures/cases/optional_match{,_multi_part}.yml` (10 goldens green) |
+| WP-10 | **EXISTS, regex, pattern predicates** — `EXISTS { }` subquery, `=~` regex, pattern-existence filter | `tests/fixtures/cases_v03/exists_and_regex.yml`, grammar extension in `grammar/Cypher.g4` |
+| WP-11 | **Named paths + path functions** — `p = (a)-[:R]->(b)`, `length(p)`, `nodes(p)`, `relationships(p)`; relationship uniqueness; delegates to `arango.shortest_path` | `tests/fixtures/cases_v03/named_paths.yml`, `tests/fixtures/cases/named_paths.yml` |
+| WP-12 | **Remaining built-in functions** — `head`/`tail`/`last`/`range`/`reverse`/`type`/`labels`/`timestamp`/`sqrt`/`log`/`pi`; multi-label matching for COLLECTION-style (with warning) | `tests/fixtures/cases_v03/remaining_builtins.yml` (11 goldens green) |
+| WP-13 | **OWL Turtle round-trip** — `load_owl_turtle`, `generate_owl_turtle`, `/mapping/export-owl`, `/mapping/import-owl` (WS-6) | `arango_query_core/owl_rdflib.py`, `tests/test_mapping_owl_*.py` |
+| WP-14 | **Visual mapping graph editor** — Cytoscape.js schema graph with bidirectional JSON sync, context-menu add/edit/delete | `ui/src/components/MappingGraph.tsx` |
+| WP-15 | **Results graph view + profile** — Cytoscape.js force-directed result graph, AQL profile button → annotated execution plan | `ui/src/components/ResultsGraph.tsx`, `POST /aql-profile` |
+| WP-16 | **Datasets expansion** — Movies full corpus (~170 nodes, 20 queries), Northwind (14 queries), social (PG/LPG/hybrid) | `tests/fixtures/datasets/{movies,northwind,social}/`, `tests/integration/datasets.py` |
+| WP-17 | **NL-to-Cypher pipeline** — logical-only schema prompt, pluggable providers (OpenAI / Anthropic / OpenRouter), ANTLR validation/retry, `POST /nl2cypher`, UI "Ask" bar. Subsequently hardened as WP-25 (see §1.2.1). | `arango_cypher/nl2cypher/`, `POST /nl2cypher`, `ui/src/components/NLInput.tsx` |
+| WP-18 | **Index-aware transpilation** — `IndexInfo` dataclass, `MappingResolver.resolve_indexes()` / `has_vci()`, VCI-aware GENERIC_WITH_TYPE traversal with missing-VCI performance warning, `doctor` VCI advisory. Auto-population from analyzer-sourced mappings awaits mapper issue #2. | `arango_query_core/mapping.py`, `arango_cypher/translate_v0.py::_build_vci_options` / `_warn_missing_vci`, `tests/test_translate_{index_aware,naked_lpg}_goldens.py` (17 goldens green) |
 
 ---
 
@@ -789,7 +612,7 @@ All five sub-packages landed on `main`:
 - **WP-25.2 (Pre-flight entity resolution)** — `arango_cypher/nl2cypher/entity_resolution.py` exposes `EntityResolver` + `ResolvedEntity`. Candidates are extracted with conservative regex heuristics (quoted strings, Title-Case phrases, stopword-filtered tokens) and resolved against string-valued properties via `MappingResolver.resolve_entity`. Respects both `COLLECTION` and `LABEL` mapping styles. Degrades to a null resolver when no DB handle is supplied.
 - **WP-25.3 (Execution-grounded validation)** — `arango_query_core.exec.explain_aql` plans the translated AQL with `db.aql.explain`; `_call_llm_with_retry` now feeds EXPLAIN errors back into the retry prompt alongside parse errors. Skips cleanly when no DB is wired.
 - **WP-25.4 (Prompt caching)** — `PromptBuilder` orders sections `prelude → schema → few-shot → resolved entities → question → retry-context`, maximising prefix stability. `_BaseChatProvider._chat` surfaces `usage.prompt_tokens_details.cached_tokens`; it is summed across retries and propagated on `NL2CypherResult.cached_tokens` / `NL2AqlResult.cached_tokens` and the HTTP responses. The `AnthropicProvider` is now wired end-to-end against `POST /v1/messages` with the `cache_control: {type: "ephemeral"}` split (`split_system_for_anthropic_cache`); `cache_read_input_tokens` is propagated to `cached_tokens` so telemetry is provider-agnostic. `get_llm_provider()` auto-detects Anthropic on `ANTHROPIC_API_KEY`, after OpenAI/OpenRouter, or explicitly via `LLM_PROVIDER=anthropic`. `_llm_suggest_nl_queries` now goes through the public `LLMProvider.generate` protocol so any provider works.
-- **WP-25.5 (Eval harness + regression gate)** — `tests/nl2cypher/eval/{corpus.yml,configs.yml,runner.py,baseline.json}` drive a reproducible evaluation. The corpus is a 31-case curation across `movies_pg` (21) + `northwind_pg` (10), spanning 5 categories: baseline, few_shot_bait, typo, hallucination_bait, multi_hop. The runner is importable by unit tests with a scripted provider, and exposes a `python -m tests.nl2cypher.eval.runner --config full [--baseline] [--with-db]` CLI for refreshing reports. `tests/test_nl2cypher_eval_gate.py::test_gate_against_baseline` enforces the regression policy (parse_ok / pattern_match within 5 pp, mean tokens within +20 %, mean retries within +0.3) when `RUN_NL2CYPHER_EVAL=1` is set; pass `NL2CYPHER_EVAL_USE_DB=1` to also engage the live ArangoDB so WP-25.2 entity resolution and WP-25.3 EXPLAIN-grounded retry actually run. **Wave 4g (2026-04-18)** added `open_eval_db_handles()` (env-var-driven, per-fixture map keyed off `NL2CYPHER_EVAL_<FIXTURE>_DB`, defaults `nl2cypher_eval_movies_pg` / `northwind_cross_test`) plus `db_for_fixture=` arguments on `run_case` and `run_eval`, and fixed a latent bug where `db` was gated on `use_execution_grounded` only — meaning the `few_shot_plus_entity` config silently skipped WP-25.2; the gate is now `use_execution_grounded OR use_entity_resolution`. **Wave 4h (2026-04-18)** extended `EntityResolver._query_label_property` with a `LEVENSHTEIN_DISTANCE`-based fuzzy-scoring branch (configurable `fuzzy_threshold`, default 0.7, contribution down-weighted to 0.9 so exact / substring still win when both fire), so typos like "Forest Gump" → "Forrest Gump" resolve correctly against a live DB. **Wave 4i (2026-04-18)** refreshed `baseline.json` against live OpenAI gpt-4o-mini with `--with-db` + fuzzy resolver — pattern_match jumped from 87.1 % to **90.3 %** and the typo category from 33 % to **67 %** in a single step (live gate self-passes against the new floor in 130 s). **Wave 4j (2026-04-18)** added three canonical role-noun few-shot examples ("List all actors?", "Who are all the directors?", "List every writer in the database?") to `arango_cypher/nl2cypher/corpora/movies.yml` so the BM25 retriever teaches the LLM that role nouns map to `Person + role-edge + DISTINCT`, not a separate label. Headline: pattern_match **93.5 %**, hallucination_bait recovered to **100 %**, retries_mean **0**. **Wave 4k (2026-04-18)** wired the regression gate into nightly CI via `.github/workflows/nl2cypher-eval.yml` (cron `0 6 * * *` + `workflow_dispatch`), reusing the `arangodb/arangodb:3.11` service from the existing `integration` job, seeding `nl2cypher_eval_movies_pg` + `northwind_cross_test` from `tests/integration/datasets.py`, and running the live gate against `OPENAI_API_KEY`. Costs ~$0.05 per nightly; self-skips cleanly when no LLM secret is configured; failures upload `tests/nl2cypher/eval/reports/` as a 14-day artifact. **Wave 4l (2026-04-20)** extended the nightly CI with a two-row `strategy.matrix` — adding an `anthropic` row (claude-haiku-4-5) alongside `openai` (gpt-4o-mini), each with its own calibrated baseline (`baseline.json` / `baseline.anthropic.json`) selected at test time via `NL2CYPHER_EVAL_PROVIDER` and `_baseline_path_for_provider()`. First Anthropic baseline headline: **parse_ok=100% / pattern_match=100% / retries=0** (every category including typo at 100%, beating OpenAI by 6.5 pp). Cache-hit plumbing separately proven against `claude-sonnet-4-5` (2346/2357 tokens cache-read on the warm call); Haiku 4.5's 4096-token cache-minimum is above our ~500-token prompts, which is why the eval run shows `cached_tokens_mean=0`. Run artifacts under `tests/nl2cypher/eval/reports/` are gitignored; refresh the baseline by re-running the CLI with `--baseline`. **Wave 4m (2026-04-20)** is cross-cutting (not in WP-25 proper, but shipped in the same window as the Emmet snapshot prep): a public schema-change-detection API + two-tier persistent cache around `get_mapping()`. Replaced the single opaque `_schema_fingerprint` with two orthogonal fingerprints — `_shape_fingerprint` (collections + types + full index digests) and `_full_fingerprint` (shape + counts) — and added `describe_schema_change(db) → SchemaChangeReport`, `invalidate_cache(db)`, plus new `cache_collection` / `cache_key` / `force_refresh` kwargs on `get_mapping`. When the shape is stable but row counts have drifted, `get_mapping` reuses the cached conceptual + physical mapping and recomputes only the cardinality statistics block — replacing a full re-introspection (≈ 2–30 s with the LLM path) with a ~50 ms stats refresh. The persistent cache (`arango_cypher.schema_cache.ArangoSchemaCache`, defaults to an `arango_cypher_schema_cache` user-land collection, gated by `CACHE_SCHEMA_VERSION`, excluded from its own fingerprints) survives service restarts and is shared across instances pointed at the same DB — directly benefiting the Arango Platform container deployment path. Delivered with 23 new unit tests pinning: fingerprint stability under row-count drift, fingerprint sensitivity to index-uniqueness flips (covering the pre-existing index-count-only bug), `bundle_to_doc` / `bundle_from_doc` round-trip completeness, cache corruption / stale-version tolerance, the stats-only-refresh path, and self-exclusion of the cache collection from its own fingerprints. **Wave 4n (2026-04-20)** exposed Wave 4m on the HTTP surface: `GET /schema/status` (calls `describe_schema_change(session.db)` and returns the four-valued status + ergonomic booleans + current/cached fingerprint pairs) and `POST /schema/invalidate-cache` (drops both cache tiers; `?persistent=false` preserves tier 2). Both accept optional `cache_collection` / `cache_key` query params mirroring the Python API. 10 new tests in `tests/test_service_schema_status.py` use FastAPI `dependency_overrides` + a `_MutableFakeDb` wrapper to simulate schema drift between HTTP calls without a live DB (covers all four status transitions, the persistence toggle, and 401 on missing session). Closes the gap flagged during the mapper-issue audit: Wave 4m was Python-only, now UI clients, platform orchestrators, and monitoring probes can act on change detection without embedding Python. **Wave 4o (2026-04-20)** closed the last WP-25.1 gap: the persistent corrections table now feeds back into the BM25 few-shot retriever. New `arango_cypher/nl_corrections.py` is a SQLite-backed (question, cypher) store — mirrors `corrections.py` but at the NL layer rather than the AQL layer — with a register_invalidation_listener / unregister_invalidation_listener channel. `_get_default_fewshot_index()` now merges shipped-corpora examples + `nl_corrections.all_examples()` before building the BM25 retriever, and the nl2cypher core registers a `_invalidate_default_fewshot_index` listener on first use so every save/delete triggers a lazy rebuild on the next translation. HTTP surface: `POST / GET / DELETE /nl-corrections` (+ DELETE-all). 21 new tests in `tests/test_nl_corrections.py` cover CRUD (7), listener semantics including the "failing listener doesn't break writes" contract (5), FewShotIndex integration with real BM25 (3), and HTTP endpoints including the end-to-end invalidation chain (5). Corrections are appended after shipped examples so they win BM25 ties against equal-scoring seed pairs.
+- **WP-25.5 (Eval harness + regression gate)** — `tests/nl2cypher/eval/{corpus.yml,configs.yml,runner.py,baseline.json}` drive a reproducible evaluation. The corpus is a 31-case curation across `movies_pg` (21) + `northwind_pg` (10), spanning 5 categories: baseline, few_shot_bait, typo, hallucination_bait, multi_hop. The runner is importable by unit tests with a scripted provider, and exposes a `python -m tests.nl2cypher.eval.runner --config full [--baseline] [--with-db]` CLI for refreshing reports. `tests/test_nl2cypher_eval_gate.py::test_gate_against_baseline` enforces the regression policy (parse_ok / pattern_match within 5 pp, mean tokens within +20 %, mean retries within +0.3) when `RUN_NL2CYPHER_EVAL=1` is set; pass `NL2CYPHER_EVAL_USE_DB=1` to also engage the live ArangoDB so WP-25.2 entity resolution and WP-25.3 EXPLAIN-grounded retry actually run. **Wave 4g (2026-04-18)** added `open_eval_db_handles()` (env-var-driven, per-fixture map keyed off `NL2CYPHER_EVAL_<FIXTURE>_DB`, defaults `nl2cypher_eval_movies_pg` / `northwind_cross_test`) plus `db_for_fixture=` arguments on `run_case` and `run_eval`, and fixed a latent bug where `db` was gated on `use_execution_grounded` only — meaning the `few_shot_plus_entity` config silently skipped WP-25.2; the gate is now `use_execution_grounded OR use_entity_resolution`. **Wave 4h (2026-04-18)** extended `EntityResolver._query_label_property` with a `LEVENSHTEIN_DISTANCE`-based fuzzy-scoring branch (configurable `fuzzy_threshold`, default 0.7, contribution down-weighted to 0.9 so exact / substring still win when both fire), so typos like "Forest Gump" → "Forrest Gump" resolve correctly against a live DB. **Wave 4i (2026-04-18)** refreshed `baseline.json` against live OpenAI gpt-4o-mini with `--with-db` + fuzzy resolver — pattern_match jumped from 87.1 % to **90.3 %** and the typo category from 33 % to **67 %** in a single step (live gate self-passes against the new floor in 130 s). **Wave 4j (2026-04-18)** added three canonical role-noun few-shot examples ("List all actors?", "Who are all the directors?", "List every writer in the database?") to `arango_cypher/nl2cypher/corpora/movies.yml` so the BM25 retriever teaches the LLM that role nouns map to `Person + role-edge + DISTINCT`, not a separate label. Headline: pattern_match **93.5 %**, hallucination_bait recovered to **100 %**, retries_mean **0**. **Wave 4k (2026-04-18)** wired the regression gate into nightly CI via `.github/workflows/nl2cypher-eval.yml` (cron `0 6 * * *` + `workflow_dispatch`), reusing the `arangodb/arangodb:3.11` service from the existing `integration` job, seeding `nl2cypher_eval_movies_pg` + `northwind_cross_test` from `tests/integration/datasets.py`, and running the live gate against `OPENAI_API_KEY`. Costs ~$0.05 per nightly; self-skips cleanly when no LLM secret is configured; failures upload `tests/nl2cypher/eval/reports/` as a 14-day artifact. **Wave 4l (2026-04-20)** extended the nightly CI with a two-row `strategy.matrix` — adding an `anthropic` row (claude-haiku-4-5) alongside `openai` (gpt-4o-mini), each with its own calibrated baseline (`baseline.json` / `baseline.anthropic.json`) selected at test time via `NL2CYPHER_EVAL_PROVIDER` and `_baseline_path_for_provider()`. First Anthropic baseline headline: **parse_ok=100% / pattern_match=100% / retries=0** (every category including typo at 100%, beating OpenAI by 6.5 pp). Cache-hit plumbing separately proven against `claude-sonnet-4-5` (2346/2357 tokens cache-read on the warm call); Haiku 4.5's 4096-token cache-minimum is above our ~500-token prompts, which is why the eval run shows `cached_tokens_mean=0`. Run artifacts under `tests/nl2cypher/eval/reports/` are gitignored; refresh the baseline by re-running the CLI with `--baseline`. **Wave 4m (2026-04-20)** is cross-cutting (not in WP-25 proper, but shipped in the same window as the Emmet snapshot prep): a public schema-change-detection API + two-tier persistent cache around `get_mapping()`. Replaced the single opaque `_schema_fingerprint` with two orthogonal fingerprints — `_shape_fingerprint` (collections + types + full index digests) and `_full_fingerprint` (shape + counts) — and added `describe_schema_change(db) → SchemaChangeReport`, `invalidate_cache(db)`, plus new `cache_collection` / `cache_key` / `force_refresh` kwargs on `get_mapping`. When the shape is stable but row counts have drifted, `get_mapping` reuses the cached conceptual + physical mapping and recomputes only the cardinality statistics block — replacing a full re-introspection (≈ 2–30 s with the LLM path) with a ~50 ms stats refresh. The persistent cache (`arango_cypher.schema_cache.ArangoSchemaCache`, defaults to an `arango_cypher_schema_cache` user-land collection, gated by `CACHE_SCHEMA_VERSION`, excluded from its own fingerprints) survives service restarts and is shared across instances pointed at the same DB — directly benefiting the Arango Platform container deployment path. Delivered with 23 new unit tests pinning: fingerprint stability under row-count drift, fingerprint sensitivity to index-uniqueness flips (covering the pre-existing index-count-only bug), `bundle_to_doc` / `bundle_from_doc` round-trip completeness, cache corruption / stale-version tolerance, the stats-only-refresh path, and self-exclusion of the cache collection from its own fingerprints. **Wave 4n (2026-04-20)** exposed Wave 4m on the HTTP surface: `GET /schema/status` (calls `describe_schema_change(session.db)` and returns the four-valued status + ergonomic booleans + current/cached fingerprint pairs) and `POST /schema/invalidate-cache` (drops both cache tiers; `?persistent=false` preserves tier 2). Both accept optional `cache_collection` / `cache_key` query params mirroring the Python API. 10 new tests in `tests/test_service_schema_status.py` use FastAPI `dependency_overrides` + a `_MutableFakeDb` wrapper to simulate schema drift between HTTP calls without a live DB (covers all four status transitions, the persistence toggle, and 401 on missing session). Closes the gap flagged during the mapper-issue audit: Wave 4m was Python-only, now UI clients, platform orchestrators, and monitoring probes can act on change detection without embedding Python. **Wave 4o (2026-04-20)** closed the last WP-25.1 gap: the persistent corrections table now feeds back into the BM25 few-shot retriever. New `arango_cypher/nl_corrections.py` is a SQLite-backed (question, cypher) store — mirrors `corrections.py` but at the NL layer rather than the AQL layer — with a register_invalidation_listener / unregister_invalidation_listener channel. `_get_default_fewshot_index()` now merges shipped-corpora examples + `nl_corrections.all_examples()` before building the BM25 retriever, and the nl2cypher core registers a `_invalidate_default_fewshot_index` listener on first use so every save/delete triggers a lazy rebuild on the next translation. HTTP surface: `POST / GET / DELETE /nl-corrections` (+ DELETE-all). 21 new tests in `tests/test_nl_corrections.py` cover CRUD (7), listener semantics including the "failing listener doesn't break writes" contract (5), FewShotIndex integration with real BM25 (3), and HTTP endpoints including the end-to-end invalidation chain (5). Corrections are appended after shipped examples so they win BM25 ties against equal-scoring seed pairs. **Wave 4p (2026-04-20)** closed three measurement / documentation gaps (no production code change): (a) **Docs hygiene** — flipped the PRD "NL-to-Cypher pipeline" status row Partial → Done (WP-25 + Wave 4o), rewrote §14 / §14.1 so the "NL→Cypher few-shot: not started" text is replaced with the shipped Wave 4o architecture, and retired the phantom v0.3 execution-order block in `docs/implementation_plan.md` (WP-9 through WP-18 landed 2026-04-11 .. 2026-04-13 but the plan was still worded as future work — the section is now a historical reference table pointing at the test fixtures and code). (b) **TCK coverage re-measured** via the existing `tests/tck/analyze_coverage.py`: full TCK 32.2 % (1,245 / 3,861), core TCK 54.8 % (1,206 / 2,201 excluding `expressions/temporal` + `expressions/quantifier` + `clauses/call` OOS), clauses-only 66.1 % (792 / 1,199, confirms the prior projection). Report artifact: `tests/tck/COVERAGE_REPORT.md` (per-category breakdown + top-15 translation-failure reasons — the single largest lever is 1,560 scenarios blocked at the leading-MATCH constraint). (c) **Translation P95 benchmarked** — new `scripts/benchmark_translate.py` runs a 10-case representative corpus across `movies_pg` / `movies_lpg` / `movies_lpg_naked` and reports cold + warm statistics; `tests/test_translate_perf.py` gates a deliberately-loose regression guard (25 ms cold / 1 ms warm / 50 ms single-hop) behind `RUN_PERF=1`. Baseline 2026-04-20: cold P95 peaks at 2.74 ms (two-hop), single-hop cold P95 1.54 ms — ~20–30× below the PRD §2.1 50 ms target. Warm-cache P95 is ≤ 0.05 ms across every case, confirming the WP-26 LRU is working. PRD §7.7 now carries measured numbers and points at the benchmark script.
 
 #### Out of scope for WP-25 (tracked as future work)
 
