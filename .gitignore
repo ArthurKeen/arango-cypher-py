@@ -34,6 +34,9 @@ htmlcov/
 # Environment / Secrets
 .env
 .env.*
+# ...except the committed template. Keeping .env.example tracked so
+# first-time setup (and snapshot packaging) has a documented schema.
+!.env.example
 
 # Distribution / Packaging
 *.tar.gz

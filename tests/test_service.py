@@ -31,6 +31,22 @@ PG_MAPPING = {
 }
 
 
+class TestHealth:
+    """Liveness probe for container orchestrators.
+
+    The endpoint must be cheap (no DB roundtrip), unauthenticated, and
+    return 200 with JSON metadata that platform probes can log.
+    """
+
+    def test_returns_200_and_status_ok(self):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["service"] == "arango-cypher-py"
+        assert "version" in body and body["version"]
+
+
 class TestCypherProfile:
     def test_returns_manifest(self):
         resp = client.get("/cypher-profile")

@@ -31,6 +31,23 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -m "not integration and not tck" --tb=short -q
 
+  packaging:
+    # Smoke-tests that pyproject.toml resolves to an installable wheel
+    # set in a clean Python environment -- the same check ServiceMaker
+    # performs when building the Arango Platform container image.
+    # See docs/arango_packaging_service/deployment_runbook.md and
+    # docs/python_prd.md #15.3 for the design rationale.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - env:
+          RUN_PACKAGING: "1"
+        run: pytest tests/test_packaging_smoke.py -v --tb=short
+
   integration:
     runs-on: ubuntu-latest
     services:

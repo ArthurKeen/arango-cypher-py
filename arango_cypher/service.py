@@ -277,6 +277,21 @@ def _mapping_from_dict(d: dict[str, Any] | None) -> MappingBundle | None:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+# Liveness / readiness probe for container orchestrators (Arango Platform's
+# Container Manager, Kubernetes, docker-compose healthchecks, etc.). Cheap,
+# unauthenticated, no DB call -- returning 200 proves the process is up and
+# the FastAPI event loop is serving. Actual DB reachability is tested per
+# session via POST /connect, which is where a connection failure should
+# surface (not at startup).
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "service": "arango-cypher-py",
+        "version": app.version,
+    }
+
+
 @app.post("/connect", response_model=ConnectResponse)
 def connect(req: ConnectRequest):
     """Authenticate to ArangoDB; returns a session token."""
