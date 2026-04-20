@@ -47,6 +47,7 @@ app = FastAPI(
     title="Arango Cypher Transpiler",
     description="Cypher → AQL translation service for ArangoDB",
     version="0.1.0",
+    root_path=os.getenv("ROOT_PATH", ""),
 )
 
 _cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*")
@@ -127,10 +128,16 @@ def _evict_lru() -> None:
 
 def _get_session(request: Request) -> _Session:
     _prune_expired()
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    # Prefer X-Arango-Session: the ArangoDB platform proxy replaces the standard
+    # Authorization header with its own platform JWT before forwarding to the
+    # BYOC container, making Bearer tokens unusable for app-level session auth.
+    token = request.headers.get("X-Arango-Session", "")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = auth[7:]
     session = _sessions.get(token)
     if session is None or session.expired:
         if session and session.expired:
@@ -1223,7 +1230,17 @@ _UI_DIR = Path(__file__).resolve().parent.parent / "ui" / "dist"
 
 if _UI_DIR.is_dir():
 
-    @app.get("/ui/{full_path:path}")
+    @app.get("/frontend", include_in_schema=False)
+    async def _spa_root():
+        """Serve index.html for the bare /frontend path (no trailing slash).
+
+        Without this, Starlette's StaticFiles mount issues a 307 redirect to
+        /frontend/ which the ArangoDB platform proxy does not forward to the
+        container, resulting in a platform-level 404.
+        """
+        return FileResponse(_UI_DIR / "index.html")
+
+    @app.get("/frontend/{full_path:path}")
     async def _spa_fallback(full_path: str):
         """Serve index.html for any UI route that is not a static asset."""
         file = _UI_DIR / full_path
@@ -1231,7 +1248,7 @@ if _UI_DIR.is_dir():
             return FileResponse(file)
         return FileResponse(_UI_DIR / "index.html")
 
-    app.mount("/ui", StaticFiles(directory=str(_UI_DIR), html=True), name="ui")
+    app.mount("/frontend", StaticFiles(directory=str(_UI_DIR), html=True), name="frontend")
 
     # The Vite build emits root-relative URLs (`/assets/...`, `/favicon.svg`,
     # `/icons.svg`) to match its dev server (`port: 5173`, no `base: '/ui/'`).
