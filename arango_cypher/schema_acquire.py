@@ -984,7 +984,6 @@ def acquire_mapping_bundle(db: StandardDatabase, *, include_owl: bool = False) -
     export = export_mapping(analysis_dict, target="cypher")
 
     pm = export.get("physicalMapping", {})
-    _normalize_analyzer_pm(pm)
 
     owl_turtle: str | None = None
     if include_owl:
@@ -1245,37 +1244,6 @@ def _fixup_dedicated_edges(
         owl_turtle=bundle.owl_turtle,
         source=bundle.source,
     )
-
-
-def _normalize_analyzer_pm(pm: dict[str, Any]) -> None:
-    """Normalize analyzer export keys to the transpiler's expected format.
-
-    The analyzer uses ``collectionName`` for both entities and relationships,
-    but the transpiler expects ``edgeCollectionName`` on relationships.
-    The analyzer uses ``physicalFieldName`` in properties, but the transpiler
-    expects ``field``.
-    """
-    for rmap in (pm.get("relationships") or {}).values():
-        if "collectionName" in rmap and "edgeCollectionName" not in rmap:
-            rmap["edgeCollectionName"] = rmap.pop("collectionName")
-        _normalize_props(rmap)
-
-    for emap in (pm.get("entities") or {}).values():
-        _normalize_props(emap)
-
-
-def _normalize_props(mapping_entry: dict[str, Any]) -> None:
-    """Remap ``physicalFieldName`` → ``field`` in property dicts."""
-    props = mapping_entry.get("properties")
-    if not isinstance(props, dict):
-        return
-    for pname, pval in props.items():
-        if not isinstance(pval, dict):
-            continue
-        if "physicalFieldName" in pval and "field" not in pval:
-            pval["field"] = pval.pop("physicalFieldName")
-        if "field" not in pval:
-            pval["field"] = pname
 
 
 def compute_statistics(
