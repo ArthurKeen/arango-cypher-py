@@ -735,7 +735,7 @@ examples:
 - `arango_cypher/nl2cypher.py` — `PromptBuilder.render()` returns the prompt *structured* (system prefix including schema, then the per-request tail) so the provider layer can apply provider-specific caching.
 - `arango_cypher/nl2cypher/providers.py` (or extend inline) — provider-specific:
   - **OpenAI:** prompt caching is automatic above a token threshold; ensure schema-prefix ordering (largest static block first). Log `usage.prompt_tokens_details.cached_tokens` when present.
-  - **Anthropic:** wrap the schema block in a `cache_control: {type: "ephemeral"}` message segment per the Anthropic SDK (if/when an Anthropic provider lands — for now, leave the hook).
+  - **Anthropic:** wrap the schema block in a `cache_control: {type: "ephemeral"}` message segment. ✅ **Shipped** via `split_system_for_anthropic_cache()` + `AnthropicProvider.generate()` (Wave 4d / 2026-04-18). End-to-end cache-hit measured live against `claude-sonnet-4-5` in Wave 4l (2026-04-20): 2346/2357 = 99.5 % of input tokens served from cache on the warm call.
   - **OpenRouter:** varies by upstream model; best-effort, no assertion required.
 - `tests/test_nl2cypher_caching.py` — provider plumbing tests only (no live API calls). Assert that the rendered prompt places schema first and marks the cache boundary.
 
@@ -781,7 +781,7 @@ Wave 4b:   merge 4a, run unit suite, resolve any small merge conflicts
 Wave 4c:   WP-25.5 (1 agent, after 4b)
 ```
 
-#### Status (2026-04-18)
+#### Status (2026-04-20)
 
 All five sub-packages landed on `main`:
 
@@ -948,4 +948,4 @@ Update this table as work packages are completed:
 | WP-22 | Results export (CSV/JSON) | v0.4 | **Done** | 2026-04-13 |
 | WP-23 | Agentic tools | v0.4 | **Done** | 2026-04-13 |
 | WP-24 | WITH from multiple MATCHes | v0.4 | **Done** | 2026-04-13 |
-| WP-25 | NL→Cypher pipeline hardening (SOTA upgrades) | v0.4 | **Done** | 2026-04-18. All five sub-packages landed: WP-25.1 dynamic few-shot (BM25 retriever + shipped corpora), WP-25.2 pre-flight entity resolution, WP-25.3 execution-grounded validation via `_api/explain`, WP-25.4 prompt-cache-friendly section ordering + `cached_tokens` propagation + live `AnthropicProvider`, WP-25.5 eval harness + regression gate (corpus + configs + runner + `baseline.json`; live gate guarded by `RUN_NL2CYPHER_EVAL=1`). |
+| WP-25 | NL→Cypher pipeline hardening (SOTA upgrades) | v0.4 | **Done** | 2026-04-20. All five sub-packages landed 2026-04-18 (WP-25.1 dynamic few-shot, WP-25.2 pre-flight entity resolution, WP-25.3 execution-grounded validation via `_api/explain`, WP-25.4 cache-friendly section ordering + `cached_tokens` + live `AnthropicProvider`, WP-25.5 eval harness + regression gate); Waves 4g–4l (2026-04-18..20) closed all post-WP-25 follow-ups: live-DB plumbing in the runner + latent bug fix (4g), `LEVENSHTEIN_DISTANCE` fuzzy scoring in `EntityResolver` (4h), baseline refreshes landing pattern_match at 93.5 % (OpenAI gpt-4o-mini) and 100 % (Anthropic claude-haiku-4-5) (4i / 4j / 4l), role-noun few-shot enrichment for hallucination_bait (4j), nightly CI workflow (4k) with two-row provider matrix (4l). End-to-end cache-hit plumbing proven against Sonnet 4.5 (99.5 % cache-read on warm call). |
