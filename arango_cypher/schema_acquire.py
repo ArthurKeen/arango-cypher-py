@@ -17,6 +17,13 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+# Upstream fingerprint primitives (arangodb-schema-analyzer >= 0.3.0) are
+# imported lazily inside :func:`_shape_fingerprint` / :func:`_full_fingerprint`.
+# Lazy so this module keeps working when only the heuristic mapping tier is
+# installed (the `analyzer` extra is optional — see module docstring tier 2).
+# The wrappers bake in our cache-collection exclusion; see §5 of
+# docs/schema_analyzer_issues/WAVE_4M_ARCHITECTURE.md for why excluding the
+# cache collection is a correctness invariant, not a perf tweak.
 from arango_query_core import CoreError, MappingBundle, MappingSource
 
 from .schema_cache import (
@@ -48,100 +55,85 @@ def _cache_key(db: StandardDatabase) -> str:
         return ""
 
 
-def _index_digest(idx: Any) -> str:
-    """Stable digest for a single python-arango index dict.
+def _fallback_fingerprint(db: StandardDatabase, *, include_counts: bool) -> str:
+    """Coarse local fingerprint used only when ``schema_analyzer`` is unavailable.
 
-    Captures the identity-carrying fields (``type``, ``fields``, ``unique``,
-    ``sparse``) plus VCI / deduplicate flags so an index whose physical
-    shape changes invalidates the shape fingerprint. Excludes ``name`` and
-    ``id`` because ArangoDB auto-generates those and they can differ across
-    equivalent indexes.
-    """
-    if not isinstance(idx, dict):
-        return ""
-    idx_type = str(idx.get("type") or "")
-    if idx_type == "primary":
-        return ""
-    fields = idx.get("fields")
-    fields_part = ",".join(str(f) for f in fields) if isinstance(fields, list) else ""
-    return "|".join(
-        [
-            idx_type,
-            fields_part,
-            "u" if idx.get("unique") else "",
-            "s" if idx.get("sparse") else "",
-            "v" if idx.get("vci") else "",
-            "d" if idx.get("deduplicate") is False else "",
-        ]
-    )
-
-
-def _iter_user_collections(db: StandardDatabase) -> list[dict[str, Any]]:
-    """Return python-arango collection descriptors, sorted by name, with system
-    collections and cache-internal collections excluded.
-
-    Centralized so every fingerprint sees the same collection set.
+    The heuristic mapping tier is advertised as "works without the analyzer
+    extra" (see module docstring), so we still need *some* stable digest for
+    the cache-freshness check. Upstream hashes far more (types + every index
+    signature); this fallback only notices collection set / count changes.
+    Acceptable because the degraded path already opts out of analyzer-level
+    precision. Re-introduces ~6 LOC versus the ~51 LOC removed in PR-2.
     """
     try:
-        cols = db.collections()
+        cols = db.collections() or []
     except Exception:
-        return []
-    out: list[dict[str, Any]] = []
-    for c in cols:
-        if not isinstance(c, dict):
-            continue
-        name = c.get("name", "")
-        if not isinstance(name, str) or name.startswith("_"):
-            continue
-        if name == DEFAULT_CACHE_COLLECTION:
-            # Exclude the cache collection itself so reading the cache does
-            # not perturb its own fingerprint on the next round.
-            continue
-        out.append(c)
-    out.sort(key=lambda x: x.get("name", ""))
-    return out
+        cols = []
+    names = sorted(
+        c.get("name", "")
+        for c in cols
+        if isinstance(c, dict)
+        and isinstance(c.get("name"), str)
+        and not c["name"].startswith("_")
+        and c["name"] != DEFAULT_CACHE_COLLECTION
+    )
+    parts = [db.name, *names]
+    if include_counts:
+        for name in names:
+            try:
+                parts.append(f"{name}:{db.collection(name).count()}")
+            except Exception:
+                parts.append(f"{name}:-1")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
 def _shape_fingerprint(db: StandardDatabase) -> str:
     """Hash of the schema *shape*: collection set, types, and index digests.
 
+    Thin wrapper around ``schema_analyzer.fingerprint_physical_shape`` (v0.3.0+)
+    that bakes in our cache-collection exclusion. Kept as a named function (a)
+    so existing imports in tests and callers continue to resolve and (b) so
+    every caller in this module hits the same exclusion policy without
+    rediscovering it.
+
     Excludes row counts so ordinary writes (INSERT / UPDATE / REMOVE without
     a schema shape change) do not invalidate the fingerprint. This is the
     fingerprint that decides whether a full re-introspection is needed.
+
+    NOTE (cache re-key event, 2026-04-20): when this module was rewired to
+    upstream at v0.3.0, the on-disk hash format changed — existing entries
+    in ``_arango_schema_cache`` will miss their fingerprint check exactly
+    once and be rebuilt. No action required on the operator side; the next
+    ``get_mapping()`` call after deployment refills the cache under the new
+    fingerprint.
     """
-    parts: list[str] = []
-    for c in _iter_user_collections(db):
-        name = c.get("name", "")
-        col_type = "edge" if c.get("type") in (3, "edge") else "doc"
-        try:
-            idxs = db.collection(name).indexes() or []
-        except Exception:
-            idxs = []
-        digests = sorted(d for d in (_index_digest(i) for i in idxs) if d)
-        parts.append(f"{name}:{col_type}:" + ";".join(digests))
-    raw = f"{db.name}|" + "|".join(parts)
-    return hashlib.sha256(raw.encode()).hexdigest()
+    try:
+        from schema_analyzer import fingerprint_physical_shape
+    except ImportError:
+        return _fallback_fingerprint(db, include_counts=False)
+
+    return fingerprint_physical_shape(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
 
 
 def _full_fingerprint(db: StandardDatabase) -> str:
     """Shape fingerprint + per-collection row counts.
+
+    Thin wrapper around ``schema_analyzer.fingerprint_physical_counts``
+    (v0.3.0+) with our cache-collection exclusion applied. See
+    :func:`_shape_fingerprint` for the rationale and the one-time cache
+    re-key event.
 
     Changes whenever either the schema shape or any collection's row count
     changes. When this differs but :func:`_shape_fingerprint` matches, the
     cached mapping remains valid and only cardinality statistics need
     re-computation (the stats-only refresh path).
     """
-    parts: list[str] = []
-    for c in _iter_user_collections(db):
-        name = c.get("name", "")
-        try:
-            count = db.collection(name).count()
-        except Exception:
-            count = -1
-        parts.append(f"{name}:{count}")
-    shape_fp = _shape_fingerprint(db)
-    raw = f"{shape_fp}|" + "|".join(parts)
-    return hashlib.sha256(raw.encode()).hexdigest()
+    try:
+        from schema_analyzer import fingerprint_physical_counts
+    except ImportError:
+        return _fallback_fingerprint(db, include_counts=True)
+
+    return fingerprint_physical_counts(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
 
 
 @dataclass(frozen=True)
@@ -1050,7 +1042,7 @@ def _backfill_missing_collections(
 
     known_edge_cols: set[str] = set()
     for rmap in rels_pm.values():
-        col = rmap.get("edgeCollectionName") or rmap.get("collectionName", "")
+        col = rmap.get("edgeCollectionName", "")
         if col:
             known_edge_cols.add(col)
 
@@ -1313,7 +1305,7 @@ def compute_statistics(
     for rtype, rmap in rels.items():
         if not isinstance(rmap, dict):
             continue
-        edge_col = rmap.get("edgeCollectionName") or rmap.get("collectionName", rtype)
+        edge_col = rmap.get("edgeCollectionName", rtype)
         if not edge_col:
             continue
 
