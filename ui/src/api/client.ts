@@ -78,6 +78,14 @@ function apiBase(): string {
   return "";
 }
 
+// Shown in the UI whenever the backend returns 401. The raw
+// `{"message":"Unauthorized"}` payload from ArangoDB / the platform
+// proxy is technically correct but reads as a cryptic error; the
+// session has simply expired (tokens are short-lived) and the user
+// needs to sign in again.
+export const AUTH_EXPIRED_MESSAGE =
+  "Your session has expired. Please re-authenticate to the database.";
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -91,6 +99,13 @@ async function request<T>(
     },
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      // Drain the body so the connection is released, but don't
+      // bother surfacing its contents — the generic re-auth prompt
+      // is more useful than e.g. "Unauthorized" or "token expired".
+      await res.text().catch(() => "");
+      throw new ApiError(401, AUTH_EXPIRED_MESSAGE);
+    }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail ?? body);
   }
@@ -103,6 +118,10 @@ function formatDetail(detail: unknown): string {
     const obj = detail as Record<string, unknown>;
     if (typeof obj.error === "string") return obj.error;
     if (typeof obj.detail === "string") return obj.detail;
+    // ArangoDB / the AMP proxy returns `{"message": "..."}` on
+    // auth and some other errors — treat `message` the same as
+    // `detail`/`error` so it isn't rendered as raw JSON.
+    if (typeof obj.message === "string") return obj.message;
   }
   return JSON.stringify(detail);
 }
@@ -117,6 +136,10 @@ export class ApiError extends Error {
     this.status = status;
     this.detail = detail;
   }
+}
+
+export function isAuthError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
 }
 
 export async function getConnectDefaults(): Promise<ConnectDefaults> {

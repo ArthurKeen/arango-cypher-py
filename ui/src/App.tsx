@@ -25,6 +25,7 @@ import {
   deleteCorrection,
   suggestNlQueries,
   listTenants,
+  isAuthError,
   type CorrectionRecord,
   type TenantContext,
   type TenantRecord,
@@ -255,6 +256,21 @@ export default function App() {
     });
   }
 
+  // Any 401 means the session token the backend issued us has
+  // expired (or was revoked). The token is useless from here on —
+  // drop it so the header flips back to "Connect to ArangoDB" and
+  // the user can re-authenticate. The caller still surfaces the
+  // friendly "Please re-authenticate" message from ApiError in its
+  // own XXX_ERROR dispatch.
+  const handleMaybeAuthError = useCallback(
+    (err: unknown) => {
+      if (isAuthError(err)) {
+        dispatch({ type: "DISCONNECT" });
+      }
+    },
+    [dispatch],
+  );
+
   const handleTranslate = useCallback(async () => {
     if (!cypherRef.current.trim()) return;
     directAqlRef.current = false;
@@ -275,9 +291,10 @@ export default function App() {
         type: "TRANSLATE_ERROR",
         error: err instanceof Error ? err.message : String(err),
       });
+      handleMaybeAuthError(err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, autoRun]);
+  }, [dispatch, autoRun, handleMaybeAuthError]);
 
   const handleExecute = useCallback(async () => {
     if (!state.connection.token) return;
@@ -305,9 +322,10 @@ export default function App() {
         type: "EXECUTE_ERROR",
         error: err instanceof Error ? err.message : String(err),
       });
+      handleMaybeAuthError(err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, state.connection.token, state.aql, state.bindVars]);
+  }, [dispatch, state.connection.token, state.aql, state.bindVars, handleMaybeAuthError]);
 
   const handleExplain = useCallback(async () => {
     if (!cypherRef.current.trim() || !state.connection.token) return;
@@ -327,9 +345,10 @@ export default function App() {
         type: "EXPLAIN_ERROR",
         error: err instanceof Error ? err.message : String(err),
       });
+      handleMaybeAuthError(err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, state.connection.token]);
+  }, [dispatch, state.connection.token, handleMaybeAuthError]);
 
   const handleProfile = useCallback(async () => {
     if (!cypherRef.current.trim() || !state.connection.token) return;
@@ -354,9 +373,10 @@ export default function App() {
         type: "PROFILE_ERROR",
         error: err instanceof Error ? err.message : String(err),
       });
+      handleMaybeAuthError(err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, state.connection.token]);
+  }, [dispatch, state.connection.token, handleMaybeAuthError]);
 
   const addNlHistory = useCallback((query: string) => {
     setNlHistory((prev) => {
@@ -526,6 +546,9 @@ export default function App() {
           setTenantsDetected(false);
           setTenantResolution({ collection: null, source: null, error: msg });
         }
+        if (isAuthError(err)) {
+          dispatch({ type: "DISCONNECT" });
+        }
       } finally {
         if (!cancelled) setTenantsLoading(false);
       }
@@ -533,6 +556,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+    // `dispatch` comes from `useAppState`; including it in the deps
+    // here would cause this expensive tenant-catalog fetch to re-run
+    // on every reducer update (the memoized dispatch identity changes
+    // with `state`). It's safe to omit — React guarantees the
+    // reducer's underlying `dispatch` is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     state.connection.token,
     state.connection.url,
@@ -644,11 +673,11 @@ export default function App() {
       }
     } catch (err) {
       setNlInfo(err instanceof Error ? err.message : "NL translation failed");
+      handleMaybeAuthError(err);
     } finally {
       setNlLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun, state.connection.token]);
+  }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun, state.connection.token, handleMaybeAuthError]);
 
   // Chain auto-translate after NL→Cypher when enabled.
   useEffect(() => {
