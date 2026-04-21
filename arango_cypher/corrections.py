@@ -16,7 +16,7 @@ import os
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 _DB_PATH = os.getenv("CORRECTIONS_DB", "corrections.db")
@@ -117,7 +117,7 @@ def save(
     """Save a correction. Returns the row id."""
     mh = _mapping_hash(mapping)
     normalized = cypher.strip()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     bv = json.dumps(bind_vars or {}, default=str)
     with _lock:
         conn = _get_conn()

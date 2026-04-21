@@ -35,7 +35,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ def save(
     if not q or not c:
         raise ValueError("question and cypher must both be non-empty")
     mh = _mapping_hash(mapping) if mapping is not None else ""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     with _lock:
         conn = _get_conn()
         cur = conn.execute(

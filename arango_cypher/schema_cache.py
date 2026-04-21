@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from arango_query_core import MappingBundle, MappingSource
@@ -84,7 +84,7 @@ def bundle_from_doc(doc: dict[str, Any]) -> MappingBundle:
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class ArangoSchemaCache:
