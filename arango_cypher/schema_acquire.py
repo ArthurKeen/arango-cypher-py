@@ -1158,7 +1158,7 @@ def compute_statistics(
         }
 
     return {
-        "computed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "computed_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "collections": col_counts,
         "entities": entity_counts,
         "relationships": rel_stats,

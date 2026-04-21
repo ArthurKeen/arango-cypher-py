@@ -86,7 +86,7 @@ import os
 import re
 from collections import deque
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class EntityTenantRole(str, Enum):
+class EntityTenantRole(StrEnum):
     """Role an entity plays in the tenant hierarchy."""
 
     TENANT_ROOT = "tenant_root"

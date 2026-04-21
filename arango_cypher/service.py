@@ -49,6 +49,7 @@ app = FastAPI(
     title="Arango Cypher Transpiler",
     description="Cypher → AQL translation service for ArangoDB",
     version="0.1.0",
+    root_path=os.getenv("ROOT_PATH", ""),
 )
 
 _cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "*")
@@ -124,10 +125,16 @@ def _evict_lru() -> None:
 
 def _get_session(request: Request) -> _Session:
     _prune_expired()
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    # Prefer X-Arango-Session: the ArangoDB platform proxy replaces the standard
+    # Authorization header with its own platform JWT before forwarding to the
+    # BYOC container, making Bearer tokens unusable for app-level session auth.
+    token = request.headers.get("X-Arango-Session", "")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = auth[7:]
     session = _sessions.get(token)
     if session is None or session.expired:
         if session and session.expired:
@@ -1416,20 +1423,53 @@ if _UI_DIR.is_dir():
     def _html_response(path: Path) -> FileResponse:
         return FileResponse(path, headers={"Cache-Control": _HTML_NO_CACHE})
 
+    def _spa_serve(full_path: str) -> FileResponse:
+        """Serve a UI asset if it exists, otherwise fall back to index.html.
+
+        Used by both the legacy ``/ui`` and AMP ``/frontend`` mounts so the
+        cache-headers contract (HTML revalidates, hashed assets immutable) is
+        identical across both prefixes — pinned by ``TestUiCacheHeaders``.
+        """
+        file = _UI_DIR / full_path
+        if file.is_file():
+            # Non-hashed files (e.g. an icon copied next to index.html) —
+            # revalidate too. Hashed assets are served by the dedicated
+            # _ImmutableAssets mount below at /assets.
+            headers = {"Cache-Control": _HTML_NO_CACHE} if file.suffix == ".html" else None
+            return FileResponse(file, headers=headers) if headers else FileResponse(file)
+        return _html_response(_UI_DIR / "index.html")
+
+    # Legacy mount: /ui (local dev, existing bookmarks). Kept alongside the
+    # AMP /frontend mount below so backward-compat doesn't depend on a
+    # follow-up sweep through every doc, runbook, or operator workflow.
     @app.api_route("/ui", methods=["GET", "HEAD"], include_in_schema=False)
     @app.api_route("/ui/", methods=["GET", "HEAD"], include_in_schema=False)
     async def _ui_index() -> FileResponse:
         return _html_response(_UI_DIR / "index.html")
 
     @app.api_route("/ui/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    async def _spa_fallback(full_path: str) -> FileResponse:
-        """Serve a UI asset if it exists, otherwise fall back to index.html."""
-        file = _UI_DIR / full_path
-        if file.is_file():
-            # Non-hashed files under /ui (e.g. an icon) — revalidate too.
-            headers = {"Cache-Control": _HTML_NO_CACHE} if file.suffix == ".html" else None
-            return FileResponse(file, headers=headers) if headers else FileResponse(file)
+    async def _ui_spa_fallback(full_path: str) -> FileResponse:
+        return _spa_serve(full_path)
+
+    # AMP mount: /frontend. Required by the ArangoDB platform proxy which
+    # routes /frontend (not /ui) to the BYOC container. The bare /frontend
+    # (no trailing slash) handler is critical: Starlette's default StaticFiles
+    # mount issues a 307 redirect to /frontend/ which the AMP proxy does NOT
+    # forward to the container, surfacing as a platform-level 404. We use
+    # explicit handlers (not app.mount + StaticFiles) so we can apply the
+    # same cache-headers contract as /ui without a StaticFiles subclass.
+    @app.api_route("/frontend", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/frontend/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def _frontend_index() -> FileResponse:
         return _html_response(_UI_DIR / "index.html")
+
+    @app.api_route(
+        "/frontend/{full_path:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+    )
+    async def _frontend_spa_fallback(full_path: str) -> FileResponse:
+        return _spa_serve(full_path)
 
     # The Vite build emits root-relative URLs (`/assets/...`, `/favicon.svg`,
     # `/icons.svg`) to match its dev server (`port: 5173`, no `base: '/ui/'`).

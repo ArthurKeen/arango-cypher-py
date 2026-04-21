@@ -231,16 +231,23 @@ class TestUiCacheHeaders:
     restarts — surfacing as ghost `/connect` failures that only "Application
     → Clear site data" could resolve. The shell must always revalidate; the
     Vite-hashed assets under /assets/* should be marked immutable.
+
+    The contract is enforced on BOTH SPA mounts the service exposes:
+    ``/ui`` (legacy, local dev) and ``/frontend`` (AMP / BYOC platform-proxy
+    target). Parametrising over both prefixes prevents the cache-policy
+    regression from silently surviving on one prefix while failing on the
+    other — which is exactly how this bug class re-emerges.
     """
 
     def _ui_dist_present(self) -> bool:
         from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
         return _UI_DIR.is_dir() and (_UI_DIR / "index.html").is_file()
 
-    def test_ui_index_no_cache(self):
+    @pytest.mark.parametrize("prefix", ["/ui", "/frontend"])
+    def test_spa_index_no_cache(self, prefix: str):
         if not self._ui_dist_present():
             pytest.skip("ui/dist not built")
-        for path in ("/ui", "/ui/", "/ui/index.html"):
+        for path in (prefix, prefix + "/", prefix + "/index.html"):
             resp = client.get(path)
             assert resp.status_code == 200, path
             cc = resp.headers.get("cache-control", "")
@@ -248,10 +255,11 @@ class TestUiCacheHeaders:
                 f"{path} missing no-cache headers (got {cc!r})"
             )
 
-    def test_ui_spa_fallback_no_cache(self):
+    @pytest.mark.parametrize("prefix", ["/ui", "/frontend"])
+    def test_spa_fallback_no_cache(self, prefix: str):
         if not self._ui_dist_present():
             pytest.skip("ui/dist not built")
-        resp = client.get("/ui/some-deep-route-that-does-not-exist")
+        resp = client.get(f"{prefix}/some-deep-route-that-does-not-exist")
         assert resp.status_code == 200
         assert resp.headers.get("content-type", "").startswith("text/html")
         cc = resp.headers.get("cache-control", "")
