@@ -297,11 +297,16 @@ def _build_relationship_graph(
     """Build an undirected adjacency map of entity → reachable entities
     via declared relationships.
 
-    Tolerates the two endpoint shapes the analyzer emits:
+    Tolerates every endpoint shape the analyzer has emitted in the wild:
 
     * ``"from": "Tenant", "to": "Device"`` — flat strings.
     * ``"from": {"label": "Tenant"}, "to": {"label": "Device"}`` — dicts.
-    * ``"sourceEntity"`` / ``"targetEntity"`` keys (older mappings).
+    * ``"fromEntity": "Tenant", "toEntity": "Device"`` — current
+      ``arangodb-schema-analyzer`` ``conceptual_schema.relationships[]``
+      shape (the source of the reachable=False regression that made
+      tenant-scoping misclassify every entity as unreachable even when
+      ``Tenant -[edge]-> X`` edges existed).
+    * ``"sourceEntity"`` / ``"targetEntity"`` keys — older mappings.
     """
     rels = cs.get("relationships") or []
     adj: dict[str, set[str]] = {}
@@ -311,10 +316,16 @@ def _build_relationship_graph(
         if not isinstance(r, dict):
             continue
         src = _endpoint_label(
-            r.get("from") or r.get("source") or r.get("sourceEntity")
+            r.get("from")
+            or r.get("fromEntity")
+            or r.get("source")
+            or r.get("sourceEntity")
         )
         dst = _endpoint_label(
-            r.get("to") or r.get("target") or r.get("targetEntity")
+            r.get("to")
+            or r.get("toEntity")
+            or r.get("target")
+            or r.get("targetEntity")
         )
         if not src or not dst:
             continue

@@ -167,6 +167,65 @@ class TestDiscoveryDefaults:
         ))
         assert m.role_of("Device") is EntityTenantRole.TENANT_SCOPED
 
+    def test_fromEntity_toEntity_endpoint_shape_supported(self) -> None:
+        # Regression test for the classifier silently dropping every
+        # edge in the conceptual graph when the analyzer emits
+        # ``fromEntity`` / ``toEntity`` (the current schema-analyzer
+        # shape) rather than ``from`` / ``to``. Before the fix this
+        # same fixture produced ``reachable_from_tenant=False`` for
+        # ``Device`` and ``GSuiteUser``, misclassifying ``GSuiteUser``
+        # as ``GLOBAL`` (because it has no TENANT_ID column either)
+        # and exempting it from the tenant guardrail.
+        m = analyze_tenant_scope(_mapping(
+            entities=[
+                {"name": "Tenant", "properties": []},
+                {"name": "Device", "properties": [{"name": "TENANT_ID"}]},
+                {"name": "GSuiteUser", "properties": [{"name": "EMAIL"}]},
+            ],
+            relationships=[
+                {
+                    "type": "TENANTDEVICE",
+                    "fromEntity": "Tenant",
+                    "toEntity": "Device",
+                },
+                {
+                    "type": "DEVICEGSUITEUSER",
+                    "fromEntity": "Device",
+                    "toEntity": "GSuiteUser",
+                },
+            ],
+        ))
+        # Device is reachable AND has denorm → TENANT_SCOPED with field.
+        assert m.role_of("Device") is EntityTenantRole.TENANT_SCOPED
+        assert m.entities["Device"].reachable_from_tenant is True
+        assert m.denorm_field_of("Device") == "TENANT_ID"
+
+        # GSuiteUser has no TENANT_ID but is reachable via Device →
+        # must be TENANT_SCOPED (traversal-only), not GLOBAL.
+        assert m.role_of("GSuiteUser") is EntityTenantRole.TENANT_SCOPED
+        assert m.entities["GSuiteUser"].reachable_from_tenant is True
+        assert m.denorm_field_of("GSuiteUser") is None
+
+    def test_reverse_fromEntity_toEntity_edge_still_reaches(self) -> None:
+        # Reachability is undirected, so TenantUser --> Tenant should
+        # make TenantUser reachable from Tenant too. This mirrors the
+        # TENANTUSERTENANT edge we see in the context-model-poc DB.
+        m = analyze_tenant_scope(_mapping(
+            entities=[
+                {"name": "Tenant", "properties": []},
+                {"name": "TenantUser", "properties": []},
+            ],
+            relationships=[
+                {
+                    "type": "TENANTUSERTENANT",
+                    "fromEntity": "TenantUser",
+                    "toEntity": "Tenant",
+                },
+            ],
+        ))
+        assert m.role_of("TenantUser") is EntityTenantRole.TENANT_SCOPED
+        assert m.entities["TenantUser"].reachable_from_tenant is True
+
     def test_string_property_form_supported(self) -> None:
         # Some schemas emit properties as bare strings, not dicts.
         m = analyze_tenant_scope(_mapping([
