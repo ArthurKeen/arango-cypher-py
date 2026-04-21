@@ -11,6 +11,7 @@ import SchemaGraph from "./SchemaGraph";
 interface Props {
   mapping: Record<string, unknown>;
   onChange: (mapping: Record<string, unknown>) => void;
+  onClose?: () => void;
 }
 
 const SAMPLE_MAPPING = {
@@ -53,7 +54,7 @@ const SAMPLE_MAPPING = {
   },
 };
 
-export default function MappingPanel({ mapping, onChange }: Props) {
+export default function MappingPanel({ mapping, onChange, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -256,6 +257,19 @@ export default function MappingPanel({ mapping, onChange }: Props) {
           >
             TTL
           </button>
+          {onClose && (
+            <>
+              <span className="w-px h-4 bg-gray-700 mx-0.5" />
+              <button
+                onClick={onClose}
+                className="px-1.5 py-0.5 text-xs leading-none rounded text-gray-500 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+                title="Hide schema mapping pane (more room for queries)"
+                aria-label="Hide schema mapping pane"
+              >
+                &#9664;
+              </button>
+            </>
+          )}
         </div>
       </div>
       <div

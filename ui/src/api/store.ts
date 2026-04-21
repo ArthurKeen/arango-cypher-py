@@ -117,7 +117,12 @@ export type Action =
   | { type: "SET_CYPHER"; cypher: string }
   | { type: "SET_MAPPING"; mapping: Record<string, unknown> }
   | { type: "SET_MAPPING_JSON"; json: string }
-  | { type: "CONNECT_START" }
+  | {
+      type: "CONNECT_START";
+      url: string;
+      database: string;
+      username: string;
+    }
   | {
       type: "CONNECT_SUCCESS";
       token: string;
@@ -175,9 +180,24 @@ function reducer(state: AppState, action: Action): AppState {
         return state;
       }
     case "CONNECT_START":
+      // Track the attempted url/database/username on the connection state
+      // immediately. If the attempt fails, CONNECT_ERROR keeps these fields
+      // (it spreads ...state.connection), so the form-reset useEffect in
+      // ConnectionDialog will re-seed the form with what the user actually
+      // tried — not the hardcoded localhost default. Without this the
+      // dialog silently snaps back to localhost:8529 after every failed
+      // auto-connect, which hides the real (e.g. cloud) URL the user
+      // would otherwise edit and retry.
       return {
         ...state,
-        connection: { ...state.connection, status: "connecting", error: null },
+        connection: {
+          ...state.connection,
+          status: "connecting",
+          url: action.url,
+          database: action.database,
+          username: action.username,
+          error: null,
+        },
       };
     case "CONNECT_SUCCESS":
       return {
@@ -231,7 +251,14 @@ function reducer(state: AppState, action: Action): AppState {
         aql: action.aql,
         bindVars: action.bindVars,
         warnings: action.warnings ?? state.warnings,
-        translateMs: action.translateMs ?? null,
+        // Preserve a previously measured transpile time when the
+        // dispatching caller didn't supply a fresh one (e.g. Run /
+        // Explain / Profile after a manual Translate). Without this
+        // guard the transpile-time badge gets clobbered to null the
+        // moment the user executes, hiding it behind the exec-time
+        // badge.
+        translateMs:
+          action.translateMs !== undefined ? action.translateMs : state.translateMs,
         error: null,
       };
     case "TRANSLATE_ERROR":
