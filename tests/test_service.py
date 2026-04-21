@@ -220,3 +220,54 @@ class TestConnections:
         data = resp.json()
         assert "active" in data
         assert "sessions" in data
+
+
+class TestUiCacheHeaders:
+    """Regression tests for the SPA cache policy.
+
+    History: an earlier version served the UI shell via Starlette's default
+    StaticFiles, which omits Cache-Control. Chrome would heuristic-cache the
+    shell against Last-Modified and replay a stale page after backend
+    restarts — surfacing as ghost `/connect` failures that only "Application
+    → Clear site data" could resolve. The shell must always revalidate; the
+    Vite-hashed assets under /assets/* should be marked immutable.
+    """
+
+    def _ui_dist_present(self) -> bool:
+        from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
+        return _UI_DIR.is_dir() and (_UI_DIR / "index.html").is_file()
+
+    def test_ui_index_no_cache(self):
+        if not self._ui_dist_present():
+            pytest.skip("ui/dist not built")
+        for path in ("/ui", "/ui/", "/ui/index.html"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            cc = resp.headers.get("cache-control", "")
+            assert "no-cache" in cc and "no-store" in cc and "must-revalidate" in cc, (
+                f"{path} missing no-cache headers (got {cc!r})"
+            )
+
+    def test_ui_spa_fallback_no_cache(self):
+        if not self._ui_dist_present():
+            pytest.skip("ui/dist not built")
+        resp = client.get("/ui/some-deep-route-that-does-not-exist")
+        assert resp.status_code == 200
+        assert resp.headers.get("content-type", "").startswith("text/html")
+        cc = resp.headers.get("cache-control", "")
+        assert "no-cache" in cc
+
+    def test_ui_assets_immutable(self):
+        from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
+        assets_dir = _UI_DIR / "assets"
+        if not assets_dir.is_dir():
+            pytest.skip("ui/dist/assets not present")
+        first = next((p for p in assets_dir.iterdir() if p.is_file()), None)
+        if first is None:
+            pytest.skip("no built assets to probe")
+        resp = client.get(f"/assets/{first.name}")
+        assert resp.status_code == 200
+        cc = resp.headers.get("cache-control", "")
+        assert "immutable" in cc and "max-age=31536000" in cc, (
+            f"hashed asset missing immutable cache headers (got {cc!r})"
+        )

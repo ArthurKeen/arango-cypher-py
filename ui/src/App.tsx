@@ -9,6 +9,7 @@ import ParameterPanel from "./components/ParameterPanel";
 import QueryHistory from "./components/QueryHistory";
 import SampleQueries from "./components/SampleQueries";
 import ClauseOutline from "./components/ClauseOutline";
+import TenantSelector from "./components/TenantSelector";
 import { useAppState } from "./api/store";
 import { buildCorrespondenceMap, buildReverseMap } from "./utils/correspondenceMap";
 import {
@@ -23,10 +24,14 @@ import {
   listCorrections,
   deleteCorrection,
   suggestNlQueries,
+  listTenants,
   type CorrectionRecord,
+  type TenantContext,
+  type TenantRecord,
 } from "./api/client";
 
 const NL_SAMPLES_SEEN_KEY = "nl_samples_seen";
+const TENANT_CTX_KEY = "tenant_context";
 
 function loadSeenNlSamples(): Record<string, number> {
   try {
@@ -42,6 +47,34 @@ function markSeenNlSamples(key: string) {
     const seen = loadSeenNlSamples();
     seen[key] = Date.now();
     localStorage.setItem(NL_SAMPLES_SEEN_KEY, JSON.stringify(seen));
+  } catch {
+    // ignore
+  }
+}
+
+function tenantCtxStoreKey(url: string, database: string): string {
+  return `${TENANT_CTX_KEY}::${url}::${database}`;
+}
+
+function loadTenantContext(url: string, database: string): TenantContext | null {
+  try {
+    const raw = localStorage.getItem(tenantCtxStoreKey(url, database));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.property === "string" && typeof parsed.value === "string") {
+      return parsed as TenantContext;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveTenantContext(url: string, database: string, ctx: TenantContext | null) {
+  try {
+    const key = tenantCtxStoreKey(url, database);
+    if (ctx == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(ctx));
   } catch {
     // ignore
   }
@@ -257,7 +290,13 @@ export default function App() {
       } else {
         if (!cypherRef.current.trim()) return;
         const resp = await executeCypher(makeRequest(), state.connection.token);
-        dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars, warnings: resp.warnings });
+        dispatch({
+          type: "TRANSLATE_SUCCESS",
+          aql: resp.aql,
+          bindVars: resp.bind_vars,
+          warnings: resp.warnings,
+          translateMs: resp.translate_ms,
+        });
         dispatch({ type: "EXECUTE_SUCCESS", results: resp.results, warnings: resp.warnings, execMs: resp.exec_ms });
         addToHistory(resp.aql);
       }
@@ -275,7 +314,12 @@ export default function App() {
     dispatch({ type: "EXPLAIN_START" });
     try {
       const resp = await explainCypher(makeRequest(), state.connection.token);
-      dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars });
+      dispatch({
+        type: "TRANSLATE_SUCCESS",
+        aql: resp.aql,
+        bindVars: resp.bind_vars,
+        translateMs: resp.translate_ms,
+      });
       dispatch({ type: "EXPLAIN_SUCCESS", plan: resp.plan });
       addToHistory(resp.aql);
     } catch (err) {
@@ -292,7 +336,12 @@ export default function App() {
     dispatch({ type: "PROFILE_START" });
     try {
       const resp = await profileCypher(makeRequest(), state.connection.token);
-      dispatch({ type: "TRANSLATE_SUCCESS", aql: resp.aql, bindVars: resp.bind_vars });
+      dispatch({
+        type: "TRANSLATE_SUCCESS",
+        aql: resp.aql,
+        bindVars: resp.bind_vars,
+        translateMs: resp.translate_ms,
+      });
       dispatch({
         type: "PROFILE_SUCCESS",
         results: resp.results,
@@ -339,6 +388,170 @@ export default function App() {
     const ents = pm?.entities as Record<string, unknown> | undefined;
     return ents ? Object.keys(ents).length : 0;
   }, [state.mapping]);
+
+  // Heuristic: this schema is multi-tenant if the conceptual or
+  // physical mapping declares a `Tenant` entity. When true we show the
+  // tenant selector; when false we hide it entirely so single-tenant
+  // workspaces get no extra chrome. See
+  // `arango_cypher.nl2cypher.tenant_guardrail.has_tenant_entity`
+  // for the mirrored backend check.
+  const hasTenantEntity = useMemo(() => {
+    const m = state.mapping as Record<string, unknown>;
+    const cs =
+      (m?.conceptual_schema as Record<string, unknown> | undefined) ??
+      (m?.conceptualSchema as Record<string, unknown> | undefined);
+    const ents = cs?.entities;
+    if (Array.isArray(ents)) {
+      for (const e of ents) {
+        if (e && typeof e === "object" && (e as { name?: unknown }).name === "Tenant") {
+          return true;
+        }
+      }
+    }
+    const pm =
+      (m?.physical_mapping as Record<string, unknown> | undefined) ??
+      (m?.physicalMapping as Record<string, unknown> | undefined);
+    const pEnts = pm?.entities as Record<string, unknown> | undefined;
+    return !!(pEnts && Object.prototype.hasOwnProperty.call(pEnts, "Tenant"));
+  }, [state.mapping]);
+
+  const [tenantCatalog, setTenantCatalog] = useState<TenantRecord[]>([]);
+  const [tenantsDetected, setTenantsDetected] = useState(false);
+  const [tenantsLoading, setTenantsLoading] = useState(false);
+  const [tenantContext, setTenantContext] = useState<TenantContext | null>(null);
+  // Diagnostic state — what collection the backend tried to query and
+  // whether it found it via mapping vs heuristic. Surfaced in the
+  // selector tooltip / empty state so a missing tenant list isn't
+  // silent.
+  const [tenantResolution, setTenantResolution] = useState<{
+    collection: string | null;
+    source: "client" | "heuristic" | null;
+    error: string | null;
+  }>({ collection: null, source: null, error: null });
+
+  // Fetch the tenant catalog when we connect to a schema that has a
+  // Tenant entity. Skipped otherwise — we want /tenants to be a no-op
+  // for single-tenant workspaces, not an always-on network call.
+  useEffect(() => {
+    const token = state.connection.token;
+    if (!token) {
+      setTenantCatalog([]);
+      setTenantsDetected(false);
+      setTenantContext(null);
+      setTenantResolution({ collection: null, source: null, error: null });
+      return;
+    }
+    if (state.introspecting) return;
+    if (!hasTenantEntity) {
+      setTenantCatalog([]);
+      setTenantsDetected(false);
+      setTenantContext(null);
+      setTenantResolution({ collection: null, source: null, error: null });
+      return;
+    }
+    let cancelled = false;
+    setTenantsLoading(true);
+    (async () => {
+      try {
+        // Pass the introspected mapping so the server can resolve the
+        // *actual* tenant collection name (e.g. `Tenants` vs literal
+        // `Tenant`) from physical_mapping. Without this, real-world
+        // schemas where the collection name doesn't match the
+        // conceptual entity name silently produce an empty catalog.
+        const mapping =
+          (state.mapping as Record<string, unknown> | null | undefined) || null;
+        const resp = await listTenants(token, mapping);
+        if (cancelled) return;
+        setTenantsDetected(resp.detected);
+        setTenantCatalog(resp.tenants || []);
+        setTenantResolution({
+          collection: resp.collection ?? null,
+          source: resp.source ?? null,
+          error: null,
+        });
+        // Rehydrate a previously-saved selection for this (url, database).
+        const saved = loadTenantContext(
+          state.connection.url,
+          state.connection.database,
+        );
+        if (saved) {
+          // Only rehydrate if the saved value still resolves to a
+          // tenant in the catalog. Selections persisted by older UI
+          // bundles may be keyed on TENANT_HEX_ID / NAME; we
+          // transparently migrate them to the canonical `_key` form
+          // so the user doesn't lose their selection across a
+          // bundle upgrade.
+          const list = resp.tenants || [];
+          let resolved =
+            saved.property === "_key"
+              ? list.find((t) => t.key === saved.value)
+              : saved.property === "TENANT_HEX_ID"
+                ? list.find((t) => t.hex_id === saved.value)
+                : saved.property === "NAME"
+                  ? list.find((t) => t.name === saved.value)
+                  : undefined;
+          if (resolved) {
+            const migrated = {
+              property: "_key",
+              value: resolved.key,
+              display: resolved.name || resolved.subdomain || resolved.key,
+            };
+            setTenantContext(migrated);
+            if (saved.property !== "_key" || saved.value !== resolved.key) {
+              saveTenantContext(state.connection.url, state.connection.database, migrated);
+            }
+          } else {
+            setTenantContext(null);
+            saveTenantContext(state.connection.url, state.connection.database, null);
+          }
+        } else {
+          setTenantContext(null);
+        }
+      } catch (err) {
+        // Surface HTTP status when available (ApiError carries it).
+        // The most common failure mode in practice is a stale backend
+        // that doesn't know about /tenants at all (404) or doesn't
+        // accept the new query param shape (405). Showing the status
+        // in the pill turns "Tenant lookup failed" from a dead-end
+        // into something the operator can act on.
+        const status =
+          err && typeof err === "object" && "status" in err
+            ? ` (HTTP ${(err as { status: number }).status})`
+            : "";
+        const base = err instanceof Error ? err.message : String(err);
+        const msg = `${base}${status}`;
+        console.warn("Tenant catalog fetch failed:", msg);
+        if (!cancelled) {
+          setTenantCatalog([]);
+          setTenantsDetected(false);
+          setTenantResolution({ collection: null, source: null, error: msg });
+        }
+      } finally {
+        if (!cancelled) setTenantsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    state.connection.token,
+    state.connection.url,
+    state.connection.database,
+    state.introspecting,
+    hasTenantEntity,
+    state.mapping,
+  ]);
+
+  const handleTenantSelect = useCallback(
+    (ctx: TenantContext | null) => {
+      setTenantContext(ctx);
+      saveTenantContext(state.connection.url, state.connection.database, ctx);
+    },
+    [state.connection.url, state.connection.database],
+  );
+
+  const tenantContextRef = useRef<TenantContext | null>(null);
+  tenantContextRef.current = tenantContext;
 
   useEffect(() => {
     if (state.connection.status !== "connected") return;
@@ -391,8 +604,9 @@ export default function App() {
     setNlLoading(true);
     setNlInfo("");
     try {
+      const tenantCtx = tenantContextRef.current;
       if (nlMode === "aql") {
-        const resp = await nl2Aql(nlInput, mappingRef.current);
+        const resp = await nl2Aql(nlInput, mappingRef.current, tenantCtx);
         if (resp.aql) {
           directAqlRef.current = true;
           dispatch({
@@ -412,7 +626,10 @@ export default function App() {
           setNlInfo(resp.explanation || "Could not generate AQL");
         }
       } else {
-        const resp = await nl2Cypher(nlInput, mappingRef.current);
+        const resp = await nl2Cypher(nlInput, mappingRef.current, {
+          sessionToken: state.connection.token ?? undefined,
+          tenantContext: tenantCtx,
+        });
         if (resp.cypher) {
           directAqlRef.current = false;
           dispatch({ type: "SET_CYPHER", cypher: resp.cypher });
@@ -431,7 +648,7 @@ export default function App() {
       setNlLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun]);
+  }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun, state.connection.token]);
 
   // Chain auto-translate after NL→Cypher when enabled.
   useEffect(() => {
@@ -532,6 +749,18 @@ export default function App() {
           />
         </div>
         <div className="flex items-center gap-2">
+          {isConnected && hasTenantEntity && (
+            <TenantSelector
+              tenants={tenantCatalog}
+              loading={tenantsLoading}
+              selection={tenantContext}
+              onSelect={handleTenantSelect}
+              detected={tenantsDetected}
+              resolvedCollection={tenantResolution.collection}
+              source={tenantResolution.source}
+              error={tenantResolution.error}
+            />
+          )}
           <button
             onClick={() => setShowSamples(true)}
             className="px-2.5 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
@@ -588,12 +817,13 @@ export default function App() {
       {/* Main content */}
       <div className="flex-1 min-h-0 flex">
         {/* Mapping sidebar */}
-        {showMapping && (
+        {showMapping ? (
           <>
             <div className="border-r border-gray-800 flex-shrink-0 relative" style={{ width: mappingWidth }}>
               <MappingPanel
                 mapping={state.mapping}
                 onChange={(m) => dispatch({ type: "SET_MAPPING", mapping: m })}
+                onClose={() => setShowMapping(false)}
               />
               {state.introspecting && (
                 <div className="absolute inset-0 bg-gray-950/70 flex items-center justify-center z-20 backdrop-blur-sm">
@@ -616,6 +846,23 @@ export default function App() {
               }}
             />
           </>
+        ) : (
+          <button
+            onClick={() => setShowMapping(true)}
+            title="Show schema mapping pane"
+            aria-label="Show schema mapping pane"
+            className="w-6 flex-shrink-0 flex flex-col items-center justify-center gap-2 bg-gray-900/40 hover:bg-gray-800 border-r border-gray-800 group transition-colors"
+          >
+            <span className="text-gray-500 group-hover:text-indigo-400 text-xs leading-none transition-colors">
+              &#9654;
+            </span>
+            <span
+              className="text-[10px] text-gray-600 group-hover:text-gray-400 uppercase tracking-wider transition-colors"
+              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+            >
+              Mapping
+            </span>
+          </button>
         )}
 
         {/* Editors and results */}
@@ -623,6 +870,15 @@ export default function App() {
           {/* NL input bar */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/30 border-b border-gray-800">
             <span className="text-xs text-gray-500 shrink-0">Ask:</span>
+            {tenantContext && (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-900/30 border border-amber-700/60 text-amber-300 text-[10px] shrink-0"
+                title={`Queries scoped to Tenant.${tenantContext.property} = ${tenantContext.value}`}
+              >
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                {tenantContext.display || tenantContext.value}
+              </span>
+            )}
             <div className="flex-1 relative" ref={nlHistoryRef}>
               <input
                 type="text"

@@ -37,12 +37,14 @@ export interface ExecuteResponse {
   bind_vars: Record<string, unknown>;
   warnings: Array<{ message: string }>;
   exec_ms?: number;
+  translate_ms?: number;
 }
 
 export interface ExplainResponse {
   aql: string;
   bind_vars: Record<string, unknown>;
   plan: unknown;
+  translate_ms?: number;
 }
 
 export interface ProfileResponse {
@@ -51,6 +53,7 @@ export interface ProfileResponse {
   results: unknown[];
   statistics: Record<string, unknown>;
   profile: unknown;
+  translate_ms?: number;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -188,14 +191,39 @@ export interface NL2CypherResponse {
   total_tokens?: number;
 }
 
+export interface TenantContext {
+  property: string;
+  value: string;
+  display?: string;
+}
+
+export interface NL2CypherOptions {
+  useLlm?: boolean;
+  useFewshot?: boolean;
+  useEntityResolution?: boolean;
+  sessionToken?: string;
+  tenantContext?: TenantContext | null;
+}
+
 export async function nl2Cypher(
   question: string,
   mapping: Record<string, unknown>,
-  useLlm: boolean = true,
+  opts: NL2CypherOptions | boolean = {},
 ): Promise<NL2CypherResponse> {
+  // Back-compat: older call sites pass `useLlm` as a bare boolean.
+  const options: NL2CypherOptions =
+    typeof opts === "boolean" ? { useLlm: opts } : opts;
+  const body: Record<string, unknown> = { question, mapping };
+  if (options.useLlm !== undefined) body.use_llm = options.useLlm;
+  if (options.useFewshot !== undefined) body.use_fewshot = options.useFewshot;
+  if (options.useEntityResolution !== undefined) {
+    body.use_entity_resolution = options.useEntityResolution;
+  }
+  if (options.sessionToken) body.session_token = options.sessionToken;
+  if (options.tenantContext) body.tenant_context = options.tenantContext;
   return request("/nl2cypher", {
     method: "POST",
-    body: JSON.stringify({ question, mapping, use_llm: useLlm }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -226,11 +254,79 @@ export async function executeAql(
 export async function nl2Aql(
   question: string,
   mapping: Record<string, unknown>,
+  tenantContext?: TenantContext | null,
 ): Promise<NL2AqlResponse> {
+  const body: Record<string, unknown> = { question, mapping };
+  if (tenantContext) body.tenant_context = tenantContext;
   return request("/nl2aql", {
     method: "POST",
-    body: JSON.stringify({ question, mapping }),
+    body: JSON.stringify(body),
   });
+}
+
+export interface TenantRecord {
+  // Full ArangoDB document id, e.g. "Tenant/<uuid>". This is the
+  // canonical tenant identifier — universal, indexed, and not
+  // dependent on a schema-specific field like TENANT_HEX_ID.
+  id: string;
+  // Bare _key portion of `id` (the part after the slash). Used for
+  // the Cypher `{_key: '...'}` shorthand in generated queries.
+  key: string;
+  name: string | null;
+  subdomain: string | null;
+  hex_id: string | null;
+}
+
+export interface TenantsResponse {
+  detected: boolean;
+  tenants: TenantRecord[];
+  // Resolved ArangoDB collection name the catalog query was run
+  // against. Surfaced so the UI can explain *why* detection
+  // succeeded or failed (e.g. "looked for collection `Tenants`,
+  // not found") instead of silently hiding the selector.
+  collection?: string | null;
+  // "client" when the UI passed an explicit collection query
+  // param, "heuristic" when we fell back to the literal "Tenant"
+  // name. Reported back so empty results are explainable.
+  source?: "client" | "heuristic";
+}
+
+// Pluck the physical collection name backing the conceptual
+// `Tenant` entity from the introspected mapping. Returns null when
+// no mapping is present yet or no Tenant entity exists. Mirrors the
+// transpiler's lookup (physical_mapping.entities.<Label>.collectionName)
+// — we resolve client-side to keep the API a pure GET and avoid
+// shipping the entire mapping back over the wire.
+export function resolveTenantCollectionName(
+  mapping: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!mapping) return null;
+  const pm =
+    (mapping.physical_mapping as Record<string, unknown> | undefined) ??
+    (mapping.physicalMapping as Record<string, unknown> | undefined);
+  const ents = pm?.entities as Record<string, unknown> | undefined;
+  const tenant = ents?.["Tenant"] as Record<string, unknown> | undefined;
+  if (!tenant) return null;
+  const coll = (tenant.collectionName ?? tenant.collection) as unknown;
+  return typeof coll === "string" && coll.length > 0 ? coll : null;
+}
+
+export async function listTenants(
+  token: string,
+  mapping?: Record<string, unknown> | null,
+): Promise<TenantsResponse> {
+  // GET-only — older deployed services still understand the bare
+  // `/tenants` request, so a freshly built UI talking to a
+  // not-yet-restarted backend degrades to the heuristic path
+  // instead of failing with 405. When we know the real collection
+  // name (from the introspected mapping) we send it as a query
+  // parameter so the server queries the right collection without
+  // needing to receive the full mapping in the body.
+  const collection = resolveTenantCollectionName(mapping);
+  const path = collection
+    ? `/tenants?collection=${encodeURIComponent(collection)}`
+    : "/tenants";
+  return request(path, { headers: authHeaders(token) });
 }
 
 export interface NlSamplesResponse {

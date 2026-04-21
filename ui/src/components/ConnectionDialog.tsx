@@ -52,12 +52,23 @@ export default function ConnectionDialog({ connection, introspecting, dispatch }
           doConnect(newForm);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        // Surface defaults-fetch failures in the console rather than
+        // silently dropping them. When this fails the form silently falls
+        // back to hardcoded localhost defaults, which is exactly the
+        // failure mode that's hardest to diagnose from a screenshot.
+        console.warn("Failed to load /connect/defaults:", err);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function doConnect(f: typeof form) {
-    dispatch({ type: "CONNECT_START" });
+    dispatch({
+      type: "CONNECT_START",
+      url: f.url,
+      database: f.database,
+      username: f.username,
+    });
     try {
       const resp = await connect({
         url: f.url,
@@ -116,6 +127,26 @@ export default function ConnectionDialog({ connection, introspecting, dispatch }
     dispatch({ type: "DISCONNECT" });
   }
 
+  // Force a fresh schema introspection. Bypasses both cache tiers
+  // (in-process + persistent `_schemas` collection) so the user has
+  // an escape hatch when the cached mapping is missing entities or
+  // collection-name changes — common after schema migrations or when
+  // the analyzer LLM previously returned an incomplete mapping.
+  async function handleReintrospect() {
+    if (!connection.token) return;
+    dispatch({ type: "INTROSPECT_START" });
+    try {
+      const schema = await introspectSchema(connection.token, 50, true);
+      const mapping = introspectToMapping(schema);
+      dispatch({ type: "INTROSPECT_SUCCESS", mapping });
+    } catch (err) {
+      dispatch({
+        type: "INTROSPECT_ERROR",
+        error: err instanceof Error ? err.message : "Introspection failed",
+      });
+    }
+  }
+
   if (connection.status === "connected") {
     return (
       <div className="flex items-center gap-3 text-sm">
@@ -146,6 +177,14 @@ export default function ConnectionDialog({ connection, introspecting, dispatch }
             Loading schema...
           </span>
         )}
+        <button
+          onClick={handleReintrospect}
+          disabled={introspecting}
+          title="Bypass the schema cache and re-introspect the database"
+          className="px-2.5 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Refresh schema
+        </button>
         <button
           onClick={handleDisconnect}
           className="px-2.5 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
