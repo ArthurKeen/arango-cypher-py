@@ -1682,6 +1682,545 @@ a CI gate that prevents future regressions.
 
 ---
 
+## Wave 6 prompts — Schema inference + NL feedback-loop bug-fix (WP-27..WP-30)
+
+Derived from: [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) and [`implementation_plan.md`](./implementation_plan.md) WP-27..WP-30.
+
+**Summary.** Fixes the six-defect cascade that produced an unrecoverable Translate-time parse error on a hybrid (GraphRAG + PG) database: heuristic mis-classification of a scalar data field named `label` as an LPG type discriminator (D1); silent analyzer-unavailable fallback with indefinite cache poisoning (D2); NL prompt missing backtick-escaping guidance (D3); retry loop returning invalid Cypher on exhaustion instead of failing closed (D4); transpiler not stripping label backticks before resolver lookup (D5); Translate-button parse failures having no route back into NL inference (D6).
+
+### Dependency graph
+
+```
+Wave 6a (parallel, same PR, Phase A+B)
+  WP-27 (heuristic correctness, incl. D5 transpiler backtick strip)
+  WP-28 (analyzer visibility + service hardening)
+                 │
+                 ▼
+Wave 6b (parallel within, Phase C, separate PR)
+  WP-29 (NL prompt escaping + fail-closed retry)   ──►  WP-30 (Translate feedback)
+```
+
+Wave 6a blocks Wave 6b because (a) WP-29 integration tests against the corrected heuristic mapping depend on WP-27, (b) WP-29's fail-closed branch needs a realistic schema to demonstrate against, and (c) WP-30 consumes the `retry_context` contract that WP-29 introduces on the `/nl2cypher` request.
+
+All four prompts inherit the Shared Context Block above.
+
+---
+
+### Wave 6a — Phase A/B (parallel, single PR)
+
+Launch WP-27 and WP-28 in parallel on sibling branches off `main`. Merge both before running the full suite; the two diffs touch almost-disjoint surfaces (WP-27 is heuristic + transpiler code; WP-28 is service startup, warnings plumbing, and one UI banner). The small overlap is in `arango_cypher/schema_acquire.py` around `_build_fresh_bundle`, where WP-27 changes the heuristic body and WP-28 changes the `except ImportError` branch — these are separate functions/branches, not the same line.
+
+---
+
+#### WP-27 — Heuristic type-field detection hardening + transpiler backtick strip
+
+```
+SHARED CONTEXT — arango-cypher-py
+<insert the shared context block here>
+
+## Your task: WP-27 — Harden heuristic type-field detection; strip label backticks in the transpiler
+
+### Background
+
+The heuristic schema inference path (used as a fallback when `arangodb-schema-analyzer` is not importable) in `arango_cypher/schema_acquire.py` treats any field in `{type, _type, label, labels, kind, entityType}` present in ≥ 80 % of sampled documents as an LPG type discriminator, then explodes every distinct value into its own conceptual entity. On a real hybrid database, this produced 36 fake entity types from filename values held in a `label` field on a `*_Documents` collection, 43 of them carrying `.` in the name (illegal in `oC_SymbolicName` without backtick escape).
+
+The transpiler's `_pick_primary_entity_label` calls `resolver.resolve_entity` with the raw label identifier string from the AST, which preserves backticks on escaped labels. A correctly-escaped LLM output (``MATCH (d:`Compliance.rst`)``) fails resolution with `No entity mapping for: \`Compliance.rst\`. Available entities: Compliance.rst`.
+
+Full problem analysis: [`docs/schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) defects **D1** and **D5**.
+
+### What to implement
+
+#### Part 1 — Heuristic hardening (D1)
+
+Tight rewrite of `_detect_type_field` and the fallback behaviour in `_build_heuristic_mapping`. No new public API; the change is in how a candidate is accepted.
+
+1. Split `_DOC_TYPE_FIELDS` into two tiers, keeping edge-candidate list intact:
+   ```python
+   _TIER1_TYPE_FIELDS = ["type", "_type", "entityType"]
+   _TIER2_TYPE_FIELDS = ["label", "labels", "kind"]
+   ```
+   `_DOC_TYPE_FIELDS` becomes `_TIER1_TYPE_FIELDS + _TIER2_TYPE_FIELDS` for call sites that still pass it explicitly.
+
+2. Add a helper:
+   ```python
+   _FILE_EXTENSION_SUFFIXES = (
+       ".rst", ".md", ".pdf", ".asciidoc", ".txt", ".rtf",
+       ".docx", ".html", ".json", ".xml", ".yaml", ".yml",
+       ".ttl", ".owl",
+   )
+
+   def _looks_class_like(value: str) -> bool:
+       if not value or not value.strip():
+           return False
+       if any(c in value for c in (".", "/", " ", "\t")):
+           return False
+       lv = value.lower()
+       if any(lv.endswith(suf) for suf in _FILE_EXTENSION_SUFFIXES):
+           return False
+       return True
+   ```
+
+3. Rewrite `_detect_type_field` so it:
+   - Still enforces the existing 80 % coverage rule.
+   - For tier-1 candidates, accepts as before.
+   - For tier-2 candidates, additionally:
+     - Rejects when `distinct_count > max(50, int(0.5 * row_count))`.
+     - Rejects when any sampled distinct value fails `_looks_class_like`.
+   - Returns the first candidate that passes; `None` if none do.
+   - Records every candidate considered (accepted or rejected) with a short reason string in a per-collection dict passed in by the caller (or returned alongside the field name — choose whichever is cleaner given the existing signature; do not over-refactor).
+
+4. In `_build_heuristic_mapping`, when `_detect_type_field` returns `None` for a document collection, fall through to the existing COLLECTION-style branch (already implemented at line ~851). The behaviour there is correct; the only change is that more collections will land in this branch than before.
+
+5. Attach rejection reasons to `bundle.metadata.heuristic_notes` keyed by collection name. Structure is a plain dict; no dataclass needed:
+   ```json
+   {
+     "heuristic_notes": {
+       "IBEX_Documents": {
+         "rejected_candidates": [
+           {"field": "label", "tier": 2, "reason": "36 distinct values over 36 rows exceeds cardinality ratio 0.5"}
+         ],
+         "accepted_field": null,
+         "resolved_style": "COLLECTION"
+       }
+     }
+   }
+   ```
+
+#### Part 2 — Transpiler backtick strip (D5)
+
+In `arango_cypher/translate_v0.py`, add:
+
+```python
+def _strip_label_backticks(name: str) -> str:
+    if len(name) >= 2 and name.startswith("`") and name.endswith("`"):
+        return name[1:-1]
+    return name
+```
+
+Apply it at every call site that passes a label identifier to `resolver.resolve_entity` or `resolver.resolve_relationship`. Primary site is `_pick_primary_entity_label` around line 3985 — there may be 3–6 other sites; grep for `resolve_entity(` and `resolve_relationship(`.
+
+Do **not** strip at the parser level. Parse tree preserves the escaping; the strip is a normalisation at the resolution boundary, not a modification of the AST.
+
+### Where to make changes
+
+- `arango_cypher/schema_acquire.py` — `_DOC_TYPE_FIELDS` split, `_looks_class_like`, `_detect_type_field` rewrite, `heuristic_notes` attachment in `_build_heuristic_mapping`.
+- `arango_cypher/translate_v0.py` — `_strip_label_backticks` + call-site wiring.
+- `tests/test_schema_acquire_heuristic.py` — **new**. Golden cases below.
+- `tests/test_translate_v0.py` — extend. Add backtick round-trip cases.
+
+### Tests to add
+
+#### `tests/test_schema_acquire_heuristic.py`
+
+Use a `FakeDb` / mocked `python-arango` cursor; do not require a live DB. Reuse any existing mocking helper in `tests/test_schema_acquire.py` if present.
+
+- `test_tier2_label_rejected_when_high_cardinality` — 36 distinct filenames on 36 rows → `_detect_type_field` returns `None`; `resolved_style` for the collection is `COLLECTION`; `heuristic_notes[col]["rejected_candidates"]` contains a `label` entry with `tier: 2`.
+- `test_tier2_label_accepted_when_class_like` — values `{"Movie","Person"}` on 173 rows → `_detect_type_field` returns `"label"`; two entities emitted.
+- `test_tier2_label_rejected_when_value_has_dot` — values `{"Compliance.rst","index.rst"}` → rejected; `reason` mentions file extension or `"."`.
+- `test_tier1_type_always_wins_over_tier2_label` — collection has both `type` and `label` → `type` is chosen.
+- `test_no_candidate_falls_through_to_collection` — collection has no discriminator-like field at all → emits one `COLLECTION` entity using the `_collection_label()` name.
+- `test_heuristic_notes_structure` — bundle carries `metadata.heuristic_notes` with expected keys.
+
+#### `tests/test_translate_v0.py` (extend)
+
+- `test_backticked_label_resolves_same_as_bare_label` — build a mapping with entity `Movie`; assert `MATCH (m:Movie) RETURN m` and ``MATCH (m:`Movie`) RETURN m`` both transpile to byte-identical AQL.
+- `test_backticked_label_with_dot_resolves` — mapping with entity named `Compliance.rst` (fixture the entity name as string in a test-only `MappingBundle`); assert ``MATCH (d:`Compliance.rst`) RETURN d.doc_version`` resolves and transpiles.
+
+### Out of scope (do NOT change)
+
+- Do **not** modify `acquire_mapping_bundle` or the analyzer call path. Analyzer output is authoritative; this WP only tightens the heuristic fallback.
+- Do **not** remove tier-2 candidates entirely. The heuristic must still recognise legitimate LPG schemas that use `label` as a discriminator.
+- Do **not** touch the NL prompt, the retry loop, or the UI. Those are WP-29 and WP-30.
+
+### Acceptance criteria
+
+- `pytest -m "not integration and not tck"` — all green (existing + new tests).
+- `ruff check .` — clean.
+- New tests above all pass.
+- Heuristic mapping for a mocked `*_Documents`-shaped collection (36 rows, 36 distinct `label` values containing dots) produces exactly one entity with `style=COLLECTION` and zero entities with a dot in their name.
+- Heuristic mapping for a mocked LPG-shaped collection (173 rows, 2 distinct `type` values `{"Person","Movie"}`) produces two entities with `style=LABEL` — unchanged from current behaviour.
+- `MATCH (m:Movie)` and ``MATCH (m:`Movie`)`` produce byte-identical transpiled AQL when `Movie` is a mapped entity.
+
+### Hand-off to WP-28 / WP-29 / WP-30
+
+None — WP-27 is self-contained. WP-28 will add warnings plumbing that may touch `_build_heuristic_mapping`'s return shape; coordinate via the shared `metadata` dict. WP-29 will add a test that relies on the post-WP-27 heuristic behaviour being correct on the red-team fixture.
+```
+
+---
+
+#### WP-28 — Analyzer-unavailable visibility + service hardening + `/schema/force-reacquire`
+
+```
+SHARED CONTEXT — arango-cypher-py
+<insert the shared context block here>
+
+## Your task: WP-28 — Surface analyzer-unavailable fallbacks; add a reacquisition endpoint; harden service startup
+
+### Background
+
+When `arangodb-schema-analyzer` is not importable at the deployed service, `_build_fresh_bundle` silently falls back to the heuristic and the result is cached indefinitely because the shape fingerprint does not change. Operators have no visible signal that a degraded mapping is being served, and already-poisoned caches require manual deletion of the cache document.
+
+Full problem analysis: [`docs/schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) defect **D2**.
+
+### What to implement
+
+1. **Structured warnings on the bundle.**
+   Add to `arango_cypher/schema_acquire.py`:
+   ```python
+   def _attach_warning(bundle: MappingBundle, *, code: str, message: str,
+                       install_hint: str | None = None) -> MappingBundle:
+       meta = dict(bundle.metadata or {})
+       warnings = list(meta.get("warnings") or [])
+       warnings.append({
+           "code": code,
+           "message": message,
+           **({"install_hint": install_hint} if install_hint else {}),
+       })
+       meta["warnings"] = warnings
+       return MappingBundle(
+           conceptual_schema=bundle.conceptual_schema,
+           physical_mapping=bundle.physical_mapping,
+           metadata=meta,
+           owl_turtle=bundle.owl_turtle,
+           source=bundle.source,
+       )
+   ```
+
+2. **Wire the warning into the `ImportError` branch.**
+   In `_build_fresh_bundle` (line ~1298):
+   - Change the fallback log from `logger.info(...)` to `logger.warning("Heuristic schema path used — install arangodb-schema-analyzer for accurate mappings on hybrid schemas.")`.
+   - Wrap the returned bundle with `_attach_warning(bundle, code="ANALYZER_NOT_INSTALLED", message="...", install_hint="pip install arangodb-schema-analyzer")`.
+
+3. **Service startup refusal.**
+   In `arango_cypher/service.py`, add at module scope (before `app` is first used in tests):
+   ```python
+   def _require_analyzer_unless_opted_out() -> None:
+       if os.environ.get("ARANGO_CYPHER_ALLOW_HEURISTIC") == "1":
+           return
+       try:
+           import schema_analyzer  # noqa: F401
+       except ImportError as exc:
+           raise RuntimeError(
+               "arango-cypher-py service requires arangodb-schema-analyzer. "
+               "Install it (`pip install arangodb-schema-analyzer`) or set "
+               "ARANGO_CYPHER_ALLOW_HEURISTIC=1 to accept degraded mappings."
+           ) from exc
+
+   _require_analyzer_unless_opted_out()
+   ```
+   Call it at import time, not in an `on_event("startup")` hook — this ensures the fail is visible at process startup, not deferred until the first request.
+
+4. **Analyzer retry on cache miss.**
+   In `get_mapping`, when a persistent-cache lookup returns a bundle whose `metadata.warnings` contains `ANALYZER_NOT_INSTALLED` and `schema_analyzer` is now importable, treat it as a cache miss (do not return it, proceed to rebuild). Thin check, place it between the shape-fingerprint match and the stats-only-refresh branch. Helper:
+   ```python
+   def _bundle_needs_reacquire(bundle: MappingBundle) -> bool:
+       warnings = (bundle.metadata or {}).get("warnings") or []
+       if not any(w.get("code") == "ANALYZER_NOT_INSTALLED" for w in warnings):
+           return False
+       try:
+           import schema_analyzer  # noqa: F401
+           return True
+       except ImportError:
+           return False
+   ```
+
+5. **`POST /schema/force-reacquire` endpoint.**
+   In `arango_cypher/service.py`, alongside the existing `POST /schema/invalidate-cache`:
+   ```python
+   @app.post("/schema/force-reacquire")
+   def schema_force_reacquire(session: _Session = Depends(_get_session)):
+       from .schema_acquire import get_mapping as _get_mapping
+       bundle = _get_mapping(session.db, force_refresh=True, strategy="analyzer")
+       return {
+           "source": {"kind": bundle.source.kind, "notes": bundle.source.notes},
+           "warnings": (bundle.metadata or {}).get("warnings") or [],
+           "entity_count": len(bundle.conceptual_schema.get("entities") or []),
+           "relationship_count": len(bundle.conceptual_schema.get("relationships") or []),
+       }
+   ```
+   `strategy="analyzer"` is the hard form; it raises `ImportError` (wrapped into HTTP 503) if the analyzer is missing.
+
+6. **Surface warnings in `/schema/introspect`.**
+   In the existing `/schema/introspect` response, attach the bundle's warnings to the returned dict:
+   ```python
+   result["warnings"] = (bundle.metadata or {}).get("warnings") or []
+   ```
+   Place it before the return at the end of the endpoint.
+
+7. **UI warning banner.**
+   - New component `ui/src/components/SchemaWarningBanner.tsx`: renders an amber strip across the top of the workbench when any warning is present on the current mapping. Reuse the styling already used for the auth-expired banner.
+   - In `ui/src/App.tsx`, track `schemaWarnings` in the reducer state; populate from `introspect` / `force-reacquire` responses; render `<SchemaWarningBanner warnings={schemaWarnings} />` above the main layout.
+   - Click-to-dismiss persists in `localStorage` keyed by `(url, database, warning.code)` so a dismissed warning stays dismissed for the same database, but returns on a different connection.
+
+8. **Operational metric.**
+   No new telemetry dependency. Add a simple counter module-global `_heuristic_fallback_counter: int = 0` in `schema_acquire.py` and increment in the `ImportError` branch. Expose via `get_metrics()` or a new `GET /schema/metrics` endpoint if none exists yet — check what is there and match the pattern. If no metrics infra exists, skip this item and note it in the PR description for follow-up.
+
+### Where to make changes
+
+- `arango_cypher/schema_acquire.py` — `_attach_warning`, `_bundle_needs_reacquire`, `_build_fresh_bundle` update, `get_mapping` retry-on-miss branch.
+- `arango_cypher/service.py` — startup hook, `/schema/force-reacquire` endpoint, `/schema/introspect` warnings passthrough.
+- `ui/src/components/SchemaWarningBanner.tsx` — new.
+- `ui/src/App.tsx` + `ui/src/api/client.ts` — state wiring + request type for the new fields.
+- `tests/test_schema_acquire_warnings.py` — new.
+- `tests/test_service_startup.py` — new.
+- `tests/test_service_schema_status.py` — extend.
+
+### Tests to add
+
+- `tests/test_schema_acquire_warnings.py`
+  - `test_attach_warning_roundtrip` — warning survives bundle reconstruction and dict serialization.
+  - `test_importerror_branch_attaches_warning` — patch `schema_analyzer` import to raise `ImportError`; call `_build_fresh_bundle(strategy="auto")`; assert bundle carries `ANALYZER_NOT_INSTALLED`.
+  - `test_bundle_needs_reacquire_when_analyzer_available` — bundle carries the warning + analyzer is importable → returns `True`.
+  - `test_bundle_needs_reacquire_false_when_analyzer_missing` — bundle carries the warning + analyzer is NOT importable → returns `False` (no re-tryable improvement).
+  - `test_get_mapping_busts_cache_when_needs_reacquire` — seed the persistent cache with a `ANALYZER_NOT_INSTALLED` bundle, then call `get_mapping` with analyzer importable → result is a fresh analyzer-built bundle, not the cached one.
+
+- `tests/test_service_startup.py`
+  - `test_startup_fails_without_analyzer` — monkeypatch `schema_analyzer` to be unimportable; assert importing `arango_cypher.service` raises `RuntimeError` with the install hint in the message.
+  - `test_startup_succeeds_with_opt_out` — same but with `ARANGO_CYPHER_ALLOW_HEURISTIC=1` in env; import succeeds.
+  - `test_startup_succeeds_with_analyzer` — analyzer present; import succeeds.
+
+- `tests/test_service_schema_status.py` (extend)
+  - `test_introspect_surfaces_warnings` — mocked session returns a bundle with warnings; response carries `result["warnings"]`.
+  - `test_force_reacquire_invokes_analyzer_strategy` — mocked `get_mapping` recorded with `strategy="analyzer"` and `force_refresh=True`.
+  - `test_force_reacquire_503_when_analyzer_missing` — `get_mapping` raises `ImportError`; endpoint returns 503.
+
+### Out of scope (do NOT change)
+
+- Do **not** modify the heuristic detection logic (WP-27's surface).
+- Do **not** change `ArangoSchemaCache` schema or fingerprint semantics. Cache structure is stable.
+- Do **not** add a distributed-invalidation mechanism. Per-worker reacquisition is sufficient for v1 (see bug-fix PRD §9 Open Question 2).
+
+### Acceptance criteria
+
+- `pytest -m "not integration and not tck"` — all green.
+- `ruff check .` — clean.
+- `ui/` typechecks + builds clean: `cd ui && npx tsc --noEmit -p tsconfig.app.json && npm run build`.
+- Service fails to start with a clear `RuntimeError` when analyzer is absent and opt-out is unset.
+- `POST /schema/force-reacquire` on a session backed by an analyzer-present DB returns a fresh bundle with `source.kind == "schema_analyzer_export"` and `warnings == []`.
+- `/schema/introspect` response shape gains a `warnings` field (empty list when none, list of warning objects otherwise).
+
+### Hand-off to WP-29
+
+Neither WP-29 nor WP-30 consume WP-28's endpoints or warning surface. Overlap is confined to `schema_acquire.py`; conflicts expected only at the top of `_build_fresh_bundle` where both WP-27 and WP-28 touch adjacent lines.
+```
+
+---
+
+### Wave 6b — Phase C (parallel within, separate PR after Wave 6a)
+
+Launch WP-29 and WP-30 on separate branches off the merged Wave 6a tip. WP-30 depends on WP-29 for the `retry_context` field on `/nl2cypher`, so WP-29 should land first within the PR; if the PR is split, WP-29 ships before WP-30. For sub-agent purposes, both can be drafted in parallel and rebased after WP-29 merges.
+
+---
+
+#### WP-29 — NL prompt label-escaping + fail-closed retry
+
+```
+SHARED CONTEXT — arango-cypher-py
+<insert the shared context block here>
+
+## Your task: WP-29 — Teach the NL prompt to escape non-identifier labels; fail closed on retry exhaustion
+
+### Background
+
+When a conceptual entity name contains characters outside `[A-Za-z_][A-Za-z0-9_]*`, the LLM must emit it backtick-quoted in Cypher. The current system prompt does not mention this rule, and the schema card rendered by `_build_schema_summary` emits the label raw (`Node :Compliance.rst (…)`), so the LLM faithfully copies the illegal form. Separately, `_call_llm_with_retry` returns `best_cypher` to the UI on retry-budget exhaustion with a WARNING prefix buried in `.explanation` — the UI then writes the invalid Cypher into the editor. The tenant-guardrail code path already demonstrates the correct shape: return an empty-`cypher` result with a structured `method="…_blocked"` that the UI handles as a red banner.
+
+Full problem analysis: [`docs/schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) defects **D3** and **D4**.
+
+### What to implement
+
+#### Part 1 — Label escaping in the schema card and system prompt
+
+1. Helper in `arango_cypher/nl2cypher/_core.py`:
+   ```python
+   _SYMBOLIC_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+   def _escape_label(name: str) -> str:
+       return name if _SYMBOLIC_NAME_RE.match(name or "") else f"`{name}`"
+   ```
+
+2. In `_build_schema_summary`'s `_format_entity`:
+   - Replace `return f"  Node :{label} ({prop_str})"` with `return f"  Node :{_escape_label(label)} ({prop_str})"`.
+3. In the relationship-rendering paths in `_build_schema_summary`:
+   - Replace `f"  (:{from_e})-[:{rtype}{prop_str}]->(:{to_e})"` with `f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}{prop_str}]->(:{_escape_label(to_e)})"`.
+   - Same for the two fallback branches that use `cs_rel_types` / `pm["relationships"]`.
+
+4. Apply the same `_escape_label` treatment in `arango_cypher/nl2cypher/_aql.py`'s `_build_physical_schema_summary` (the NL→AQL direct path). Keep the helper private to `_core.py` and re-import into `_aql.py`, or duplicate as a small utility — prefer the first.
+
+5. Append to `_SYSTEM_PROMPT` (immediately after the existing "Rules:" block, before `"{schema}"`):
+   ```
+   - Labels and relationship types containing characters other than ASCII
+     letters, digits, and underscore must be wrapped in backticks, e.g.
+     MATCH (d:`Compliance.rst`) RETURN d.doc_version.
+     The schema below has already pre-escaped such names; copy them verbatim.
+   ```
+
+#### Part 2 — Fail closed on retry exhaustion (D4)
+
+Replace the fall-through at `arango_cypher/nl2cypher/_core.py:604–617`:
+
+```python
+if best_cypher:
+    return NL2CypherResult(
+        cypher="",
+        explanation=(
+            f"NL → Cypher validation failed after {1 + max_retries} attempts. "
+            f"Last error: {builder.retry_context}.\n\n"
+            f"Last attempted Cypher was:\n\n{best_cypher}"
+        ),
+        confidence=0.0,
+        method="validation_failed",
+        schema_context=schema_summary,
+        prompt_tokens=total_usage["prompt_tokens"],
+        completion_tokens=total_usage["completion_tokens"],
+        total_tokens=total_usage["total_tokens"],
+        retries=max_retries,
+        cached_tokens=total_usage["cached_tokens"],
+    )
+```
+
+Add a WARN log immediately before the return:
+```python
+logger.warning(
+    "NL2Cypher validation_failed after %d attempts; last error: %s",
+    1 + max_retries, builder.retry_context,
+)
+```
+
+The tenant-guardrail fail-closed branch above it is unchanged.
+
+#### Part 3 — UI handling for `method="validation_failed"`
+
+In `ui/src/App.tsx` / the NL dispatch handler:
+
+- When the `/nl2cypher` response has `method === "validation_failed"`, do **not** write `resp.cypher` into the Cypher editor. Dispatch a `NL_VALIDATION_FAILED` action instead that sets an error banner state and leaves the editor untouched.
+- Render the red banner with the response's `explanation` text. Reuse the existing error-banner styling; if a dedicated `<ErrorBanner variant="validation-failed" />` is cleaner, ship that.
+- The existing `tenant_guardrail_blocked` handling is the template; mirror its branch structure.
+
+#### Part 4 — Add `retry_context` forwarding field (WP-30 dependency)
+
+Prepare for WP-30 by extending the plumbing. No UI or new behaviour yet — just the contract:
+
+- `arango_cypher/service.py`: add an optional `retry_context: str | None = None` field to the NL translate request payload (Pydantic model). Forward it into `nl_to_cypher(..., retry_context=retry_context)`.
+- `arango_cypher/nl2cypher/_core.py`: `nl_to_cypher` gains an optional `retry_context: str | None = None` kwarg; when provided, set `builder.retry_context = retry_context` before the first attempt.
+- Update `arango_cypher/nl2cypher/__init__.py` exports if needed.
+
+### Where to make changes
+
+- `arango_cypher/nl2cypher/_core.py` — `_escape_label`, `_build_schema_summary`, `_SYSTEM_PROMPT`, `_call_llm_with_retry` failure branch, `nl_to_cypher` signature.
+- `arango_cypher/nl2cypher/_aql.py` — same escaping for `_build_physical_schema_summary`.
+- `arango_cypher/service.py` — `retry_context` field on the NL request model; forward-wiring.
+- `ui/src/App.tsx` + `ui/src/components/ErrorBanner.tsx` — validation-failed rendering branch.
+- `ui/src/api/client.ts` — `retry_context` field on the request type (no UI trigger yet; WP-30 adds the trigger).
+- `tests/test_nl2cypher_prompt_builder.py` — extend.
+- `tests/test_nl2cypher_core.py` — extend.
+
+### Tests to add
+
+- `tests/test_nl2cypher_prompt_builder.py`
+  - `test_escape_label_bare_identifier_unchanged` — `_escape_label("Person") == "Person"`.
+  - `test_escape_label_wraps_non_identifier` — `_escape_label("Compliance.rst") == "\`Compliance.rst\`"`.
+  - `test_schema_summary_escapes_dotted_entity` — bundle with entity `Compliance.rst` → schema summary contains `` Node :`Compliance.rst` ``.
+  - `test_schema_summary_escapes_relationship_type` — bundle with a relationship type `HAS-CONTROL` (hyphen → non-identifier) is escaped.
+  - `test_zero_shot_byte_identical_for_bare_names` — **critical regression test**. Build a bundle whose entities and relationships are all bare identifiers, render the system prompt with `tenant_context=None` and empty few-shot. Compare byte-for-byte against a fixed expected string (lift from existing `test_no_tenant_context_leaves_prompt_byte_identical` pattern). This pins that entities without special chars do not see any change.
+  - `test_system_prompt_contains_backtick_rule` — the rule is present in `_SYSTEM_PROMPT` (string contains check).
+
+- `tests/test_nl2cypher_core.py`
+  - `test_call_llm_with_retry_fails_closed_on_exhaustion` — stub provider returns `"INVALID"` every time; after `max_retries=2`, the result has `cypher=""`, `method="validation_failed"`, and `explanation` contains the last error and the invalid cypher string.
+  - `test_call_llm_with_retry_does_not_write_invalid_cypher` — `best_cypher` on the returned object is empty; a caller cannot accidentally populate the editor.
+  - `test_retry_context_seeded_on_first_attempt_when_provided` — call `nl_to_cypher(..., retry_context="explain hint")`; first-attempt user message ends with `"Your previous Cypher was invalid: explain hint. Please fix it."`.
+  - `test_validation_failed_logs_warning` — `caplog.records` contains a WARN record with `validation_failed` text.
+
+### Out of scope (do NOT change)
+
+- Do **not** add client-triggered regeneration on translate failure. That is WP-30.
+- Do **not** change the schema acquisition path or the heuristic. Those are WP-27 / WP-28.
+- Do **not** change the tenant-guardrail path; it already behaves correctly and is the template this WP copies.
+
+### Acceptance criteria
+
+- `pytest -m "not integration and not tck"` — all green.
+- `ruff check .` — clean.
+- `ui/` typechecks + builds clean.
+- WP-25.5 eval corpus (`RUN_NL2CYPHER_EVAL=1 pytest -m eval`): no regression in `parse_ok` or `pattern_match` rates against the current baseline.
+- Manual smoke: in the workbench, issue an NL question that the stub LLM cannot satisfy (configurable via a dev-only provider) and confirm the UI renders the red banner with the failure explanation and does not write anything into the Cypher editor.
+
+### Hand-off to WP-30
+
+WP-30 consumes the `retry_context` field added in Part 4. No other hand-off.
+```
+
+---
+
+#### WP-30 — Translate-on-NL-output feedback in the UI
+
+```
+SHARED CONTEXT — arango-cypher-py
+<insert the shared context block here>
+
+## Your task: WP-30 — When Translate fails on NL-generated Cypher, offer a one-click regenerate-with-hint action
+
+### Background
+
+The Translate button is a pure Cypher → AQL call with no edge back into the NL pipeline. When bad Cypher sits in the editor (e.g. from a prior NL generation that squeaked past validation on an earlier build, or from a model error on a difficult schema), the user sees a parse error and has no path forward except deleting and re-typing. Expected UX is: if the Cypher came from NL in this session, offer a regenerate-with-hint action that re-invokes `/nl2cypher` with the transpile error as retry context. Hand-written Cypher must **not** trigger this (the user wrote what they wanted).
+
+Full problem analysis: [`docs/schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) defect **D6**. Dependency: WP-29 must be merged first — it introduces the `retry_context` field on the `/nl2cypher` request.
+
+### What to implement
+
+1. **`editorCypherSource` state machine in the UI reducer** (`ui/src/App.tsx` or its reducer module):
+   - Add `editorCypherSource: "nl_pipeline" | "user" | null` to the reducer state. Initial value `null`.
+   - On `NL_SUCCESS` action (writing NL-generated Cypher into the editor): set to `"nl_pipeline"`.
+   - On `CYPHER_EDITED` action (any user edit, paste, or sample-load into the Cypher editor): set to `"user"`.
+   - On `DISCONNECT` / connection change: reset to `null`.
+
+2. **Regenerate action on translate failure**:
+   - On `TRANSLATE_ERROR` when `editorCypherSource === "nl_pipeline"`, render a "Regenerate from NL with error hint" button inside the existing translate-error banner. Style matches the existing primary action buttons.
+   - Clicking the button dispatches `NL_REGENERATE_REQUESTED` with the parse error string as payload.
+   - The NL client invokes `/nl2cypher` with `retry_context` set to the parse error string and the original question text.
+   - On success, the new Cypher replaces the editor contents (this correctly sets `editorCypherSource="nl_pipeline"` again). On failure (e.g. `validation_failed`), WP-29's banner handling kicks in.
+
+3. **Retry-context plumbing**:
+   - `ui/src/api/client.ts`: the `/nl2cypher` request body type already gains `retry_context?: string` in WP-29. This WP adds the call-site that supplies it. Nothing new in the client shape — just use it.
+   - The question text used on regenerate is the last NL question stored in reducer state / history. If that is not available (e.g. the user cleared history), grey out the regenerate button and tooltip "Regenerate unavailable — original question not available in this session".
+
+4. **Tests**:
+   - UI reducer unit tests for the state machine (`editorCypherSource` transitions).
+   - Extend `tests/test_service_nl.py` (or the equivalent NL service test) to assert that when `retry_context` is supplied on the request, the prompt's first-attempt user message reflects it (contract test — backs up WP-29's test with a service-layer verification).
+
+### Where to make changes
+
+- `ui/src/App.tsx` + its reducer file — new state field, new actions, new branch on `TRANSLATE_ERROR`.
+- `ui/src/components/CypherEditor.tsx` — wire the "edit" event to dispatch `CYPHER_EDITED`. Verify no existing handler already does this.
+- `ui/src/components/ErrorBanner.tsx` — regenerate-action variant when `editorCypherSource === "nl_pipeline"`.
+- `ui/src/api/client.ts` — no shape change (done in WP-29); only the call-site.
+- `ui/src/App.tsx` or `ui/src/api/store.ts` — state-management wiring for the last-NL-question.
+- `tests/test_service_nl.py` (or the NL service test module) — extend.
+- No changes to `arango_cypher/`.
+
+### Out of scope (do NOT change)
+
+- Do **not** auto-regenerate without a click. The regenerate action must be user-initiated.
+- Do **not** trigger NL regeneration for hand-written Cypher (`editorCypherSource !== "nl_pipeline"`). Typing in the editor flips the source to `"user"` and the button must not appear.
+- Do **not** implement EXPLAIN-time feedback (the bug-fix PRD §9 defers that to a future wave).
+- Do **not** change the backend. All backend contract changes belong to WP-29.
+
+### Acceptance criteria
+
+- `ui/` typechecks + builds clean.
+- UI unit tests for the `editorCypherSource` state machine pass (pure reducer test; no DOM needed).
+- Extended service NL test passes — the `retry_context` field is correctly forwarded into the prompt.
+- Manual smoke:
+  - NL question "show me person names" → NL writes `MATCH (p:Person) RETURN p.name` → click Translate → success → no regenerate button anywhere (no error).
+  - NL question crafted to produce invalid Cypher (use a dev-only stub provider) → NL writes invalid Cypher → click Translate → parse error + regenerate button visible. Click regenerate → `/nl2cypher` is called with `retry_context` set to the parse error. New Cypher replaces the editor.
+  - Edit the NL-generated Cypher by typing one character → click Translate → parse error + **no** regenerate button (source is now `"user"`).
+
+### Hand-off
+
+None — WP-30 closes the bug-fix wave.
+```
+
+---
+
 ## Orchestrator checklist
 
 Use this checklist when running the waves:
@@ -1740,3 +2279,17 @@ Use this checklist when running the waves:
 - [ ] Manual smoke with a live LLM + DB on the Movies fixture: verify each of few-shot / entity resolution / execution-grounded actually fires on representative questions.
 - [ ] Update PRD §1.2.1: mark implemented techniques with `*(implemented)*` and link the baseline report.
 - [ ] Update `docs/implementation_plan.md` status table WP-25 row to **Done** with the merge date.
+
+### Wave 6 (schema-inference + NL feedback-loop bug fix)
+- [ ] **Wave 6a** (Phase A/B, parallel, single PR): launch WP-27 (heuristic + transpiler backtick-strip) and WP-28 (analyzer visibility + force-reacquire + service startup) in parallel on sibling branches off `main`.
+- [ ] Review WP-27: new heuristic tests pass; no existing tests regress; transpiler round-trip tests for backticked labels pass.
+- [ ] Review WP-28: service refuses to start without the analyzer unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`; `/schema/force-reacquire` returns a fresh analyzer-sourced bundle; `/schema/introspect` surfaces `warnings`; UI banner renders.
+- [ ] Merge both; resolve the small overlap in `arango_cypher/schema_acquire.py` around `_build_fresh_bundle` (WP-27 changes the heuristic body; WP-28 changes the `ImportError` branch — expect near-zero textual overlap).
+- [ ] Full test run: `pytest -m "not integration and not tck"` — all green; `ruff check .` clean; `cd ui && npx tsc --noEmit -p tsconfig.app.json && npm run build` clean.
+- [ ] Operational step: on each deployed service, run `POST /schema/force-reacquire` once to evict any cached bundles that were poisoned by the pre-WP-27 heuristic on hybrid databases.
+- [ ] **Wave 6b** (Phase C, parallel within, separate PR off the merged Wave 6a tip): launch WP-29 (prompt escaping + fail-closed retry + `retry_context` plumbing) and WP-30 (Translate-feedback UI) in parallel. WP-30 rebases on WP-29 once WP-29's `retry_context` contract lands.
+- [ ] Review WP-29: zero-shot prompt byte-identical for bare-identifier schemas (regression pin); `validation_failed` branch returns empty cypher; UI renders red banner; WP-25.5 eval shows no regression.
+- [ ] Review WP-30: state-machine unit tests pass; regenerate button appears only for `editorCypherSource === "nl_pipeline"`; `retry_context` forwarded correctly on click.
+- [ ] Merge; full test run green; dual-push.
+- [ ] Update `docs/implementation_plan.md` tracking table: mark WP-27..WP-30 **Done** with merge dates.
+- [ ] Update `docs/python_prd.md` implementation-status rows for "Heuristic fallback correctness (hybrid schemas)" and "NL → Translate feedback loop" from *Known defect — scheduled* to **Done**.
