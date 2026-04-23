@@ -47,6 +47,19 @@ export interface AppState {
   // localStorage keyed by (url, database, code) so the same warning can
   // re-appear on a different connection without leaking dismissals.
   schemaWarnings: SchemaWarning[];
+  // WP-30: tracks the provenance of the Cypher currently sitting in
+  // the editor. ``"nl_pipeline"`` after a successful NL→Cypher, and
+  // ``"user"`` after any user edit / paste / sample load. The
+  // translate-error banner exposes a one-click regenerate action only
+  // when this is ``"nl_pipeline"`` — hand-written Cypher that fails
+  // Translate is the user's query and must not be silently replaced.
+  editorCypherSource: "nl_pipeline" | "user" | null;
+  // WP-30: the NL question that produced the editor's current Cypher,
+  // when ``editorCypherSource === "nl_pipeline"``. Used as the
+  // question argument on regenerate-with-hint. Null when no NL
+  // produced the current editor contents (either hand-written or no
+  // NL issued in this session).
+  lastNlQuestion: string | null;
 }
 
 const STORAGE_KEY = "cypher-workbench";
@@ -117,11 +130,25 @@ export const initialState: AppState = {
   execMs: null,
   activeStatement: 0,
   schemaWarnings: [],
+  editorCypherSource: null,
+  lastNlQuestion: null,
   ...loadSavedState(),
 };
 
 export type Action =
-  | { type: "SET_CYPHER"; cypher: string }
+  // WP-30: ``source`` lets callers declare whether the write came
+  // from the NL pipeline or user input. Omitting ``source`` defaults
+  // to ``"user"`` so existing dispatchers (editor onChange, sample
+  // loads, history replay, paste) correctly flip the provenance flag
+  // without every call site needing to be updated.
+  | { type: "SET_CYPHER"; cypher: string; source?: "nl_pipeline" | "user" }
+  // WP-30: compound action emitted after a successful NL→Cypher
+  // translation. Sets the editor contents, flags the provenance as
+  // ``"nl_pipeline"``, and records the NL question so the translate-
+  // error regenerate-with-hint action can reuse it as the question
+  // argument. Prefer this over ``SET_CYPHER + source: "nl_pipeline"``
+  // because it keeps the cypher + question bookkeeping atomic.
+  | { type: "NL_SUCCESS"; cypher: string; question: string }
   | { type: "SET_MAPPING"; mapping: Record<string, unknown> }
   | { type: "SET_MAPPING_JSON"; json: string }
   | {
@@ -183,7 +210,18 @@ export type Action =
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "SET_CYPHER":
-      return { ...state, cypher: action.cypher };
+      return {
+        ...state,
+        cypher: action.cypher,
+        editorCypherSource: action.source ?? "user",
+      };
+    case "NL_SUCCESS":
+      return {
+        ...state,
+        cypher: action.cypher,
+        editorCypherSource: "nl_pipeline",
+        lastNlQuestion: action.question,
+      };
     case "SET_MAPPING":
       return { ...state, mapping: action.mapping };
     case "SET_MAPPING_JSON":
@@ -249,6 +287,8 @@ function reducer(state: AppState, action: Action): AppState {
         explainPlan: null,
         profileData: null,
         schemaWarnings: [],
+        editorCypherSource: null,
+        lastNlQuestion: null,
       };
     case "INTROSPECT_START":
       return { ...state, introspecting: true };
@@ -350,11 +390,19 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
+// WP-30: re-export the pure reducer for unit tests. Kept as a
+// named ``__reducerForTest`` alias so production imports explicitly
+// opt in — the public entry point remains ``useAppState``. This
+// lets ``store.test.ts`` exercise every action's state transition
+// without a React tree or a mocked dispatcher.
+export { reducer as __reducerForTest };
+
 export function useAppState() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const PERSIST_ACTIONS = new Set([
-    "SET_CYPHER", "SET_MAPPING", "SET_PARAMS", "ADD_HISTORY", "CLEAR_HISTORY",
+    "SET_CYPHER", "NL_SUCCESS", "SET_MAPPING", "SET_PARAMS",
+    "ADD_HISTORY", "CLEAR_HISTORY",
   ]);
 
   const persistAndDispatch = useCallback(

@@ -678,7 +678,16 @@ export default function App() {
           resp.method === "tenant_guardrail_blocked";
         if (resp.cypher) {
           directAqlRef.current = false;
-          dispatch({ type: "SET_CYPHER", cypher: resp.cypher });
+          // WP-30: dispatch NL_SUCCESS (not SET_CYPHER) so the
+          // reducer flags the editor's provenance as "nl_pipeline"
+          // and records the NL question. The translate-error banner
+          // reads both fields to decide whether to offer a one-click
+          // regenerate-with-hint action.
+          dispatch({
+            type: "NL_SUCCESS",
+            cypher: resp.cypher,
+            question: nlInput.trim(),
+          });
           const ms = resp.elapsed_ms != null ? ` ${resp.elapsed_ms}ms` : "";
           const tokens = resp.total_tokens ? ` ${resp.total_tokens}tok` : "";
           const info = `${resp.method} (${Math.round(resp.confidence * 100)}%)${ms}${tokens}`;
@@ -697,6 +706,61 @@ export default function App() {
       setNlLoading(false);
     }
   }, [nlInput, nlMode, dispatch, addNlHistory, autoTranslate, autoRun, state.connection.token, handleMaybeAuthError]);
+
+  // WP-30: regenerate the Cypher from the last NL question, feeding
+  // the current translate error back into the LLM as retry context.
+  // Gated on ``editorCypherSource === "nl_pipeline"`` in the banner —
+  // hand-written Cypher that fails Translate is the user's query,
+  // not an NL-pipeline artifact, so regenerate must not appear.
+  const handleRegenerateFromNl = useCallback(async () => {
+    if (!state.lastNlQuestion) return;
+    const hint = state.error || "";
+    setNlLoading(true);
+    setNlError("");
+    try {
+      const tenantCtx = tenantContextRef.current;
+      const resp = await nl2Cypher(state.lastNlQuestion, mappingRef.current, {
+        sessionToken: state.connection.token ?? undefined,
+        tenantContext: tenantCtx,
+        retryContext: hint,
+      });
+      const isFailClosed =
+        resp.method === "validation_failed" ||
+        resp.method === "tenant_guardrail_blocked";
+      if (resp.cypher) {
+        directAqlRef.current = false;
+        dispatch({
+          type: "NL_SUCCESS",
+          cypher: resp.cypher,
+          question: state.lastNlQuestion,
+        });
+        dispatch({ type: "CLEAR_ERROR" });
+        const ms = resp.elapsed_ms != null ? ` ${resp.elapsed_ms}ms` : "";
+        const tokens = resp.total_tokens ? ` ${resp.total_tokens}tok` : "";
+        setNlInfo(
+          `regenerated ${resp.method} (${Math.round(resp.confidence * 100)}%)${ms}${tokens}`,
+        );
+        if (autoTranslate || autoRun) setPendingAutoTranslate(true);
+      } else if (isFailClosed) {
+        setNlError(resp.explanation || "NL regenerate failed validation");
+      } else {
+        setNlInfo(resp.explanation || "Could not regenerate Cypher");
+      }
+    } catch (err) {
+      setNlInfo(err instanceof Error ? err.message : "Regenerate failed");
+      handleMaybeAuthError(err);
+    } finally {
+      setNlLoading(false);
+    }
+  }, [
+    state.lastNlQuestion,
+    state.error,
+    state.connection.token,
+    dispatch,
+    autoTranslate,
+    autoRun,
+    handleMaybeAuthError,
+  ]);
 
   // Chain auto-translate after NL→Cypher when enabled.
   useEffect(() => {
@@ -858,14 +922,43 @@ export default function App() {
 
       {/* Error banner */}
       {state.error && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-800 flex items-center justify-between">
-          <span className="text-sm text-red-300">{state.error}</span>
-          <button
-            onClick={() => dispatch({ type: "CLEAR_ERROR" })}
-            className="text-red-400 hover:text-red-200 text-xs ml-4"
-          >
-            Dismiss
-          </button>
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-800 flex items-center justify-between gap-3">
+          <span className="text-sm text-red-300 flex-1 break-words">{state.error}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/*
+              WP-30: one-click regenerate only when the editor's
+              Cypher came from the NL pipeline and we still have the
+              original question. Hand-written Cypher never offers
+              this — a user edit flips editorCypherSource to "user".
+              The last NL question may be null if the user cleared
+              history or reconnected; we grey out in that case so the
+              affordance stays discoverable but non-confusing.
+            */}
+            {state.editorCypherSource === "nl_pipeline" && (
+              <button
+                onClick={handleRegenerateFromNl}
+                disabled={
+                  nlLoading ||
+                  !state.lastNlQuestion ||
+                  !isConnected
+                }
+                title={
+                  state.lastNlQuestion
+                    ? "Re-invoke NL→Cypher with this error as a retry hint"
+                    : "Regenerate unavailable — original question not available in this session"
+                }
+                className="px-2 py-1 text-xs font-medium rounded bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {nlLoading ? "..." : "Regenerate from NL with error hint"}
+              </button>
+            )}
+            <button
+              onClick={() => dispatch({ type: "CLEAR_ERROR" })}
+              className="text-red-400 hover:text-red-200 text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
