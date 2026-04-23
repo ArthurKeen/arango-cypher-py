@@ -15,6 +15,7 @@ import os
 import re
 import secrets
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -289,18 +290,59 @@ class ErrorResponse(BaseModel):
 
 _URL_RE = re.compile(r"https?://[^\s,;'\")\]}>]+", re.IGNORECASE)
 _HOST_PORT_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b")
+# Key-value credential forms (``password=hunter2``, ``api_key: sk-live-…``).
+# ``\S+`` stops at whitespace so we don't eat the rest of the log line.
 _CRED_RE = re.compile(
-    r"(?:password|passwd|token|secret|api[_-]?key|authorization)\s*[:=]\s*\S+",
+    r"(?:password|passwd|token|secret|api[_-]?key)\s*[:=]\s*\S+",
     re.IGNORECASE,
 )
+# ``Authorization: Bearer <token>`` (and ``Basic`` / ``Digest``) is handled
+# separately because the value follows the *scheme* after a whitespace, and
+# ``_CRED_RE`` would only consume "Bearer" and let the actual token leak.
+_AUTH_HEADER_RE = re.compile(
+    r"authorization\s*[:=]\s*(?:bearer|basic|digest|token)\s+\S+",
+    re.IGNORECASE,
+)
+
+# ArangoDB collection name grammar: 1–256 chars, starts with a letter or
+# underscore (system collections), rest may be letters / digits / underscore /
+# hyphen. We validate any caller-supplied collection identifier against this
+# before embedding it in an AQL f-string (e.g. `FOR t IN \`{name}\``), because
+# backtick-interpolation is not a parameterisation boundary — a stray backtick
+# or newline in the input would break out of the quote.
+_COLLECTION_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,255}$")
 
 
 def _sanitize_error(msg: str) -> str:
     """Strip URLs, IP addresses, and credential-like patterns from an error message."""
     msg = _URL_RE.sub("<redacted-url>", msg)
     msg = _HOST_PORT_RE.sub("<redacted-host>", msg)
+    # ``_AUTH_HEADER_RE`` first so its multi-token match wins over
+    # ``_CRED_RE``'s single-token "authorization: Bearer" prefix match.
+    msg = _AUTH_HEADER_RE.sub("<redacted-credential>", msg)
     msg = _CRED_RE.sub("<redacted-credential>", msg)
     return msg
+
+
+@contextmanager
+def _translate_errors(prefix: str, status_code: int = 500):
+    """Convert any ``Exception`` raised inside the block into an ``HTTPException``.
+
+    The detail is ``f"{prefix}: {_sanitize_error(str(exc))}"``. Existing
+    ``HTTPException``\\ s are re-raised unchanged, so nested validators that
+    already produced a richer status code (e.g. 400 / 422) are not masked
+    to 500. Use this at every endpoint boundary that runs AQL or otherwise
+    touches the DB, to keep the error-surface uniform and sanitised.
+    """
+    try:
+        yield
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"{prefix}: {_sanitize_error(str(e))}",
+        ) from e
 
 
 _PROXY_ENV_VARS = (
@@ -565,16 +607,11 @@ def execute_endpoint(req: ExecuteRequest, session: _Session = Depends(_get_sessi
     if correction:
         warnings.insert(0, {"message": f"Using learned correction #{correction.id}"})
 
-    try:
+    with _translate_errors("AQL execution failed"):
         t_exec = time.perf_counter()
         cursor = session.db.aql.execute(run_aql, bind_vars=run_bind)
         results = list(cursor)
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AQL execution failed: {_sanitize_error(str(e))}",
-        ) from e
 
     return ExecuteResponse(
         results=results,
@@ -594,16 +631,11 @@ class ExecuteAqlRequest(BaseModel):
 @app.post("/execute-aql")
 def execute_aql_endpoint(req: ExecuteAqlRequest, session: _Session = Depends(_get_session)):
     """Execute a raw AQL query directly (used by NL→AQL direct path)."""
-    try:
+    with _translate_errors("AQL execution failed"):
         t_exec = time.perf_counter()
         cursor = session.db.aql.execute(req.aql, bind_vars=req.bind_vars)
         results = list(cursor)
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AQL execution failed: {_sanitize_error(str(e))}",
-        ) from e
 
     return ExecuteResponse(
         results=results,
@@ -652,13 +684,8 @@ def explain_endpoint(req: TranslateRequest, session: _Session = Depends(_get_ses
             detail={"error": _sanitize_error(str(e)), "code": e.code},
         ) from e
 
-    try:
+    with _translate_errors("AQL EXPLAIN failed"):
         plan = session.db.aql.explain(transpiled.aql, bind_vars=transpiled.bind_vars)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AQL EXPLAIN failed: {_sanitize_error(str(e))}",
-        ) from e
 
     return {
         "aql": transpiled.aql,
@@ -691,7 +718,7 @@ def aql_profile_endpoint(req: TranslateRequest, session: _Session = Depends(_get
             detail={"error": _sanitize_error(str(e)), "code": e.code},
         ) from e
 
-    try:
+    with _translate_errors("AQL profiled execution failed"):
         cursor = session.db.aql.execute(
             transpiled.aql,
             bind_vars=transpiled.bind_vars,
@@ -700,11 +727,6 @@ def aql_profile_endpoint(req: TranslateRequest, session: _Session = Depends(_get
         results = list(cursor)
         stats = cursor.statistics()
         profile_data = cursor.profile() if hasattr(cursor, "profile") else None
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AQL profiled execution failed: {_sanitize_error(str(e))}",
-        ) from e
 
     return {
         "aql": transpiled.aql,
@@ -1301,13 +1323,24 @@ def tenants_endpoint(
     else:
         resolved, source = "Tenant", "heuristic"
 
-    try:
-        has_collection = db.has_collection(resolved)
-    except Exception as e:
+    # Defence-in-depth against AQL identifier injection: the resolved name is
+    # interpolated into the AQL f-string below inside backticks, so anything
+    # that isn't a valid ArangoDB collection identifier must be rejected at
+    # the edge. `has_collection()` returns False for names that don't exist
+    # but does *not* reject syntactically invalid names on all client
+    # versions, hence the explicit gate.
+    if not _COLLECTION_NAME_RE.fullmatch(resolved):
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to inspect collections: {_sanitize_error(str(e))}",
-        ) from e
+            status_code=400,
+            detail=(
+                "Invalid collection name: must be 1–256 characters, start "
+                "with a letter or underscore, and contain only letters, "
+                "digits, underscore, or hyphen."
+            ),
+        )
+
+    with _translate_errors("Failed to inspect collections"):
+        has_collection = db.has_collection(resolved)
 
     if not has_collection:
         return {
@@ -1336,14 +1369,9 @@ def tenants_endpoint(
         "hex_id: t.TENANT_HEX_ID "
         "}"
     )
-    try:
+    with _translate_errors("Tenant catalog query failed"):
         cursor = db.aql.execute(aql)
         tenants = list(cursor)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Tenant catalog query failed: {_sanitize_error(str(e))}",
-        ) from e
 
     return {
         "detected": True,

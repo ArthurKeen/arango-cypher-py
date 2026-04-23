@@ -155,3 +155,61 @@ class TestTenantsEndpoint:
         assert body["detected"] is False
         assert body["collection"] == "Tenants"
         assert body["source"] == "client"
+
+
+class TestTenantsCollectionNameValidation:
+    """Guard against AQL identifier injection via the ``?collection=`` param.
+
+    The resolved collection name is interpolated into the AQL string
+    inside backticks (``FOR t IN `<name>` ``) — backticks are *not* a
+    parameterisation boundary, so anything that isn't a valid ArangoDB
+    collection identifier must be rejected at the edge, before the AQL
+    is built. These tests pin the validator's rejection set so a future
+    refactor (e.g. switching clients, moving the check downstream) can't
+    silently re-open the injection surface.
+    """
+
+    @pytest.mark.parametrize(
+        "bad_name",
+        [
+            "Tenant`+RETURN+1+//",  # backtick break-out (the original attack)
+            "Tenant; DROP Tenant",  # punctuation + keywords
+            "Tenant\nRETURN 1",  # embedded newline
+            "Tenant RETURN 1",  # embedded space
+            "1Tenant",  # starts with a digit
+            "-Tenant",  # starts with a hyphen
+            "Tenant/other",  # slash (collection separator char)
+            "Tenant.other",  # dot
+            "T" * 257,  # length cap (regex allows 1 + 255 trailing)
+            "Tenant$",  # dollar sign
+            "Tenant'",  # single quote
+            'Tenant"',  # double quote
+        ],
+    )
+    def test_rejects_non_identifier_collection_names(self, bad_name: str):
+        db = _install_session(has_collection=True)
+        resp = client.get("/tenants", params={"collection": bad_name})
+        assert resp.status_code == 400, f"{bad_name!r} should be rejected"
+        assert "Invalid collection name" in resp.json()["detail"]
+        # Crucially: we never reached the DB. If we had, the backtick
+        # escape would already be inside the AQL string.
+        db.aql.execute.assert_not_called()
+        db.has_collection.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "ok_name",
+        [
+            "Tenant",  # bare happy path
+            "Tenants",  # plural
+            "tenant_v2",  # lowercase + underscore + digit
+            "_system_tenants",  # leading underscore (system collections)
+            "TENANT-CATALOG",  # hyphen + upper case
+            "T" * 256,  # maximum length
+            "a",  # minimum length
+        ],
+    )
+    def test_accepts_valid_collection_names(self, ok_name: str):
+        _install_session(has_collection=True, expected_collection=ok_name)
+        resp = client.get("/tenants", params={"collection": ok_name})
+        assert resp.status_code == 200, resp.json()
+        assert resp.json()["collection"] == ok_name
