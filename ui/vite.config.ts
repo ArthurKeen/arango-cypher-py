@@ -25,6 +25,7 @@ export default defineConfig({
       "/mapping": "http://localhost:8001",
       "/schema": "http://localhost:8001",
       "/corrections": "http://localhost:8001",
+      "/tenants": "http://localhost:8001",
     },
   },
   build: {
