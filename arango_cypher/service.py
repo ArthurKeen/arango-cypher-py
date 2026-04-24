@@ -1913,6 +1913,98 @@ def delete_all_nl_corrections(
 # ---------------------------------------------------------------------------
 
 _UI_DIR = Path(__file__).resolve().parent.parent / "ui" / "dist"
+_UI_SRC_DIR = Path(__file__).resolve().parent.parent / "ui" / "src"
+
+
+def _check_ui_dist_freshness(
+    dist_dir: Path = _UI_DIR,
+    src_dir: Path = _UI_SRC_DIR,
+    *,
+    logger: _logging.Logger | None = None,
+) -> str:
+    """Compare ``ui/dist`` against ``ui/src`` and emit a startup log line.
+
+    Returns one of ``"ok"`` / ``"stale"`` / ``"missing"`` / ``"no_src"``
+    so callers (and tests) can assert on the outcome without having to
+    parse the log stream. The actual log emission is the side effect:
+
+    * ``missing`` — ``ui/dist`` does not exist or has no ``index.html``;
+      the UI mount block immediately below this function will skip
+      registration entirely. We log a WARNING instead of staying silent
+      so a fresh-clone operator who hits ``GET /ui`` and sees a 404
+      knows to run the build, not to file a bug.
+    * ``stale`` — the newest ``.tsx`` / ``.ts`` / ``.css`` / ``index.html``
+      mtime under ``ui/src`` (and ``ui/index.html``) is *more recent*
+      than ``ui/dist/index.html``. The bundle will still be served (so
+      we don't break demos at startup), but the operator gets a clear
+      WARNING + the exact ``cd ui && npm run build`` command. This is
+      the case that bit us on 2026-04-24 (the visible "Cypher Workbench"
+      title was a bundle ~10 hours older than ``ui/src/App.tsx``).
+    * ``no_src`` — installed-from-wheel deployments have no ``ui/src``
+      tree; freshness is undefined and we stay silent.
+    * ``ok`` — silent. The vast majority of starts.
+
+    The check is best-effort: any ``OSError`` during mtime probing
+    short-circuits to ``"ok"`` rather than crashing the service boot.
+    """
+    log = logger or _svc_logger
+    dist_index = dist_dir / "index.html"
+
+    if not dist_index.is_file():
+        if src_dir.is_dir():
+            log.warning(
+                "UI bundle not built: %s is missing. Run `cd ui && npm run build` "
+                "to populate it; until then, /ui and /frontend will return 404.",
+                dist_dir,
+            )
+            return "missing"
+        return "no_src"
+
+    if not src_dir.is_dir():
+        return "no_src"
+
+    try:
+        dist_mtime = dist_index.stat().st_mtime
+        # Walk only the source files Vite actually consumes; node_modules /
+        # build artefacts in ui/dist itself / .turbo etc. are uninteresting
+        # and would make the check both slow and falsely "stale".
+        newest_src_mtime = dist_mtime
+        for ext in ("*.ts", "*.tsx", "*.css", "*.html"):
+            for path in src_dir.rglob(ext):
+                m = path.stat().st_mtime
+                if m > newest_src_mtime:
+                    newest_src_mtime = m
+        # Top-level ui/index.html is the Vite entry shell — also drives the build.
+        top_index = src_dir.parent / "index.html"
+        if top_index.is_file():
+            m = top_index.stat().st_mtime
+            if m > newest_src_mtime:
+                newest_src_mtime = m
+    except OSError:
+        return "ok"
+
+    if newest_src_mtime > dist_mtime:
+        from datetime import UTC, datetime
+
+        drift_seconds = int(newest_src_mtime - dist_mtime)
+        log.warning(
+            "UI bundle is stale: %s is %d seconds older than the newest source "
+            "file under %s (dist built %s, newest src %s). Run "
+            "`cd ui && npm run build` to refresh, otherwise /ui will serve the "
+            "previous build.",
+            dist_index,
+            drift_seconds,
+            src_dir,
+            datetime.fromtimestamp(dist_mtime, tz=UTC).isoformat(timespec="seconds"),
+            datetime.fromtimestamp(newest_src_mtime, tz=UTC).isoformat(timespec="seconds"),
+        )
+        return "stale"
+
+    return "ok"
+
+
+_check_ui_dist_freshness()
+
 
 if _UI_DIR.is_dir():
     # Cache policy:

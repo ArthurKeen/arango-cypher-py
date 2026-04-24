@@ -367,6 +367,8 @@ uvicorn arango_cypher.service:app --host 0.0.0.0 --port 8000
 # Open http://localhost:8000/ui in your browser
 ```
 
+> **Re-run `npm run build` after pulling UI changes.** `ui/dist/` is gitignored, so a fresh clone or a stale local checkout will not pick up new `ui/src/` edits until you rebuild. The service compares the two trees at startup and logs a WARNING (`UI bundle is stale: …`) with the exact rebuild command if drift is detected — that's your cue to rerun the build above.
+
 **For development** (hot-reload):
 ```bash
 # Terminal 1: FastAPI backend
