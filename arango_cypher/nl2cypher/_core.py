@@ -1,4 +1,5 @@
 """NL→Cypher core pipeline: schema summarization, prompt building, rule-based fallback."""
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,7 @@ from .providers import (
 from .tenant_guardrail import (
     TenantContext,
     check_tenant_scope,
+    multitenancy_physical_enforcement,
 )
 from .tenant_guardrail import (
     prompt_section as _tenant_prompt_section,
@@ -34,6 +36,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class NL2CypherResult:
     """Result of a natural language to Cypher translation."""
+
     cypher: str
     explanation: str = ""
     confidence: float = 0.0
@@ -143,6 +146,146 @@ def _escape_label(name: str) -> str:
     return name if _SYMBOLIC_NAME_RE.match(name) else f"`{name}`"
 
 
+# Human-readable, conceptual descriptions of each sharding style emitted by
+# arangodb-schema-analyzer>=0.5 as `metadata.shardingProfile.style` (see the
+# upstream PRD §6.2 bullet 3, also tracked in
+# docs/schema_analyzer_issues/08-emit-physical-layout-and-shard-topology.md).
+# We deliberately keep these descriptions at the *semantic* level — no
+# physical collection names, shard attributes, or graph names leak into the
+# LLM prompt (§1.2 no-physical-mapping contract).
+_DEPLOYMENT_STYLE_HINTS: dict[str, str] = {
+    "OneShard": (
+        "Deployment: single-shard database. "
+        "All data lives together; no cross-shard fanout concerns for query plans."
+    ),
+    "SmartGraph": (
+        "Deployment: sharded graph with a shared partitioning attribute. "
+        "Traversals that hold that attribute constant stay shard-local."
+    ),
+    "DisjointSmartGraph": (
+        "Deployment: multi-tenant graph with hard isolation between tenants. "
+        "Queries must be scoped to a single tenant — a traversal cannot cross "
+        "tenant boundaries."
+    ),
+    "SatelliteGraph": (
+        "Deployment: satellite graph, fully replicated on every DB-Server. "
+        "Traversals run locally without shard fanout."
+    ),
+    "Sharded": ("Deployment: sharded database. Queries that filter by the shard key early are preferred."),
+}
+
+
+def _deployment_style_hint(bundle: MappingBundle) -> str | None:
+    """Render a one-line conceptual hint describing the deployment style.
+
+    Consumes ``metadata.shardingProfile.style`` emitted by
+    ``arangodb-schema-analyzer>=0.5`` (upstream PRD §6.2 bullet 3). Returns
+    ``None`` when:
+
+    * the analyzer version predates ``shardingProfile`` emission, or
+    * the profile is degraded (``status == "degraded"``) — we prefer to
+      say nothing over giving the LLM a hint based on incomplete evidence, or
+    * the style is unknown to this module (forward-compat: a future
+      analyzer release may add a new style we don't yet recognise).
+
+    The returned string is intentionally **semantic**, not physical: it
+    describes the *consequence* of the deployment for query planning
+    (shard-local traversal, tenant isolation, etc.), not the underlying
+    shard keys or collection names.
+    """
+    meta = bundle.metadata if isinstance(bundle.metadata, dict) else {}
+    profile = meta.get("shardingProfile")
+    if not isinstance(profile, dict):
+        return None
+    status = profile.get("status") or meta.get("shardingProfileStatus")
+    if status == "degraded":
+        return None
+    style = profile.get("style")
+    if not isinstance(style, str):
+        return None
+    hint = _DEPLOYMENT_STYLE_HINTS.get(style)
+    if hint is None:
+        return None
+    return f"  {hint}"
+
+
+def _shard_families_block(bundle: MappingBundle) -> str | None:
+    """Render a shard-family summary for the LLM prompt.
+
+    Consumes ``physicalMapping.shardFamilies`` emitted by
+    ``arangodb-schema-analyzer>=0.6`` (upstream PRD §6.2 bullet 5 /
+    downstream issue #08 §2). A *shard family* is a set of conceptual
+    entities that share an identical property set and a common
+    CamelCase / snake_case suffix — typically the per-source /
+    per-repo / per-stream collection-duplication pattern (e.g.
+    ``IBEXDocument`` / ``MAROCCHINODocument`` / ``MOR1KXDocument`` /
+    ``OR1200Document`` ⇒ family ``Document``).
+
+    Returns ``None`` when:
+
+    * the analyzer version predates ``shardFamilies`` emission, or
+    * the mapping has no families, or
+    * every family resolves to fewer than two valid members.
+
+    The returned string lists each family by its *conceptual* member
+    labels and tells the LLM that a discriminator-agnostic question
+    must UNION across all members instead of silently picking one
+    member alphabetically (the IBEX/MAROCCHINO/MOR1KX/OR1200
+    first-in-summary bias, defect D7 in
+    ``docs/schema_inference_bugfix_prd.md``). Per §1.2, only
+    conceptual entity names — never physical collection names — leak
+    into the prompt; the underlying ``collectionName`` field on each
+    member is intentionally ignored here.
+    """
+    pm = bundle.physical_mapping if isinstance(bundle.physical_mapping, dict) else {}
+    families = pm.get("shardFamilies")
+    if not isinstance(families, list) or not families:
+        return None
+
+    rendered: list[str] = []
+    for fam in families:
+        if not isinstance(fam, dict):
+            continue
+        name = fam.get("name")
+        members = fam.get("members") or []
+        if not isinstance(name, str) or not name:
+            continue
+        if not isinstance(members, list):
+            continue
+        member_labels: list[str] = []
+        for m in members:
+            if not isinstance(m, dict):
+                continue
+            ent = m.get("entity")
+            if isinstance(ent, str) and ent:
+                member_labels.append(ent)
+        if len(member_labels) < 2:
+            continue
+
+        disc = fam.get("discriminator") if isinstance(fam.get("discriminator"), dict) else {}
+        disc_field = disc.get("field") if isinstance(disc, dict) else None
+        if isinstance(disc_field, str) and disc_field:
+            scope_hint = f"Filter on `{disc_field}` to target one member; otherwise UNION across all members."
+        else:
+            scope_hint = (
+                "Pick one member if the question targets a single source; otherwise UNION across all members."
+            )
+        rendered.append(
+            f"  Family `{_escape_label(name)}` — members: "
+            + ", ".join(_escape_label(label) for label in member_labels)
+        )
+        rendered.append(f"    {scope_hint}")
+
+    if not rendered:
+        return None
+
+    header = (
+        "Shard families (parallel labels sharing one logical schema; "
+        "questions that don't pin a specific member must consider all of them):"
+    )
+    return "\n".join([header, *rendered])
+
+
 def _build_schema_summary(bundle: MappingBundle) -> str:
     """Build a conceptual-only schema description for LLM context.
 
@@ -166,6 +309,14 @@ def _build_schema_summary(bundle: MappingBundle) -> str:
     cs = bundle.conceptual_schema
     pm = bundle.physical_mapping
     lines: list[str] = ["Graph schema (Cypher labels and relationship types):"]
+
+    deployment_hint = _deployment_style_hint(bundle)
+    if deployment_hint:
+        lines.append(deployment_hint)
+
+    families_block = _shard_families_block(bundle)
+    if families_block:
+        lines.append(families_block)
 
     entities_emitted: list[str] = []
 
@@ -208,36 +359,24 @@ def _build_schema_summary(bundle: MappingBundle) -> str:
             from_e = r.get("fromEntity", "?")
             to_e = r.get("toEntity", "?")
             rprops = [
-                p.get("name", "") for p in r.get("properties", [])
-                if isinstance(p, dict) and p.get("name")
+                p.get("name", "") for p in r.get("properties", []) if isinstance(p, dict) and p.get("name")
             ]
             pm_rprops = _pm_relationship_props(rtype, pm)
-            formatted = [
-                f"{n}{_property_quality_hint(pm_rprops.get(n))}" for n in rprops
-            ]
+            formatted = [f"{n}{_property_quality_hint(pm_rprops.get(n))}" for n in rprops]
             prop_str = f" [{', '.join(formatted)}]" if formatted else ""
             lines.append(
-                f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}{prop_str}]"
-                f"->(:{_escape_label(to_e)})"
+                f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}{prop_str}]->(:{_escape_label(to_e)})"
             )
     elif isinstance(cs_rel_types, list) and cs_rel_types:
         for rtype in cs_rel_types:
             from_e, to_e = _conceptual_domain_range(rtype, cs, pm)
-            lines.append(
-                f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}]"
-                f"->(:{_escape_label(to_e)})"
-            )
+            lines.append(f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}]->(:{_escape_label(to_e)})")
     elif isinstance(pm.get("relationships"), dict):
         for rtype in pm["relationships"]:
             from_e, to_e = _conceptual_domain_range(rtype, cs, pm)
-            lines.append(
-                f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}]"
-                f"->(:{_escape_label(to_e)})"
-            )
+            lines.append(f"  (:{_escape_label(from_e)})-[:{_escape_label(rtype)}]->(:{_escape_label(to_e)})")
 
-    labeled_ent_props = {
-        label: _pm_entity_props(label, pm) for label in entities_emitted
-    }
+    labeled_ent_props = {label: _pm_entity_props(label, pm) for label in entities_emitted}
     if _flagged_properties(labeled_ent_props):
         lines.append(_DATA_QUALITY_BLOCK_CYPHER)
 
@@ -245,7 +384,9 @@ def _build_schema_summary(bundle: MappingBundle) -> str:
 
 
 def _conceptual_props_for(
-    label: str, cs: dict[str, Any], pm: dict[str, Any],
+    label: str,
+    cs: dict[str, Any],
+    pm: dict[str, Any],
 ) -> list[str]:
     """Return property names for a conceptual label (max 8).
 
@@ -266,7 +407,9 @@ def _conceptual_props_for(
 
 
 def _conceptual_domain_range(
-    rtype: str, cs: dict[str, Any], pm: dict[str, Any],
+    rtype: str,
+    cs: dict[str, Any],
+    pm: dict[str, Any],
 ) -> tuple[str, str]:
     """Return (domain, range) for a relationship using conceptual metadata."""
     for r in cs.get("relationships", []):
@@ -294,9 +437,7 @@ Rules:
 {schema}"""
 
 
-_RETRY_USER_SUFFIX = (
-    "\n\nYour previous Cypher was invalid: {error}. Please fix it."
-)
+_RETRY_USER_SUFFIX = "\n\nYour previous Cypher was invalid: {error}. Please fix it."
 
 
 @dataclass
@@ -329,7 +470,8 @@ class PromptBuilder:
 
         extensions: list[str] = []
         tenant_block = _tenant_prompt_section(
-            self.tenant_context, self.tenant_manifest,
+            self.tenant_context,
+            self.tenant_manifest,
         )
         if tenant_block:
             # Order: tenant scope first so it's visually prominent and
@@ -379,7 +521,22 @@ def _extract_cypher_from_response(text: str) -> str:
     cypher_lines = []
     for line in lines:
         upper = line.upper()
-        if any(kw in upper for kw in ("MATCH", "RETURN", "WHERE", "WITH", "OPTIONAL", "ORDER", "LIMIT", "UNWIND", "CREATE", "SET", "DELETE")):
+        if any(
+            kw in upper
+            for kw in (
+                "MATCH",
+                "RETURN",
+                "WHERE",
+                "WITH",
+                "OPTIONAL",
+                "ORDER",
+                "LIMIT",
+                "UNWIND",
+                "CREATE",
+                "SET",
+                "DELETE",
+            )
+        ):
             cypher_lines.append(line)
         elif cypher_lines:
             cypher_lines.append(line)
@@ -396,6 +553,7 @@ def _validate_cypher(cypher: str) -> tuple[bool, str]:
         return False, "empty Cypher string"
     try:
         from arango_cypher.parser import parse_cypher
+
         parse_cypher(cypher)
         return True, ""
     except Exception as exc:
@@ -447,6 +605,7 @@ def _fix_labels(cypher: str, ctx: _SchemaCtx) -> str:
     Handles common LLM hallucinations like ``Actor`` → ``Person`` by using the
     same fuzzy matching the rule-based engine uses, plus role-synonym lookup.
     """
+
     def _replace_label(m: re.Match) -> str:
         prefix = m.group(1)
         label = m.group(2)
@@ -509,6 +668,12 @@ def _call_llm_with_retry(
         tenant_manifest=tenant_manifest,
         retry_context=retry_context or "",
     )
+    # Resolve once per call: passed through to every check_tenant_scope
+    # invocation so the resulting violation carries the upstream
+    # ``metadata.multitenancy.physicalEnforcement`` signal (analyzer
+    # >=0.6, upstream PRD §6.2 bullet 4). ``None`` for older mappings —
+    # downstream behaviour is unchanged in that case.
+    physical_enforcement = multitenancy_physical_enforcement(mapping) if mapping is not None else None
     best_cypher = ""
     # WP-29 D4: pre-WP-29 we tracked ``best_content`` to leak the
     # raw LLM response into the fail-through explanation. The
@@ -544,7 +709,9 @@ def _call_llm_with_retry(
             ok, err_msg = _validate_cypher(cypher)
             if ok:
                 explain_ok, explain_err = _validate_via_explain(
-                    cypher, mapping=mapping, db=db,
+                    cypher,
+                    mapping=mapping,
+                    db=db,
                 )
                 if explain_ok:
                     # Tenant-scoping postcondition: runs after parse +
@@ -557,6 +724,7 @@ def _call_llm_with_retry(
                         cypher,
                         tenant_context=tenant_context,
                         manifest=tenant_manifest,
+                        physical_enforcement=physical_enforcement,
                     )
                     if violation is None:
                         return NL2CypherResult(
@@ -572,12 +740,12 @@ def _call_llm_with_retry(
                             cached_tokens=total_usage["cached_tokens"],
                         )
                     best_cypher = cypher
-                    builder.retry_context = (
-                        f"{violation.reason} {violation.suggested_hint}"
-                    )
+                    builder.retry_context = f"{violation.reason} {violation.suggested_hint}"
                     logger.warning(
                         "Tenant-scoping violation (attempt %d/%d): %s",
-                        attempt + 1, 1 + max_retries, violation.reason,
+                        attempt + 1,
+                        1 + max_retries,
+                        violation.reason,
                     )
                     continue
                 best_cypher = cypher
@@ -587,7 +755,9 @@ def _call_llm_with_retry(
                 )
                 logger.info(
                     "LLM attempt %d/%d: EXPLAIN failed: %s",
-                    attempt + 1, 1 + max_retries, explain_err[:120],
+                    attempt + 1,
+                    1 + max_retries,
+                    explain_err[:120],
                 )
                 continue
 
@@ -595,7 +765,9 @@ def _call_llm_with_retry(
             builder.retry_context = err_msg or "generated text did not parse as Cypher"
             logger.info(
                 "LLM attempt %d/%d: validation failed for: %s",
-                attempt + 1, 1 + max_retries, cypher[:120],
+                attempt + 1,
+                1 + max_retries,
+                cypher[:120],
             )
         except Exception as e:
             logger.warning("LLM call failed (attempt %d): %s", attempt + 1, e)
@@ -612,6 +784,7 @@ def _call_llm_with_retry(
             best_cypher,
             tenant_context=tenant_context,
             manifest=tenant_manifest,
+            physical_enforcement=physical_enforcement,
         )
         is not None
     ):
@@ -648,7 +821,8 @@ def _call_llm_with_retry(
     if best_cypher:
         logger.warning(
             "NL2Cypher validation_failed after %d attempts; last error: %s",
-            1 + max_retries, builder.retry_context,
+            1 + max_retries,
+            builder.retry_context,
         )
         return NL2CypherResult(
             cypher="",
@@ -693,7 +867,11 @@ def _build_schema_context(bundle: MappingBundle) -> _SchemaCtx:
         relationships = {r["type"].lower(): r for r in cs_rels if "type" in r}
     elif isinstance(cs_rel_types, list):
         for rtype in cs_rel_types:
-            pm_rel = pm.get("relationships", {}).get(rtype, {}) if isinstance(pm.get("relationships"), dict) else {}
+            pm_rel = (
+                pm.get("relationships", {}).get(rtype, {})
+                if isinstance(pm.get("relationships"), dict)
+                else {}
+            )
             relationships[rtype.lower()] = {
                 "type": rtype,
                 "fromEntity": pm_rel.get("domain", "Any"),
@@ -728,8 +906,7 @@ def _build_schema_context(bundle: MappingBundle) -> _SchemaCtx:
                         role_to_rel[s] = rdef
                     break
 
-    return _SchemaCtx(entities=entities, relationships=relationships,
-                      role_to_rel=role_to_rel, pm=pm)
+    return _SchemaCtx(entities=entities, relationships=relationships, role_to_rel=role_to_rel, pm=pm)
 
 
 @dataclass
@@ -751,11 +928,19 @@ def _find_rel_for_verb(verb: str, relationships: dict[str, dict]) -> dict | None
     """Map a verb from the question to a relationship using verb stems and synonyms."""
     verb = verb.lower().rstrip("s").rstrip("ed")
     _VERB_TO_REL: dict[str, str] = {
-        "act": "acted_in", "star": "acted_in", "appear": "acted_in",
-        "direct": "directed", "helm": "directed",
-        "produc": "produced", "made": "produced",
-        "writ": "wrote", "wrot": "wrote", "pen": "wrote",
-        "review": "reviewed", "rat": "reviewed", "critiqu": "reviewed",
+        "act": "acted_in",
+        "star": "acted_in",
+        "appear": "acted_in",
+        "direct": "directed",
+        "helm": "directed",
+        "produc": "produced",
+        "made": "produced",
+        "writ": "wrote",
+        "wrot": "wrote",
+        "pen": "wrote",
+        "review": "reviewed",
+        "rat": "reviewed",
+        "critiqu": "reviewed",
         "follow": "follows",
         "know": "knows",
     }
@@ -797,7 +982,8 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
         filter_text = _extract_filter_value(m.group(2)) if m.group(2).strip() else ""
         verb_match = re.search(
             r"((?:were|was|are|is)\s+in|acted?\s*in|starred?\s*in|appeared?\s*in"
-            r"|directed?|produced?|wrote?|written|reviewed?|followed?|known?)", q,
+            r"|directed?|produced?|wrote?|written|reviewed?|followed?|known?)",
+            q,
         )
         rel = role_to_rel.get(role_word)
         if not rel and verb_match:
@@ -814,7 +1000,10 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                     cypher += f"\nWHERE toLower(b.title) CONTAINS '{filter_text}' OR toLower(b.name) CONTAINS '{filter_text}'"
                 cypher += "\nRETURN a"
                 return NL2CypherResult(
-                    cypher=cypher, explanation=f"Find {from_e} via {rel['type']}", confidence=0.6, method="rule_based",
+                    cypher=cypher,
+                    explanation=f"Find {from_e} via {rel['type']}",
+                    confidence=0.6,
+                    method="rule_based",
                 )
 
     m = re.match(
@@ -831,7 +1020,8 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
         entity = _match_entity(entity_hint, entities)
         verb_match = re.search(
             r"((?:were|was)\s+in|act(?:ed)?\s*in|star(?:red)?\s*in"
-            r"|direct(?:ed)?|produc(?:ed)?|writ(?:ten|e)?|review(?:ed)?|follow(?:ed)?)", q,
+            r"|direct(?:ed)?|produc(?:ed)?|writ(?:ten|e)?|review(?:ed)?|follow(?:ed)?)",
+            q,
         )
         rel = _find_rel_for_verb(verb_match.group(1).split()[0], relationships) if verb_match else None
         if entity and rel:
@@ -846,7 +1036,10 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                     f"RETURN b"
                 )
                 return NL2CypherResult(
-                    cypher=cypher, explanation=f"Find {target_label} via {rel['type']}", confidence=0.6, method="rule_based",
+                    cypher=cypher,
+                    explanation=f"Find {target_label} via {rel['type']}",
+                    confidence=0.6,
+                    method="rule_based",
                 )
 
     m = re.match(r"who\s+(\w+)\s+(?:in\s+)?(.+)", q)
@@ -864,25 +1057,32 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                     f"RETURN a"
                 )
                 return NL2CypherResult(
-                    cypher=cypher, explanation=f"Find who {verb} {filter_text}", confidence=0.5, method="rule_based",
+                    cypher=cypher,
+                    explanation=f"Find who {verb} {filter_text}",
+                    confidence=0.5,
+                    method="rule_based",
                 )
 
     q = re.sub(
         r"^(?:(?:can\s+you\s+)?(?:please\s+)?(?:give\s+me|show\s+me|get\s+me|tell\s+me|i\s+(?:want|need))\s+)",
-        "get ", q,
+        "get ",
+        q,
     )
 
     explicit_limit: int | None = None
     limit_m = re.match(r"^(\w+\s+)(\d+)\s+", q)
     if limit_m:
         explicit_limit = int(limit_m.group(2))
-        q = limit_m.group(1) + q[limit_m.end():]
+        q = limit_m.group(1) + q[limit_m.end() :]
 
     q = re.sub(r"^(\w+\s+)(?:(?:a|an)\s+(?:random|single|sample)\s+|the\s+|an?\s+)", r"\1", q)
     q = re.sub(r"^(\w+\s+)(?:some|any)\s+", r"\1all ", q)
     q = re.sub(r"^(\w+\s+)(?:random|sample)\s+", r"\1", q)
 
-    m = re.match(r"(?:find|list|show|get|return|fetch|display|retrieve|select|which|what)\s+(?:all\s+)?(\w+)s?\b(.*)", q)
+    m = re.match(
+        r"(?:find|list|show|get|return|fetch|display|retrieve|select|which|what)\s+(?:all\s+)?(\w+)s?\b(.*)",
+        q,
+    )
     if m:
         entity_hint = m.group(1)
         rest = m.group(2).strip()
@@ -899,7 +1099,10 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                     cypher += f"\nWHERE toLower(b.title) CONTAINS '{filter_text}' OR toLower(b.name) CONTAINS '{filter_text}'"
                 cypher += "\nRETURN a"
                 return NL2CypherResult(
-                    cypher=cypher, explanation=f"Find {from_e} via {rel['type']}", confidence=0.5, method="rule_based",
+                    cypher=cypher,
+                    explanation=f"Find {from_e} via {rel['type']}",
+                    confidence=0.5,
+                    method="rule_based",
                 )
 
         entity = _match_entity(entity_hint, entities)
@@ -920,13 +1123,15 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                     return NL2CypherResult(
                         cypher=f"MATCH (n:{name})\nWHERE {where}\nRETURN {ret}{limit}",
                         explanation=f"Find {name} nodes with filter",
-                        confidence=0.5, method="rule_based",
+                        confidence=0.5,
+                        method="rule_based",
                     )
 
             return NL2CypherResult(
                 cypher=f"MATCH (n:{name})\nRETURN {ret}{limit}",
                 explanation=f"{'Get one' if wants_single else 'List all'} {name} node{'s' if not wants_single else ''}",
-                confidence=0.6, method="rule_based",
+                confidence=0.6,
+                method="rule_based",
             )
 
     m = re.match(r"(?:how many|count)\s+(\w+)s?\b", q)
@@ -936,7 +1141,8 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
             return NL2CypherResult(
                 cypher=f"MATCH (n:{entity['name']})\nRETURN count(n)",
                 explanation=f"Count {entity['name']} nodes",
-                confidence=0.7, method="rule_based",
+                confidence=0.7,
+                method="rule_based",
             )
 
     for rtype, rdef in relationships.items():
@@ -947,7 +1153,8 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
                 return NL2CypherResult(
                     cypher=f"MATCH (a:{from_e})-[:{rdef['type']}]->(b:{to_e})\nRETURN a, b",
                     explanation=f"Pattern matched relationship type {rdef['type']}",
-                    confidence=0.3, method="rule_based",
+                    confidence=0.3,
+                    method="rule_based",
                 )
 
     return NL2CypherResult(
@@ -959,10 +1166,14 @@ def _rule_based_translate(question: str, bundle: MappingBundle) -> NL2CypherResu
 
 
 _IRREGULAR_PLURALS: dict[str, str] = {
-    "people": "person", "persons": "person",
-    "men": "man", "women": "woman",
-    "children": "child", "mice": "mouse",
-    "data": "datum", "indices": "index",
+    "people": "person",
+    "persons": "person",
+    "men": "man",
+    "women": "woman",
+    "children": "child",
+    "mice": "mouse",
+    "data": "datum",
+    "indices": "index",
 }
 
 
@@ -1103,9 +1314,7 @@ def _get_default_fewshot_index() -> FewShotIndex | None:
         paths = sorted(corpora_dir.glob("*.yml"))
 
         seed_index = FewShotIndex.from_corpus_files(paths) if paths else None
-        seed_examples: list[tuple[str, str]] = (
-            list(seed_index.examples) if seed_index is not None else []
-        )
+        seed_examples: list[tuple[str, str]] = list(seed_index.examples) if seed_index is not None else []
 
         correction_examples: list[tuple[str, str]] = []
         try:
@@ -1221,6 +1430,7 @@ def nl_to_cypher(
                 if resolver is None and db is not None:
                     try:
                         from .entity_resolution import EntityResolver
+
                         resolver = EntityResolver(db=db, mapping=bundle)
                     except Exception as exc:
                         logger.info("EntityResolver init failed: %s", exc)
@@ -1235,10 +1445,15 @@ def nl_to_cypher(
                         resolved_lines = []
 
             result = _call_llm_with_retry(
-                question, schema_summary, provider, max_retries=max_retries,
-                ctx=ctx, few_shot_examples=few_shot,
+                question,
+                schema_summary,
+                provider,
+                max_retries=max_retries,
+                ctx=ctx,
+                few_shot_examples=few_shot,
                 resolved_entities=resolved_lines,
-                mapping=bundle, db=db,
+                mapping=bundle,
+                db=db,
                 tenant_context=tenant_context,
                 tenant_manifest=tenant_manifest,
                 retry_context=retry_context,
@@ -1346,7 +1561,8 @@ def _llm_suggest_nl_queries(
 
 
 def _rule_based_suggest_nl_queries(
-    bundle: MappingBundle, count: int = 8,
+    bundle: MappingBundle,
+    count: int = 8,
 ) -> list[str]:
     """Generate representative NL questions from the schema without an LLM."""
     cs = bundle.conceptual_schema
@@ -1358,8 +1574,7 @@ def _rule_based_suggest_nl_queries(
         for e in cs_ents:
             name = e.get("name") or ""
             props = [
-                p.get("name", "") for p in e.get("properties", [])
-                if isinstance(p, dict) and p.get("name")
+                p.get("name", "") for p in e.get("properties", []) if isinstance(p, dict) and p.get("name")
             ]
             if name:
                 entities.append({"name": name, "properties": props[:8]})
@@ -1372,19 +1587,23 @@ def _rule_based_suggest_nl_queries(
     cs_rels = cs.get("relationships", [])
     if isinstance(cs_rels, list) and cs_rels and isinstance(cs_rels[0], dict):
         for r in cs_rels:
-            rels.append({
-                "type": r.get("type", ""),
-                "from": r.get("fromEntity", ""),
-                "to": r.get("toEntity", ""),
-            })
+            rels.append(
+                {
+                    "type": r.get("type", ""),
+                    "from": r.get("fromEntity", ""),
+                    "to": r.get("toEntity", ""),
+                }
+            )
     if not rels and isinstance(pm.get("relationships"), dict):
         for rtype, spec in pm["relationships"].items():
             spec = spec or {}
-            rels.append({
-                "type": rtype,
-                "from": spec.get("domain") or "",
-                "to": spec.get("range") or "",
-            })
+            rels.append(
+                {
+                    "type": rtype,
+                    "from": spec.get("domain") or "",
+                    "to": spec.get("range") or "",
+                }
+            )
 
     def _humanize(token: str) -> str:
         if not token:
@@ -1425,12 +1644,8 @@ def _rule_based_suggest_nl_queries(
         verb = _verbalize_rel(r["type"])
         src = _humanize(r["from"])
         dst_plural = _plural(_humanize(r["to"]))
-        suggestions.append(
-            f"For each {src}, show the {dst_plural} they {verb}"
-        )
-        suggestions.append(
-            f"Count {dst_plural} per {src}"
-        )
+        suggestions.append(f"For each {src}, show the {dst_plural} they {verb}")
+        suggestions.append(f"Count {dst_plural} per {src}")
 
     if len(rels) >= 2:
         r1, r2 = rels[0], rels[1]

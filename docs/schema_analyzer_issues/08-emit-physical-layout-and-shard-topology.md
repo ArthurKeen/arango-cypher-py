@@ -2,14 +2,14 @@
 
 **Labels:** `tracking`, `multi-tenant`, `cluster-awareness`
 
-> **Status (2026-04-21):** Most of what this issue originally asked for is
-> already specified upstream in `arango-schema-mapper` PRD §6.2 (commit
-> [`b3d4744`][upstream-prd-commit], 2026-04-20) — "Roadmap entries for
-> VCI, sharding, and multitenancy detection". This document is now a
-> downstream-consumer view of that upstream spec plus one small addition
-> (`shardFamilies`) that wasn't covered. **Do not file as a separate
-> GitHub issue** — the upstream PRD is the spec of record; this file
-> tracks which downstream workarounds each upstream feature retires.
+> **Status (2026-04-23):** Upstream §6.2 bullets 3 / 4 / 5 have all
+> shipped (`arango-schema-mapper` v0.6.0, PRs #15 / #16 / #17). Local
+> adoption is now complete in `arango-cypher-py` for all three blocks —
+> `metadata.shardingProfile`, `metadata.multitenancy`, and
+> `physicalMapping.shardFamilies`. VCI (bullet 2) remains the only
+> upstream item not yet shipped. **Do not file as a separate GitHub
+> issue** — the upstream PRD is the spec of record; this file tracks
+> which downstream workarounds each upstream feature retires.
 
 ---
 
@@ -20,8 +20,9 @@ as a `metadata.*` block on the `AnalysisResult`:
 
 | Upstream feature | Emits | Retires locally | Status |
 |---|---|---|---|
-| **Sharding-pattern detection** (PRD §6.2 bullet 3) | `metadata.shardingProfile` with style ∈ {`OneShard`, `SmartGraph`, `DisjointSmartGraph`, `SatelliteGraph`, `Sharded`} plus per-collection evidence (`shardKeys`, `numberOfShards`, `smartGraphAttribute`, `isDisjoint`, `replicationFactor`). | Multi-tenant PRD §3 MT-0 (would have added `physicalLayout` locally in `schema_acquire.py`). | Spec'd upstream, not implemented. **Phase 1 PR on mapper side.** |
-| **Multitenancy detection** (PRD §6.2 bullet 4) | `metadata.multitenancy` with style ∈ {`none`, `disjoint_smartgraph`, `shard_key`, `discriminator_field`, `collection_per_tenant`, `database_per_tenant`}, `tenantKey`, `tenantKeyCollections`, `physicalEnforcement`, `evidence`. | `nl2cypher/tenant_scope.py` local heuristic becomes pure fallback (same pattern as existing `tenantScope` from issue #06). | Spec'd upstream, not implemented. **Phase 2 PR on mapper side.** |
+| **Sharding-pattern detection** (PRD §6.2 bullet 3) | `metadata.shardingProfile` with style ∈ {`OneShard`, `SmartGraph`, `DisjointSmartGraph`, `SatelliteGraph`, `Sharded`} plus per-collection evidence (`shardKeys`, `numberOfShards`, `smartGraphAttribute`, `isDisjoint`, `replicationFactor`). | Multi-tenant PRD §3 MT-0 (would have added `physicalLayout` locally in `schema_acquire.py`). | **Shipped** in `arangodb-schema-analyzer` v0.5.0 (mapper PR #15). Adopted locally in `nl2cypher._core._deployment_style_hint` + `schema_acquire.acquire_mapping_bundle` observability. |
+| **Multitenancy detection** (PRD §6.2 bullet 4) | `metadata.multitenancy` with style ∈ {`none`, `disjoint_smartgraph`, `shard_key`, `discriminator_field`, `collection_per_tenant`, `database_per_tenant`, `unknown_single_db`}, `tenantKey`, `tenantKeyCollections`, `physicalEnforcement`, `evidence`. | `nl2cypher/tenant_scope.py` local heuristic becomes pure fallback (same pattern as existing `tenantScope` from issue #06). | **Shipped** in `arangodb-schema-analyzer` v0.6.0 (mapper PR #17). Adopted locally: `tenant_scope.analyze_tenant_scope` extends its discovery regex with the upstream `tenantKey[]`; `tenant_guardrail` surfaces `physicalEnforcement` on every violation; `schema_acquire` logs the classification. |
+| **Shard-family detection** (PRD §6.2 bullet 5 — see §2 below) | `physicalMapping.shardFamilies` with `name`, `suffix`, `discriminator`, `sharedProperties`, `members[]`. | Nothing was local; D7 (parallel-shard detection in `docs/schema_inference_bugfix_prd.md`) is now retired by upstream. | **Shipped** in `arangodb-schema-analyzer` v0.6.0 (mapper PR #16). Adopted locally in `nl2cypher._core._shard_families_block`, which renders members + UNION-or-pick-one directive into the LLM prompt. Closes downstream defect D7. |
 | **VCI detection** (PRD §6.2 bullet 2) | First-class `VCI` mapping style + schema-level duplication detection. | Nothing local today (we already consume per-index `vci=true`). | Orthogonal — not blocking multi-tenant. Follow-up. |
 
 ### 1.1 What local code adopts each block
@@ -51,10 +52,13 @@ as a `metadata.*` block on the `AnalysisResult`:
 
 ---
 
-## 2) New addition: `shardFamilies` (the one piece not covered upstream)
+## 2) `shardFamilies` — landed upstream as PRD §6.2 bullet 5
 
-**Not in PRD §6.2.** This is what this tracking doc proposes as a small
-addition to upstream — drafted as a PRD bullet in PR form.
+**Now part of PRD §6.2 bullet 5** (was originally proposed here as a
+small addition outside §6.2; folded into the upstream PRD before
+implementation). Shipped in `arangodb-schema-analyzer` v0.6.0
+(mapper PR #16) and adopted downstream in this repo's
+`feat/adopt-sharding-profile` branch — see the table above.
 
 ### 2.1 Motivation
 

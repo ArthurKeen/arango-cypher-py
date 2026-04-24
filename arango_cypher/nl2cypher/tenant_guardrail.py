@@ -107,12 +107,26 @@ class TenantContext:
 
 @dataclass(frozen=True)
 class TenantScopeViolation:
-    """Diagnostic for a translation that dropped the tenant constraint."""
+    """Diagnostic for a translation that dropped the tenant constraint.
+
+    ``physical_enforcement`` carries forward
+    ``metadata.multitenancy.physicalEnforcement`` from the analyzer
+    (>=0.6, upstream PRD §6.2 bullet 4). When ``True`` the underlying
+    storage layer (smartgraph disjoint attribute, shard key, …)
+    physically prevents cross-tenant reads, so a guardrail violation
+    is a translation-quality concern, not a data-leak. When ``False``
+    (or ``None`` for older analyzers / hand-built mappings), the
+    guardrail is the *only* line of defense and a violation must be
+    treated as a hard refusal — the retry loop already does this; the
+    field is surfaced here so callers logging / alerting on
+    violations can label them correctly.
+    """
 
     tenant_property: str
     tenant_value: str
     reason: str
     suggested_hint: str
+    physical_enforcement: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -131,11 +145,7 @@ def has_tenant_entity(bundle_or_dict: Any) -> bool:
     if hasattr(bundle_or_dict, "conceptual_schema"):
         cs = bundle_or_dict.conceptual_schema or {}
     elif isinstance(bundle_or_dict, dict):
-        cs = (
-            bundle_or_dict.get("conceptual_schema")
-            or bundle_or_dict.get("conceptualSchema")
-            or {}
-        )
+        cs = bundle_or_dict.get("conceptual_schema") or bundle_or_dict.get("conceptualSchema") or {}
     else:
         return False
     if not isinstance(cs, dict):
@@ -143,16 +153,49 @@ def has_tenant_entity(bundle_or_dict: Any) -> bool:
     entities = cs.get("entities") or []
     if not isinstance(entities, list):
         return False
-    names = {
-        e.get("name") for e in entities
-        if isinstance(e, dict) and isinstance(e.get("name"), str)
-    }
+    names = {e.get("name") for e in entities if isinstance(e, dict) and isinstance(e.get("name"), str)}
     return any(n in names for n in _TENANT_ENTITY_NAMES)
 
 
 def cypher_binds_tenant(cypher: str) -> bool:
     """Return ``True`` if any clause binds a ``:Tenant`` node."""
     return bool(_TENANT_LABEL_RE.search(cypher or ""))
+
+
+def multitenancy_physical_enforcement(bundle_or_dict: Any) -> bool | None:
+    """Return ``metadata.multitenancy.physicalEnforcement`` from a bundle.
+
+    Consumes the analyzer (>=0.6) classification (upstream PRD §6.2
+    bullet 4). Returns:
+
+    * ``True`` — the deployment style enforces tenancy in storage
+      (e.g. disjoint smartgraph, tenant-keyed shard key); the
+      database physically prevents cross-tenant reads.
+    * ``False`` — tenancy is by application convention only
+      (``discriminator_field`` style); the guardrail is the only
+      enforcement layer.
+    * ``None`` — older analyzer version (no ``multitenancy`` block)
+      OR ``style == "none"``; treat the same way as a hand-built
+      mapping (no signal either way).
+    """
+    if hasattr(bundle_or_dict, "metadata"):
+        meta = bundle_or_dict.metadata or {}
+    elif isinstance(bundle_or_dict, dict):
+        meta = bundle_or_dict.get("metadata") or {}
+    else:
+        return None
+    if not isinstance(meta, dict):
+        return None
+    block = meta.get("multitenancy")
+    if not isinstance(block, dict):
+        return None
+    style = block.get("style")
+    if not isinstance(style, str) or style == "none":
+        return None
+    enforcement = block.get("physicalEnforcement")
+    if isinstance(enforcement, bool):
+        return enforcement
+    return None
 
 
 def cypher_referenced_labels(cypher: str) -> set[str]:
@@ -212,6 +255,7 @@ def check_tenant_scope(
     *,
     tenant_context: TenantContext | None,
     manifest: TenantScopeManifest | None = None,
+    physical_enforcement: bool | None = None,
 ) -> TenantScopeViolation | None:
     """Return a :class:`TenantScopeViolation` if isolation was breached.
 
@@ -242,8 +286,11 @@ def check_tenant_scope(
         labels = cypher_referenced_labels(cypher)
         if labels:
             roles = {manifest.role_of(label) for label in labels}
-            if roles and EntityTenantRole.TENANT_SCOPED not in roles \
-                    and EntityTenantRole.TENANT_ROOT not in roles:
+            if (
+                roles
+                and EntityTenantRole.TENANT_SCOPED not in roles
+                and EntityTenantRole.TENANT_ROOT not in roles
+            ):
                 # Only GLOBAL entities are referenced. The query is
                 # tenant-independent by construction (e.g.
                 # `MATCH (c:Cve) RETURN c`). Allow.
@@ -269,22 +316,20 @@ def check_tenant_scope(
         # binding is the only acceptance condition.
         return None
 
-    return _build_violation(cypher, tenant_context, manifest)
+    return _build_violation(cypher, tenant_context, manifest, physical_enforcement)
 
 
 def _build_violation(
     cypher: str,
     tenant_context: TenantContext,
     manifest: TenantScopeManifest | None,
+    physical_enforcement: bool | None = None,
 ) -> TenantScopeViolation:
     """Render a violation with a hint tailored to the schema's denorm fields."""
     if tenant_context.property == "_key":
         match_pattern = f"(t:Tenant {{_key: '{tenant_context.value}'}})"
     else:
-        match_pattern = (
-            f"(t:Tenant {{{tenant_context.property}: "
-            f"{tenant_context.value!r}}})"
-        )
+        match_pattern = f"(t:Tenant {{{tenant_context.property}: {tenant_context.value!r}}})"
 
     # If the manifest tells us at least one referenced entity has a
     # denorm field, suggest the cheaper denorm-filter form first.
@@ -327,6 +372,7 @@ def _build_violation(
             "cross-tenant results."
         ),
         suggested_hint=suggested_hint,
+        physical_enforcement=physical_enforcement,
     )
 
 
@@ -366,7 +412,10 @@ def prompt_section(
         return _legacy_prompt_body(tenant_context, match_hint, scope_clause)
 
     return _manifest_prompt_body(
-        tenant_context, manifest, match_hint, scope_clause,
+        tenant_context,
+        manifest,
+        match_hint,
+        scope_clause,
     )
 
 
@@ -383,14 +432,8 @@ def _format_match_hint(
         )
         scope_clause = f"match Tenant._key == {tenant_context.value!r}"
     else:
-        match_hint = (
-            f"`MATCH (t:Tenant {{{tenant_context.property}: "
-            f"{tenant_context.value!r}}})`"
-        )
-        scope_clause = (
-            f"match Tenant.{tenant_context.property} == "
-            f"{tenant_context.value!r}"
-        )
+        match_hint = f"`MATCH (t:Tenant {{{tenant_context.property}: {tenant_context.value!r}}})`"
+        scope_clause = f"match Tenant.{tenant_context.property} == {tenant_context.value!r}"
     return match_hint, scope_clause
 
 
@@ -508,5 +551,6 @@ __all__ = [
     "cypher_binds_tenant",
     "cypher_referenced_labels",
     "has_tenant_entity",
+    "multitenancy_physical_enforcement",
     "prompt_section",
 ]

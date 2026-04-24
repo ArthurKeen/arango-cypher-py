@@ -92,10 +92,7 @@ def _bundle_needs_reacquire(bundle: MappingBundle) -> bool:
     treated as a miss and the analyzer path runs.
     """
     warnings = (bundle.metadata or {}).get("warnings") or []
-    if not any(
-        isinstance(w, dict) and w.get("code") == "ANALYZER_NOT_INSTALLED"
-        for w in warnings
-    ):
+    if not any(isinstance(w, dict) and w.get("code") == "ANALYZER_NOT_INSTALLED" for w in warnings):
         return False
     try:
         import schema_analyzer  # noqa: F401
@@ -257,9 +254,7 @@ def describe_schema_change(
     shape_fp = _shape_fingerprint(db)
     full_fp = _full_fingerprint(db)
     key = _cache_key(db)
-    cache = ArangoSchemaCache(
-        collection_name=cache_collection, cache_key=cache_key
-    )
+    cache = ArangoSchemaCache(collection_name=cache_collection, cache_key=cache_key)
 
     cached_shape: str | None = None
     cached_full: str | None = None
@@ -273,9 +268,7 @@ def describe_schema_change(
             _bundle, cached_shape, cached_full = persisted
 
     if cached_shape is None:
-        status: Literal[
-            "unchanged", "stats_changed", "shape_changed", "no_cache"
-        ] = "no_cache"
+        status: Literal["unchanged", "stats_changed", "shape_changed", "no_cache"] = "no_cache"
     elif cached_shape != shape_fp:
         status = "shape_changed"
     elif cached_full != full_fp:
@@ -293,12 +286,33 @@ def describe_schema_change(
 
 
 _IES_TO_Y_WORDS = {
-    "companies", "cities", "categories", "stories", "bodies", "parties",
-    "entries", "queries", "countries", "activities", "properties",
-    "policies", "strategies", "histories", "industries", "libraries",
-    "boundaries", "commodities", "entities", "identities", "priorities",
-    "securities", "territories", "utilities", "vulnerabilities",
+    "companies",
+    "cities",
+    "categories",
+    "stories",
+    "bodies",
+    "parties",
+    "entries",
+    "queries",
+    "countries",
+    "activities",
+    "properties",
+    "policies",
+    "strategies",
+    "histories",
+    "industries",
+    "libraries",
+    "boundaries",
+    "commodities",
+    "entities",
+    "identities",
+    "priorities",
+    "securities",
+    "territories",
+    "utilities",
+    "vulnerabilities",
 }
+
 
 def _singularize(name: str) -> str:
     """Naive English singularization for collection-name-to-label conversion."""
@@ -314,7 +328,13 @@ def _singularize(name: str) -> str:
         if len(prefix) >= 2 and prefix[-1].lower() not in "aeiou" and prefix[-2].lower() not in "aeiou":
             return prefix + "y"
         return name[:-1]
-    if lower.endswith("ses") or lower.endswith("xes") or lower.endswith("zes") or lower.endswith("ches") or lower.endswith("shes"):
+    if (
+        lower.endswith("ses")
+        or lower.endswith("xes")
+        or lower.endswith("zes")
+        or lower.endswith("ches")
+        or lower.endswith("shes")
+    ):
         return name[:-2]
     if lower.endswith("s") and not lower.endswith("ss") and not lower.endswith("us"):
         return name[:-1]
@@ -466,8 +486,16 @@ def classify_schema(db: StandardDatabase) -> str:
 
 # Case-insensitive string values commonly used as "null" sentinels in dirty data.
 _SENTINEL_TOKENS: set[str] = {
-    "NULL", "NONE", "NIL", "N/A", "NA", "UNKNOWN",
-    "TBD", "TBA", "#N/A", "(NULL)",
+    "NULL",
+    "NONE",
+    "NIL",
+    "N/A",
+    "NA",
+    "UNKNOWN",
+    "TBD",
+    "TBA",
+    "#N/A",
+    "(NULL)",
 }
 
 # A sentinel candidate must occupy at least this share of the sampled values
@@ -514,7 +542,8 @@ def _infer_value_type(val: Any) -> str:
 
 
 def _profile_property_values(
-    values: list[Any], total_docs: int,
+    values: list[Any],
+    total_docs: int,
 ) -> dict[str, Any]:
     """Compute type / sentinel / numeric-like / sample metadata for one field.
 
@@ -584,7 +613,9 @@ def _profile_property_values(
 
 
 def _sample_properties(
-    db: StandardDatabase, collection_name: str, sample_size: int = 50,
+    db: StandardDatabase,
+    collection_name: str,
+    sample_size: int = 50,
 ) -> list[dict[str, Any]]:
     """Sample docs and return enriched property profiles.
 
@@ -632,9 +663,20 @@ _DOC_TYPE_FIELDS = _TIER1_TYPE_FIELDS + _TIER2_TYPE_FIELDS
 _EDGE_TYPE_FIELDS = ["type", "relation", "relType", "_type", "label"]
 
 _FILE_EXTENSION_SUFFIXES = (
-    ".rst", ".md", ".pdf", ".asciidoc", ".txt", ".rtf",
-    ".docx", ".html", ".json", ".xml", ".yaml", ".yml",
-    ".ttl", ".owl",
+    ".rst",
+    ".md",
+    ".pdf",
+    ".asciidoc",
+    ".txt",
+    ".rtf",
+    ".docx",
+    ".html",
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".ttl",
+    ".owl",
 )
 
 # Tier-2 cardinality cap: reject if distinct-value count exceeds this.
@@ -698,11 +740,13 @@ def _detect_type_field(
         count = sum(1 for d in docs if isinstance(d, dict) and tf in d)
         if count < len(docs) * 0.8:
             if notes_sink is not None and count > 0:
-                notes_sink.append({
-                    "field": tf,
-                    "tier": _tier(tf),
-                    "reason": f"coverage {count}/{len(docs)} below 80% threshold",
-                })
+                notes_sink.append(
+                    {
+                        "field": tf,
+                        "tier": _tier(tf),
+                        "reason": f"coverage {count}/{len(docs)} below 80% threshold",
+                    }
+                )
             continue
 
         if _tier(tf) == 1:
@@ -719,28 +763,32 @@ def _detect_type_field(
         cardinality_cap = max(_TIER2_ABSOLUTE_CARDINALITY_CAP, int(0.5 * row_count))
         if distinct_count > cardinality_cap:
             if notes_sink is not None:
-                notes_sink.append({
-                    "field": tf,
-                    "tier": 2,
-                    "reason": (
-                        f"{distinct_count} distinct values over {row_count} rows "
-                        f"exceeds cardinality cap {cardinality_cap}"
-                    ),
-                })
+                notes_sink.append(
+                    {
+                        "field": tf,
+                        "tier": 2,
+                        "reason": (
+                            f"{distinct_count} distinct values over {row_count} rows "
+                            f"exceeds cardinality cap {cardinality_cap}"
+                        ),
+                    }
+                )
             continue
 
         non_class_like = [v for v in distinct_values if not _looks_class_like(v)]
         if non_class_like:
             sample = non_class_like[0]
             if notes_sink is not None:
-                notes_sink.append({
-                    "field": tf,
-                    "tier": 2,
-                    "reason": (
-                        f"value {sample!r} is not class-like "
-                        f"(contains '.', '/', whitespace, or a file extension)"
-                    ),
-                })
+                notes_sink.append(
+                    {
+                        "field": tf,
+                        "tier": 2,
+                        "reason": (
+                            f"value {sample!r} is not class-like "
+                            f"(contains '.', '/', whitespace, or a file extension)"
+                        ),
+                    }
+                )
             continue
 
         return tf
@@ -975,12 +1023,14 @@ def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingB
             rel_type = col_name.upper()
             props = _sample_properties(db, col_name)
             domain, range_ = _infer_dedicated_edge_endpoints(db, col_name, entities_pm)
-            relationships_cs.append({
-                "type": rel_type,
-                "fromEntity": domain,
-                "toEntity": range_,
-                "properties": props,
-            })
+            relationships_cs.append(
+                {
+                    "type": rel_type,
+                    "fromEntity": domain,
+                    "toEntity": range_,
+                    "properties": props,
+                }
+            )
             relationships_pm[rel_type] = {
                 "style": "DEDICATED_COLLECTION",
                 "edgeCollectionName": col_name,
@@ -1029,12 +1079,14 @@ def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingB
                 for val in values:
                     domain, range_ = _infer_lpg_edge_endpoints(db, col_name, detected_field, val, entities_pm)
                     props = _sample_properties_filtered(db, col_name, detected_field, val)
-                    relationships_cs.append({
-                        "type": val,
-                        "fromEntity": domain,
-                        "toEntity": range_,
-                        "properties": props,
-                    })
+                    relationships_cs.append(
+                        {
+                            "type": val,
+                            "fromEntity": domain,
+                            "toEntity": range_,
+                            "properties": props,
+                        }
+                    )
                     relationships_pm[val] = {
                         "style": "GENERIC_WITH_TYPE",
                         "edgeCollectionName": col_name,
@@ -1046,12 +1098,14 @@ def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingB
                 rel_type = col_name.upper()
                 props = _sample_properties(db, col_name)
                 domain, range_ = _infer_dedicated_edge_endpoints(db, col_name, entities_pm)
-                relationships_cs.append({
-                    "type": rel_type,
-                    "fromEntity": domain,
-                    "toEntity": range_,
-                    "properties": props,
-                })
+                relationships_cs.append(
+                    {
+                        "type": rel_type,
+                        "fromEntity": domain,
+                        "toEntity": range_,
+                        "properties": props,
+                    }
+                )
                 relationships_pm[rel_type] = {
                     "style": "DEDICATED_COLLECTION",
                     "edgeCollectionName": col_name,
@@ -1072,13 +1126,15 @@ def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingB
                 idx_type = idx.get("type", "")
                 if idx_type in _SKIP_INDEX_TYPES:
                     continue
-                filtered.append({
-                    "type": idx_type,
-                    "fields": idx.get("fields", []),
-                    "unique": idx.get("unique", False),
-                    "sparse": idx.get("sparse", False),
-                    "name": idx.get("name", ""),
-                })
+                filtered.append(
+                    {
+                        "type": idx_type,
+                        "fields": idx.get("fields", []),
+                        "unique": idx.get("unique", False),
+                        "sparse": idx.get("sparse", False),
+                        "name": idx.get("name", ""),
+                    }
+                )
             if filtered:
                 col_indexes[col_name] = filtered
         except Exception:
@@ -1173,6 +1229,59 @@ def acquire_mapping_bundle(db: StandardDatabase, *, include_owl: bool = False) -
                 sorted(backfilled) if isinstance(backfilled, list | tuple | set) else backfilled,
             )
 
+    # Surface upstream sharding profile (arangodb-schema-analyzer v0.5 /
+    # upstream PRD §6.2 bullet 3): the analyzer classifies every database
+    # into exactly one deployment style and emits the evidence as
+    # metadata.shardingProfile. Layer-5 (EXPLAIN-plan validator, see
+    # docs/multitenant_prd.md §7) reads `style` once at session start.
+    # We log it at INFO for deployment observability and escalate to
+    # WARNING when the classifier reports `status == "degraded"` (i.e. it
+    # fell back to a default because required evidence was missing).
+    sharding = bundle.metadata.get("shardingProfile") if bundle.metadata else None
+    if isinstance(sharding, dict):
+        style = sharding.get("style")
+        status = (
+            sharding.get("status")
+            or sharding.get("shardingProfileStatus")
+            or bundle.metadata.get("shardingProfileStatus")
+        )
+        if status == "degraded":
+            logger.warning(
+                "schema_analyzer shardingProfile is degraded (style=%s): "
+                "evidence was incomplete, downstream layers will assume "
+                "the default and may enforce stricter guardrails.",
+                style,
+            )
+        else:
+            logger.info("schema_analyzer shardingProfile: style=%s", style)
+
+    # Surface upstream multitenancy classification (arangodb-schema-analyzer
+    # v0.6 / upstream PRD §6.2 bullet 4): the analyzer classifies every
+    # database into exactly one of seven multitenancy styles and emits the
+    # evidence as metadata.multitenancy. Layer-4 (tenant_scope discovery)
+    # already consumes ``tenantKey`` for field-name detection; we log
+    # ``style`` + ``physicalEnforcement`` here for deployment observability,
+    # escalating to WARNING when the classifier reports degraded evidence.
+    multitenancy = bundle.metadata.get("multitenancy") if bundle.metadata else None
+    if isinstance(multitenancy, dict):
+        mt_style = multitenancy.get("style")
+        enforcement = multitenancy.get("physicalEnforcement")
+        mt_status = multitenancy.get("status") or bundle.metadata.get("multitenancyStatus")
+        if mt_status == "degraded":
+            logger.warning(
+                "schema_analyzer multitenancy is degraded (style=%s, "
+                "physicalEnforcement=%s): downstream tenant guardrail "
+                "will fall back to its local heuristic.",
+                mt_style,
+                enforcement,
+            )
+        elif mt_style and mt_style != "none":
+            logger.info(
+                "schema_analyzer multitenancy: style=%s physicalEnforcement=%s",
+                mt_style,
+                enforcement,
+            )
+
     return bundle
 
 
@@ -1245,11 +1354,7 @@ def compute_statistics(
         type_value = emap.get("typeValue")
         if style in ("LABEL", "GENERIC_WITH_TYPE") and type_field and type_value:
             try:
-                aql = (
-                    f"FOR d IN {col_name} "
-                    f"FILTER d.`{type_field}` == @tv "
-                    f"COLLECT WITH COUNT INTO c RETURN c"
-                )
+                aql = f"FOR d IN {col_name} FILTER d.`{type_field}` == @tv COLLECT WITH COUNT INTO c RETURN c"
                 cursor = db.aql.execute(aql, bind_vars={"tv": type_value})
                 entity_count = next(cursor, 0)
             except Exception:
@@ -1281,11 +1386,7 @@ def compute_statistics(
 
         if style == "GENERIC_WITH_TYPE" and type_field and type_value:
             try:
-                aql = (
-                    f"FOR e IN {edge_col} "
-                    f"FILTER e.`{type_field}` == @tv "
-                    f"COLLECT WITH COUNT INTO c RETURN c"
-                )
+                aql = f"FOR e IN {edge_col} FILTER e.`{type_field}` == @tv COLLECT WITH COUNT INTO c RETURN c"
                 cursor = db.aql.execute(aql, bind_vars={"tv": type_value})
                 edge_count = next(cursor, 0)
             except Exception:
@@ -1413,9 +1514,7 @@ def get_mapping(
     shape_fp = _shape_fingerprint(db)
     full_fp = _full_fingerprint(db)
     persistent = (
-        ArangoSchemaCache(collection_name=cache_collection, cache_key=cache_key)
-        if cache_collection
-        else None
+        ArangoSchemaCache(collection_name=cache_collection, cache_key=cache_key) if cache_collection else None
     )
 
     if not force_refresh and key:
@@ -1436,9 +1535,7 @@ def get_mapping(
                     )
                     _mapping_cache.pop(key, None)
                 elif cached_full == full_fp:
-                    logger.debug(
-                        "Schema unchanged for %s; using cached mapping", key
-                    )
+                    logger.debug("Schema unchanged for %s; using cached mapping", key)
                     return bundle
                 else:
                     logger.info(
@@ -1449,9 +1546,7 @@ def get_mapping(
                     _save_cache(db, key, bundle, shape_fp, full_fp, persistent)
                     return bundle
             else:
-                logger.info(
-                    "Schema shape changed for %s; full re-introspection", key
-                )
+                logger.info("Schema shape changed for %s; full re-introspection", key)
 
     bundle = _build_fresh_bundle(db, strategy=strategy, include_owl=include_owl)
     bundle = _safe_refresh_statistics(db, bundle)
@@ -1521,9 +1616,7 @@ def _build_fresh_bundle(
     return bundle
 
 
-def _safe_refresh_statistics(
-    db: StandardDatabase, bundle: MappingBundle
-) -> MappingBundle:
+def _safe_refresh_statistics(db: StandardDatabase, bundle: MappingBundle) -> MappingBundle:
     """Re-compute cardinality statistics without failing the caller.
 
     Statistics are a best-effort metadata enrichment: a failure here (e.g.
@@ -1545,17 +1638,13 @@ def _safe_refresh_statistics(
     existing = meta.get("statistics")
     status = meta.get("statisticsStatus") or meta.get("statistics_status")
     if isinstance(existing, dict) and existing.get("relationships") and status == "ok":
-        logger.debug(
-            "Using analyzer-supplied metadata.statistics; skipping local recompute"
-        )
+        logger.debug("Using analyzer-supplied metadata.statistics; skipping local recompute")
         return bundle
 
     try:
         return enrich_bundle_with_statistics(db, bundle)
     except Exception:
-        logger.warning(
-            "Failed to compute cardinality statistics", exc_info=True
-        )
+        logger.warning("Failed to compute cardinality statistics", exc_info=True)
         return bundle
 
 
@@ -1617,6 +1706,4 @@ def invalidate_cache(
     if key:
         _mapping_cache.pop(key, None)
     if cache_collection:
-        ArangoSchemaCache(
-            collection_name=cache_collection, cache_key=cache_key
-        ).invalidate(db)
+        ArangoSchemaCache(collection_name=cache_collection, cache_key=cache_key).invalidate(db)

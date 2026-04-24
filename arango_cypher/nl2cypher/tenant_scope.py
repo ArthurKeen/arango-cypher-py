@@ -155,16 +155,10 @@ class TenantScopeManifest:
 
     def scoped_entities(self) -> list[str]:
         """Names of all entities classified as ``TENANT_SCOPED``."""
-        return [
-            name for name, scope in self.entities.items()
-            if scope.role is EntityTenantRole.TENANT_SCOPED
-        ]
+        return [name for name, scope in self.entities.items() if scope.role is EntityTenantRole.TENANT_SCOPED]
 
     def global_entities(self) -> list[str]:
-        return [
-            name for name, scope in self.entities.items()
-            if scope.role is EntityTenantRole.GLOBAL
-        ]
+        return [name for name, scope in self.entities.items() if scope.role is EntityTenantRole.GLOBAL]
 
 
 # ---------------------------------------------------------------------------
@@ -196,16 +190,71 @@ def _resolve_tenant_field_regex() -> re.Pattern[str]:
         return _DEFAULT_TENANT_FIELD_REGEX
 
 
+def _multitenancy_tenant_keys(mapping: Any) -> list[str]:
+    """Return ``metadata.multitenancy.tenantKey`` as a list of strings.
+
+    Consumes the database-wide tenant-key hint emitted by
+    ``arangodb-schema-analyzer>=0.6`` (upstream PRD §6.2 bullet 4,
+    arango-schema-mapper PR #17). Returns ``[]`` when:
+
+    * the bundle carries no metadata block,
+    * ``metadata.multitenancy`` is missing or has ``style == "none"``,
+    * ``tenantKey`` is missing / empty / not a list of strings.
+
+    Empty list means "no upstream hint" — discovery falls back to the
+    env-var regex / built-in default exactly as before. A non-empty
+    list is treated as an *additive* hint: the local regex still
+    fires (so denormalised fields the analyzer didn't surface still
+    get classified), but property names matching one of the upstream
+    keys are preferred when both fire on the same entity.
+    """
+    if hasattr(mapping, "metadata"):
+        meta = mapping.metadata or {}
+    elif isinstance(mapping, dict):
+        meta = mapping.get("metadata") or {}
+    else:
+        meta = {}
+    if not isinstance(meta, dict):
+        return []
+    block = meta.get("multitenancy")
+    if not isinstance(block, dict):
+        return []
+    style = block.get("style")
+    if not isinstance(style, str) or style == "none":
+        return []
+    keys = block.get("tenantKey")
+    if not isinstance(keys, list):
+        return []
+    return [k for k in keys if isinstance(k, str) and k]
+
+
+def _build_tenant_field_matcher(
+    explicit_regex: re.Pattern[str] | None,
+    upstream_keys: list[str],
+) -> re.Pattern[str]:
+    """Return a regex that matches the local default OR the upstream keys.
+
+    The combined regex is ``^(<key1>|<key2>|...|<default>)$``,
+    case-insensitive. Upstream keys are matched as exact (escaped)
+    strings to avoid regex-injection through analyzer output. When
+    ``explicit_regex`` is supplied (operator override via env var),
+    we still OR-in the upstream keys — the operator's intent is
+    "at least these names should match", not "*only* these".
+    """
+    base_regex = explicit_regex or _resolve_tenant_field_regex()
+    if not upstream_keys:
+        return base_regex
+    escaped = "|".join(re.escape(k) for k in upstream_keys)
+    base_pattern = base_regex.pattern.lstrip("^").rstrip("$")
+    return re.compile(rf"^({escaped}|{base_pattern})$", re.IGNORECASE)
+
+
 def _conceptual_schema(mapping: Any) -> dict[str, Any]:
     """Extract the conceptual schema dict from a bundle/dict, or {} if missing."""
     if hasattr(mapping, "conceptual_schema"):
         cs = mapping.conceptual_schema or {}
     elif isinstance(mapping, dict):
-        cs = (
-            mapping.get("conceptual_schema")
-            or mapping.get("conceptualSchema")
-            or {}
-        )
+        cs = mapping.get("conceptual_schema") or mapping.get("conceptualSchema") or {}
     else:
         cs = {}
     return cs if isinstance(cs, dict) else {}
@@ -216,11 +265,7 @@ def _physical_mapping(mapping: Any) -> dict[str, Any]:
     if hasattr(mapping, "physical_mapping"):
         pm = mapping.physical_mapping or {}
     elif isinstance(mapping, dict):
-        pm = (
-            mapping.get("physical_mapping")
-            or mapping.get("physicalMapping")
-            or {}
-        )
+        pm = mapping.get("physical_mapping") or mapping.get("physicalMapping") or {}
     else:
         pm = {}
     return pm if isinstance(pm, dict) else {}
@@ -316,17 +361,9 @@ def _build_relationship_graph(
         if not isinstance(r, dict):
             continue
         src = _endpoint_label(
-            r.get("from")
-            or r.get("fromEntity")
-            or r.get("source")
-            or r.get("sourceEntity")
+            r.get("from") or r.get("fromEntity") or r.get("source") or r.get("sourceEntity")
         )
-        dst = _endpoint_label(
-            r.get("to")
-            or r.get("toEntity")
-            or r.get("target")
-            or r.get("targetEntity")
-        )
+        dst = _endpoint_label(r.get("to") or r.get("toEntity") or r.get("target") or r.get("targetEntity"))
         if not src or not dst:
             continue
         adj.setdefault(src, set()).add(dst)
@@ -411,7 +448,20 @@ def analyze_tenant_scope(
     if not isinstance(entities, list):
         entities = []
 
-    field_regex = tenant_field_regex or _resolve_tenant_field_regex()
+    # Pull the upstream multitenancy hint (analyzer >=0.6) and OR it
+    # into the regex used for denorm-field discovery. This lets the
+    # heuristic auto-detect non-default tenant key names like
+    # ``customerId`` or ``orgId`` without requiring an env-var
+    # override on every deployment that uses them.
+    upstream_keys = _multitenancy_tenant_keys(mapping)
+    field_regex = _build_tenant_field_matcher(tenant_field_regex, upstream_keys)
+    if upstream_keys:
+        logger.debug(
+            "tenant_scope: extending field-name matcher with %d upstream "
+            "tenant key(s) from metadata.multitenancy: %s",
+            len(upstream_keys),
+            upstream_keys,
+        )
 
     # Index entities by name and detect the tenant root.
     by_name: dict[str, dict[str, Any]] = {}
@@ -428,7 +478,9 @@ def analyze_tenant_scope(
     if tenant_entity is not None:
         adj = _build_relationship_graph(cs)
         reachable = _reachable_from(
-            tenant_entity, adj, max_hops=max_traversal_hops,
+            tenant_entity,
+            adj,
+            max_hops=max_traversal_hops,
         )
     else:
         reachable = set()
@@ -502,7 +554,8 @@ def analyze_tenant_scope(
 
 
 def _find_denorm_field(
-    entity: dict[str, Any], regex: re.Pattern[str],
+    entity: dict[str, Any],
+    regex: re.Pattern[str],
 ) -> str | None:
     """Return the first property name on ``entity`` that matches ``regex``."""
     for prop_name in _entity_property_names(entity):
