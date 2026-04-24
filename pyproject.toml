@@ -19,7 +19,12 @@ Issues = "https://github.com/arango-solutions/arango-cypher-py/issues"
 
 [project.optional-dependencies]
 analyzer = [
-  "arangodb-schema-analyzer>=0.6.0,<0.7.0",
+  # 0.6.1 floor: pulls in the upstream tool-contract DoS bound
+  # (request-size maxLength / maxItems) and the optional
+  # SCHEMA_ANALYZER_ALLOWED_HOSTS / SCHEMA_ANALYZER_CACHE_ROOT env
+  # guards. No API change vs 0.6.0 so this is a safe, additive bump
+  # in the existing 0.6.x band.
+  "arangodb-schema-analyzer>=0.6.1,<0.7.0",
 ]
 service = [
   # As of arangodb-schema-analyzer 0.6.0 (2026-04-23) the analyzer is
@@ -29,8 +34,9 @@ service = [
   # `arango_cypher.service` via `_require_analyzer_unless_opted_out`;
   # without this pin the import errors out unless deployers manually
   # set `ARANGO_CYPHER_ALLOW_HEURISTIC=1`. Pinned to the same band as
-  # the [analyzer] extra so the two stay in lockstep.
-  "arangodb-schema-analyzer>=0.6.0,<0.7.0",
+  # the [analyzer] extra so the two stay in lockstep — see the comment
+  # there for the 0.6.1 floor rationale.
+  "arangodb-schema-analyzer>=0.6.1,<0.7.0",
   "typer>=0.9.0",
   "rich>=13.0.0",
 ]
@@ -51,7 +57,7 @@ dev = [
   "rank_bm25>=0.2.2",
   "fastapi>=0.100.0",
   "uvicorn[standard]>=0.20.0",
-  "arangodb-schema-analyzer>=0.6.0,<0.7.0",
+  "arangodb-schema-analyzer>=0.6.1,<0.7.0",
   # Included so the 14 CLI tests gated on `typer_available` run under the
   # default `pip install -e '.[dev]'` developer bootstrap. Without this the
   # CLI module has no CI coverage on the default dev path.
