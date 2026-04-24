@@ -16,6 +16,7 @@ from .providers import (
 from .tenant_guardrail import (
     TenantContext,
     check_tenant_scope,
+    multitenancy_physical_enforcement,
 )
 from .tenant_guardrail import (
     prompt_section as _tenant_prompt_section,
@@ -667,6 +668,12 @@ def _call_llm_with_retry(
         tenant_manifest=tenant_manifest,
         retry_context=retry_context or "",
     )
+    # Resolve once per call: passed through to every check_tenant_scope
+    # invocation so the resulting violation carries the upstream
+    # ``metadata.multitenancy.physicalEnforcement`` signal (analyzer
+    # >=0.6, upstream PRD §6.2 bullet 4). ``None`` for older mappings —
+    # downstream behaviour is unchanged in that case.
+    physical_enforcement = multitenancy_physical_enforcement(mapping) if mapping is not None else None
     best_cypher = ""
     # WP-29 D4: pre-WP-29 we tracked ``best_content`` to leak the
     # raw LLM response into the fail-through explanation. The
@@ -717,6 +724,7 @@ def _call_llm_with_retry(
                         cypher,
                         tenant_context=tenant_context,
                         manifest=tenant_manifest,
+                        physical_enforcement=physical_enforcement,
                     )
                     if violation is None:
                         return NL2CypherResult(
@@ -776,6 +784,7 @@ def _call_llm_with_retry(
             best_cypher,
             tenant_context=tenant_context,
             manifest=tenant_manifest,
+            physical_enforcement=physical_enforcement,
         )
         is not None
     ):
