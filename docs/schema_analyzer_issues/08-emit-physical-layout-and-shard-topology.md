@@ -2,14 +2,34 @@
 
 **Labels:** `tracking`, `multi-tenant`, `cluster-awareness`
 
-> **Status (2026-04-23):** Upstream §6.2 bullets 3 / 4 / 5 have all
-> shipped (`arango-schema-mapper` v0.6.0, PRs #15 / #16 / #17). Local
-> adoption is now complete in `arango-cypher-py` for all three blocks —
-> `metadata.shardingProfile`, `metadata.multitenancy`, and
-> `physicalMapping.shardFamilies`. VCI (bullet 2) remains the only
-> upstream item not yet shipped. **Do not file as a separate GitHub
-> issue** — the upstream PRD is the spec of record; this file tracks
-> which downstream workarounds each upstream feature retires.
+> **Status (2026-04-28):** **Closed out.** Upstream §6.2 bullets 3 / 4 / 5
+> have all shipped (`arango-schema-mapper` v0.5.0 + v0.6.0, PRs #15 / #16 /
+> #17) and local adoption is complete in `arango-cypher-py` for all three
+> blocks — `metadata.shardingProfile`, `metadata.multitenancy`, and
+> `physicalMapping.shardFamilies`. Downstream consumers landed in:
+>
+> - **`feat/adopt-sharding-profile`** (arango-cypher-py PR #6, merged 2026-04-23) —
+>   the main adoption PR; wired all three metadata blocks into
+>   `nl2cypher._core` (`_deployment_style_hint`, `_shard_families_block`),
+>   `tenant_scope.analyze_tenant_scope`, `tenant_guardrail.multitenancy_physical_enforcement`,
+>   and `schema_acquire.acquire_mapping_bundle` observability.
+> - **Docs refresh** (arango-cypher-py PR #9, merged 2026-04-27) —
+>   `multitenant_prd.md` §3.1/§3.2 now document the `metadata.multitenancy`
+>   block end-to-end; `schema_analyzer_issues/06` got a downstream-adoption
+>   note; `python_prd.md` multi-tenant Layer-0 row flipped to
+>   "Partially adopted".
+>
+> VCI (upstream PRD §6.2 bullet 2) is the only item still outstanding
+> upstream. It is orthogonal to multi-tenancy, non-blocking for Wave 6b,
+> and tracked as a follow-up — not re-filed as a new local issue.
+> **Do not file as a separate GitHub issue** — the upstream PRD is the
+> spec of record; this file is now retained for provenance (what was
+> proposed, what shipped, what each block retired) and should be read as
+> a historical artifact rather than a live proposal. §2 below preserves
+> the original `shardFamilies` proposal text as filed; the corresponding
+> production code path is documented in `python_prd.md` §5.7 and in the
+> `_shard_families_block` docstring, which are the sources of truth
+> going forward.
 
 ---
 
@@ -123,22 +143,27 @@ block so `multitenancy.style == "none"` remains correct while
 4. Emit one family entry per confirmed bucket. Families of 1 are never
    emitted.
 
-### 2.4 Downstream impact
+### 2.4 Downstream impact — landed 2026-04-23
 
-- `nl2cypher/_core.py::_build_schema_summary` renders families as
+- `nl2cypher/_core.py::_shard_families_block` renders families as
   grouped sections in the LLM prompt, with an explicit hint that a
-  repo-agnostic question must UNION across members. Directly attacks
-  the class-of-error that produced the
+  repo-agnostic question must UNION across members. This directly
+  retired the class-of-error that produced the
   "`no entity mapping for AppVersion`" / wrong-shard picks reported
   in `docs/schema_inference_bugfix_prd.md` candidate D7.
-- UI mapping panel can collapse a family into a single row with a
-  member count badge.
+- UI mapping panel collapsing a family into a single row with a
+  member-count badge remains TODO — out of scope for the
+  `feat/adopt-sharding-profile` adoption PR; tracked as a
+  paper-cut item only, not blocking.
 
-### 2.5 How this gets filed
+### 2.5 How this got filed — historical
 
-As a small addition to `arango-schema-mapper/docs/PRD.md` §6.2 — a
-fourth bullet alongside VCI / sharding / multitenancy, following the
-same style. See Phase 0.2 in the downstream implementation plan.
+Filed as a small addition to `arango-schema-mapper/docs/PRD.md` §6.2
+— a fourth bullet alongside VCI / sharding / multitenancy, following
+the same style. Accepted upstream, shipped in
+`arango-schema-mapper` v0.6.0 (mapper PR #16, merged into the upstream
+PRD as §6.2 bullet 5). Retained here as the as-filed proposal snapshot
+for provenance; no further action.
 
 ---
 
@@ -155,5 +180,26 @@ same style. See Phase 0.2 in the downstream implementation plan.
   concern.
 
 ---
+
+## 4) Close-out summary (2026-04-28)
+
+| Upstream block | Shipped in | Adopted in `arango-cypher-py` | Retired locally |
+|---|---|---|---|
+| `metadata.shardingProfile` (§6.2 bullet 3) | analyzer v0.5.0 | PR #6 | `_deployment_style_hint` now reads `shardingProfile.style` directly (heuristic retained as fallback for pre-0.5 bundles). |
+| `metadata.multitenancy` (§6.2 bullet 4) | analyzer v0.6.0 | PR #6 + PR #9 | `tenant_scope.analyze_tenant_scope` consumes `multitenancy.tenantKey`; `tenant_guardrail` reads `physicalEnforcement` for log-triage labelling (PR #9 §3.1/§3.2 docs). |
+| `physicalMapping.shardFamilies` (§6.2 bullet 5) | analyzer v0.6.0 | PR #6 | `_shard_families_block` renders families in the NL prompt; D7 (parallel-shard detection) retired. |
+
+**Still open upstream (not blocking):**
+
+- **VCI detection** (§6.2 bullet 2) — first-class `VCI` mapping style +
+  schema-level duplication detection. Per-index `vci=true` flag already
+  consumed locally (issue #01, shipped in analyzer v0.2.0). First-class
+  emission is an orthogonal capability upgrade; tracked by the analyzer
+  roadmap, not re-filed here.
+
+**Still open downstream (paper-cut):**
+
+- UI mapping panel should render shard-family groups as a collapsible
+  row with a member-count badge. Cosmetic; no functional gap.
 
 [upstream-prd-commit]: https://github.com/ArthurKeen/arango-schema-mapper/commit/b3d4744
