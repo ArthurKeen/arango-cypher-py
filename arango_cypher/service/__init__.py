@@ -47,9 +47,9 @@ from arango_query_core import (
     mapping_from_wire_dict,
 )
 
-from ._env import read_arango_password
-from .api import get_cypher_profile, translate, validate_cypher_profile
-from .extensions import register_all_extensions
+from .._env import read_arango_password
+from ..api import get_cypher_profile, translate, validate_cypher_profile
+from ..extensions import register_all_extensions
 
 
 def _require_analyzer_unless_opted_out() -> None:
@@ -1229,7 +1229,7 @@ def schema_introspect(
     ``get_mapping`` makes the flag do what its name says.
     """
     db = session.db
-    from .schema_acquire import get_mapping as _get_mapping
+    from ..schema_acquire import get_mapping as _get_mapping
 
     bundle = _get_mapping(db, force_refresh=force)
 
@@ -1292,8 +1292,8 @@ def schema_statistics(
     Returns collection counts, per-entity estimated counts, per-relationship
     fan-out/fan-in metrics, cardinality patterns, and selectivity ratios.
     """
-    from .schema_acquire import compute_statistics as _compute_stats
-    from .schema_acquire import get_mapping as _get_mapping
+    from ..schema_acquire import compute_statistics as _compute_stats
+    from ..schema_acquire import get_mapping as _get_mapping
 
     t0 = time.perf_counter()
     bundle = _get_mapping(session.db)
@@ -1332,11 +1332,11 @@ def schema_status(
     Use this to skip expensive prompt rebuilds / view cache busts /
     downstream notifications when nothing has actually changed.
     """
-    from .schema_acquire import (
+    from ..schema_acquire import (
         DEFAULT_CACHE_COLLECTION,
         DEFAULT_CACHE_KEY,
     )
-    from .schema_acquire import (
+    from ..schema_acquire import (
         describe_schema_change as _describe,
     )
 
@@ -1384,11 +1384,11 @@ def schema_invalidate_cache(
     after an administrative action that you know only affects the current
     replica's view, not the shared database state).
     """
-    from .schema_acquire import (
+    from ..schema_acquire import (
         DEFAULT_CACHE_COLLECTION,
         DEFAULT_CACHE_KEY,
     )
-    from .schema_acquire import (
+    from ..schema_acquire import (
         invalidate_cache as _invalidate,
     )
 
@@ -1416,7 +1416,7 @@ def schema_force_reacquire(
     the hard form — which raises ``ImportError`` (surfaced as HTTP 503) if
     the analyzer is still unavailable instead of silently falling back.
     """
-    from .schema_acquire import get_mapping as _get_mapping
+    from ..schema_acquire import get_mapping as _get_mapping
 
     try:
         bundle = _get_mapping(session.db, force_refresh=True, strategy="analyzer")
@@ -1487,7 +1487,7 @@ def sample_queries(dataset: str | None = None):
 @app.get("/tools/schemas")
 def tools_schemas():
     """Return OpenAI-compatible function schemas for all agentic tools."""
-    from .tools import get_tool_schemas
+    from ..tools import get_tool_schemas
 
     return {"tools": get_tool_schemas()}
 
@@ -1503,7 +1503,7 @@ def tools_call(
     _: None = Depends(_check_compute_rate_limit),
 ):
     """Dispatch a tool call by name with arguments."""
-    from .tools import call_tool
+    from ..tools import call_tool
 
     return call_tool(req.name, req.arguments)
 
@@ -1518,7 +1518,7 @@ def suggest_indexes(
     _: None = Depends(_check_compute_rate_limit),
 ):
     """Suggest indexes for the given mapping."""
-    from .tools import suggest_indexes_tool
+    from ..tools import suggest_indexes_tool
 
     return suggest_indexes_tool({"mapping": req.mapping})
 
@@ -1590,8 +1590,8 @@ def nl2cypher_endpoint(
     instead, so a caller cannot point one user's NL request at another
     user's database by guessing the body field.
     """
-    from .nl2cypher import nl_to_cypher
-    from .nl2cypher.tenant_guardrail import TenantContext
+    from ..nl2cypher import nl_to_cypher
+    from ..nl2cypher.tenant_guardrail import TenantContext
 
     db = None
     if _PUBLIC_MODE:
@@ -1655,7 +1655,7 @@ def nl_samples_endpoint(
     Used by the UI to seed the "Ask" history after schema mapping. Falls back
     to rule-based generation when no LLM provider is configured.
     """
-    from .nl2cypher import suggest_nl_queries
+    from ..nl2cypher import suggest_nl_queries
 
     t0 = time.perf_counter()
     queries = suggest_nl_queries(
@@ -1680,8 +1680,8 @@ def nl2aql_endpoint(
     _auth: _Session | None = Depends(_require_session_in_public_mode),
 ):
     """Translate a natural language question directly into AQL (bypassing Cypher)."""
-    from .nl2cypher import nl_to_aql
-    from .nl2cypher.tenant_guardrail import TenantContext
+    from ..nl2cypher import nl_to_aql
+    from ..nl2cypher.tenant_guardrail import TenantContext
 
     tenant_ctx = None
     if req.tenant_context is not None:
@@ -1863,7 +1863,7 @@ def import_owl(
 # Corrections (local learning) endpoints
 # ---------------------------------------------------------------------------
 
-from . import corrections as _corrections  # noqa: E402
+from .. import corrections as _corrections  # noqa: E402
 
 
 class CorrectionRequest(BaseModel):
@@ -1951,7 +1951,7 @@ def delete_all_corrections(
 # benefit. The two stores are deliberately separate — they have different
 # lookup keys, different lifecycle triggers, and different callers.
 
-from . import nl_corrections as _nl_corrections  # noqa: E402
+from .. import nl_corrections as _nl_corrections  # noqa: E402
 
 
 class NLCorrectionRequest(BaseModel):
@@ -2036,8 +2036,14 @@ def delete_all_nl_corrections(
 # Static file serving for the Cypher Workbench UI
 # ---------------------------------------------------------------------------
 
-_UI_DIR = Path(__file__).resolve().parent.parent / "ui" / "dist"
-_UI_SRC_DIR = Path(__file__).resolve().parent.parent / "ui" / "src"
+# Climb out of arango_cypher/service/__init__.py → arango_cypher/ → repo root.
+# When this module lived as arango_cypher/service.py the climb was one fewer
+# level (parent.parent landed at the repo root). The third .parent here keeps
+# the resolved paths byte-equivalent across the audit-v2 #8 split — pinned
+# by tests/test_service.py::TestUiCacheHeaders which fails closed (skip)
+# rather than open if these point at a non-existent dir.
+_UI_DIR = Path(__file__).resolve().parent.parent.parent / "ui" / "dist"
+_UI_SRC_DIR = Path(__file__).resolve().parent.parent.parent / "ui" / "src"
 
 
 def _check_ui_dist_freshness(
