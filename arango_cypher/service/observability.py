@@ -71,9 +71,7 @@ from typing import Any
 # default value is ``"-"`` so log lines emitted *outside* a request (startup
 # guards, eviction prune, etc.) still render cleanly rather than blowing up
 # with a ``LookupError`` from an unset contextvar.
-correlation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default="-"
-)
+correlation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="-")
 
 # Inbound ``X-Request-Id`` is sanitised against this character class before
 # being stored — without it, a hostile caller could send a newline-laden
@@ -113,9 +111,7 @@ class CorrelationIdMiddleware:
     def __init__(self, app: Callable[..., Awaitable[None]]):
         self.app = app
 
-    async def __call__(
-        self, scope: dict[str, Any], receive: Callable, send: Callable
-    ) -> None:
+    async def __call__(self, scope: dict[str, Any], receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -218,13 +214,9 @@ class _KeyValueFormatter(logging.Formatter):
         ts = f"{ts}.{int(record.msecs):03d}Z"
         cid = getattr(record, "correlation_id", "-")
         msg = record.getMessage()
-        prefix = (
-            f"{ts} {record.levelname} {record.name} correlation_id={cid} msg={msg!r}"
-        )
+        prefix = f"{ts} {record.levelname} {record.name} correlation_id={cid} msg={msg!r}"
         extras = {
-            k: v
-            for k, v in record.__dict__.items()
-            if k not in self._RESERVED and not k.startswith("_")
+            k: v for k, v in record.__dict__.items() if k not in self._RESERVED and not k.startswith("_")
         }
         if not extras:
             return prefix
@@ -341,9 +333,7 @@ def configure_observability(*, force: bool = False) -> None:
     root.addFilter(correlation_filter)
 
     json_mode = os.getenv("ARANGO_CYPHER_LOG_JSON", "").lower() in ("1", "true", "yes")
-    formatter: logging.Formatter = (
-        _JsonFormatter() if json_mode else _KeyValueFormatter()
-    )
+    formatter: logging.Formatter = _JsonFormatter() if json_mode else _KeyValueFormatter()
 
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
@@ -405,9 +395,7 @@ def log_endpoint_timing(
     :data:`_KeyValueFormatter._RESERVED`.
     """
     safe_extras = {
-        k: _sanitize_extra_value(v)
-        for k, v in extras.items()
-        if k not in _KeyValueFormatter._RESERVED
+        k: _sanitize_extra_value(v) for k, v in extras.items() if k not in _KeyValueFormatter._RESERVED
     }
     _endpoint_logger.info(
         "endpoint_timing",
@@ -498,8 +486,7 @@ def estimate_llm_cost_usd(
         return 0.0
     input_rate, output_rate = _PRICING_PER_1K_TOKENS[key]
     return round(
-        (prompt_tokens / 1000.0) * input_rate
-        + (completion_tokens / 1000.0) * output_rate,
+        (prompt_tokens / 1000.0) * input_rate + (completion_tokens / 1000.0) * output_rate,
         6,
     )
 
@@ -614,9 +601,7 @@ class _EndpointTimer:
         if exc_type is not None:
             self.status = "error"
             self.extras.setdefault("error_type", exc_type.__name__)
-        log_endpoint_timing(
-            self.endpoint, elapsed_ms, status=self.status, **self.extras
-        )
+        log_endpoint_timing(self.endpoint, elapsed_ms, status=self.status, **self.extras)
 
     def add(self, **extras: Any) -> None:
         """Attach extras inside the ``with`` block (e.g. ``timer.add(rows=42)``).
