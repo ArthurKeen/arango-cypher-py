@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, lineNumbers, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -12,6 +12,170 @@ interface Props {
   mapping: Record<string, unknown>;
   onChange: (mapping: Record<string, unknown>) => void;
   onClose?: () => void;
+}
+
+interface ShardFamilyMember {
+  entity: string;
+  collectionName?: string;
+  discriminatorValue?: string;
+}
+
+interface ShardFamilyInfo {
+  name: string;
+  suffix?: string;
+  discriminatorLabel?: string;
+  sharedProperties: string[];
+  members: ShardFamilyMember[];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function extractShardFamilies(mapping: Record<string, unknown>): ShardFamilyInfo[] {
+  const pm = asRecord(mapping.physicalMapping) ?? asRecord(mapping.physical_mapping);
+  const rawFamilies = pm?.shardFamilies;
+  if (!Array.isArray(rawFamilies)) return [];
+
+  return rawFamilies.flatMap((rawFamily) => {
+    const family = asRecord(rawFamily);
+    if (!family) return [];
+    const name = family.name;
+    if (typeof name !== "string" || !name) return [];
+
+    const members = Array.isArray(family.members)
+      ? family.members.flatMap((rawMember) => {
+          const member = asRecord(rawMember);
+          const entity = member?.entity;
+          if (typeof entity !== "string" || !entity) return [];
+          return [
+            {
+              entity,
+              collectionName:
+                typeof member.collectionName === "string"
+                  ? member.collectionName
+                  : undefined,
+              discriminatorValue:
+                typeof member.discriminatorValue === "string"
+                  ? member.discriminatorValue
+                  : undefined,
+            },
+          ];
+        })
+      : [];
+    if (members.length < 2) return [];
+
+    const discriminator = asRecord(family.discriminator);
+    const discriminatorLabel =
+      typeof discriminator?.field === "string" && discriminator.field
+        ? discriminator.field
+        : typeof discriminator?.source === "string" && discriminator.source
+          ? discriminator.source
+          : undefined;
+
+    return [
+      {
+        name,
+        suffix: typeof family.suffix === "string" ? family.suffix : undefined,
+        discriminatorLabel,
+        sharedProperties: Array.isArray(family.sharedProperties)
+          ? family.sharedProperties.filter(
+              (prop): prop is string => typeof prop === "string" && prop.length > 0,
+            )
+          : [],
+        members,
+      },
+    ];
+  });
+}
+
+function ShardFamiliesSummary({ families }: { families: ShardFamilyInfo[] }) {
+  const [openFamilies, setOpenFamilies] = useState<Record<string, boolean>>({});
+
+  if (families.length === 0) return null;
+
+  return (
+    <div className="border-b border-gray-800 bg-gray-950/70 px-3 py-2 space-y-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+        Shard Families
+      </div>
+      {families.map((family) => {
+        const isOpen = openFamilies[family.name] ?? false;
+        const sharedPreview = family.sharedProperties.slice(0, 4).join(", ");
+        const extraProps = Math.max(0, family.sharedProperties.length - 4);
+        return (
+          <div
+            key={family.name}
+            className="rounded-md border border-gray-800 bg-gray-900/60"
+          >
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              onClick={() =>
+                setOpenFamilies((prev) => ({
+                  ...prev,
+                  [family.name]: !(prev[family.name] ?? false),
+                }))
+              }
+              className="w-full px-2 py-1.5 flex items-center gap-2 text-left hover:bg-gray-800/60 transition-colors"
+            >
+              <span className="w-3 text-[10px] text-gray-500">
+                {isOpen ? "-" : "+"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-gray-200 truncate">
+                  {family.name}
+                </span>
+                <span className="block text-[10px] text-gray-500 truncate">
+                  {family.discriminatorLabel
+                    ? `discriminator: ${family.discriminatorLabel}`
+                    : "parallel physical collections"}
+                </span>
+              </span>
+              <span className="rounded-full bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300">
+                {family.members.length} members
+              </span>
+            </button>
+            {isOpen && (
+              <div className="px-7 pb-2 text-[10px] text-gray-400 space-y-1">
+                {sharedPreview && (
+                  <div>
+                    Shared properties: {sharedPreview}
+                    {extraProps > 0 ? `, +${extraProps} more` : ""}
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  {family.members.map((member) => (
+                    <div
+                      key={`${family.name}:${member.entity}`}
+                      className="flex items-center gap-1.5"
+                    >
+                      <span className="font-mono text-gray-300">
+                        {member.entity}
+                      </span>
+                      {member.discriminatorValue && (
+                        <span className="text-gray-600">
+                          [{member.discriminatorValue}]
+                        </span>
+                      )}
+                      {member.collectionName && (
+                        <span className="truncate text-gray-500">
+                          {"-> "}
+                          {member.collectionName}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const SAMPLE_MAPPING = {
@@ -64,6 +228,7 @@ export default function MappingPanel({ mapping, onChange, onClose }: Props) {
   onChangeRef.current = onChange;
   const mappingRef = useRef(mapping);
   mappingRef.current = mapping;
+  const shardFamilies = useMemo(() => extractShardFamilies(mapping), [mapping]);
 
   const handleExportOwl = useCallback(async () => {
     setOwlBusy(true);
@@ -272,6 +437,7 @@ export default function MappingPanel({ mapping, onChange, onClose }: Props) {
           )}
         </div>
       </div>
+      <ShardFamiliesSummary families={shardFamilies} />
       <div
         className="flex-1 min-h-0"
         style={{ display: viewMode === "graph" ? "block" : "none" }}

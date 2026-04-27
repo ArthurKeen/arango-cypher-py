@@ -151,10 +151,10 @@ block so `multitenancy.style == "none"` remains correct while
   retired the class-of-error that produced the
   "`no entity mapping for AppVersion`" / wrong-shard picks reported
   in `docs/schema_inference_bugfix_prd.md` candidate D7.
-- UI mapping panel collapsing a family into a single row with a
-  member-count badge remains TODO — out of scope for the
-  `feat/adopt-sharding-profile` adoption PR; tracked as a
-  paper-cut item only, not blocking.
+- UI mapping panel renders each family as a collapsible summary row
+  with a member-count badge and member details. This was out of scope
+  for the `feat/adopt-sharding-profile` adoption PR and later landed
+  as a downstream UI paper-cut.
 
 ### 2.5 How this got filed — historical
 
@@ -197,9 +197,9 @@ for provenance; no further action.
   emission is an orthogonal capability upgrade; tracked by the analyzer
   roadmap, not re-filed here.
 
-**Still open downstream (paper-cut):**
+**Downstream paper-cut closed:**
 
-- UI mapping panel should render shard-family groups as a collapsible
-  row with a member-count badge. Cosmetic; no functional gap.
+- UI mapping panel renders shard-family groups as collapsible rows with
+  member-count badges. Cosmetic; no functional gap.
 
 [upstream-prd-commit]: https://github.com/ArthurKeen/arango-schema-mapper/commit/b3d4744
