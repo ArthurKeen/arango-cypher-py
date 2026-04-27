@@ -27,9 +27,9 @@ defense-in-depth.
 | 3 | **M** | CI `packaging` job path drift silently masked 0-test-collected runs from 2026-04-24 → 2026-04-28 (fixed in PR #12 amend, but category-level risk remains) | ops |
 | 4 | L | `mapping_from_wire_dict` / `mapping_hash` (new public helpers from PR #10) have only indirect test coverage — no dedicated unit tests in `tests/test_arango_query_core_*.py` | tests |
 | 5 | L | No `@field_validator` declarations on any `service.py` `BaseModel` request type — stricter-than-type validation (length, enum, URL shape) is absent | service |
-| 6 | L | Structured logging is effectively absent in `service.py` — 4 log calls in 2016 LOC; no request-correlation ID, no per-endpoint timing log line | service |
+| 6 | L | ~~Structured logging is effectively absent in `service.py` — 4 log calls in 2016 LOC; no request-correlation ID, no per-endpoint timing log line~~ closed 2026-05-03 (audit-v2 batch 5) — new `service/observability.py` adds `CorrelationIdMiddleware`, `log_endpoint_timing` wired into all 35 endpoints, `log_llm_call` on NL endpoints, JSON formatter via `ARANGO_CYPHER_LOG_JSON=1`. | service |
 | 7 | L | `ARANGO_PASS` / `ARANGO_PASSWORD` split between service and CLI is *documented* (`.env.example:9-15`) but still an operational footgun — both names should resolve to one | service + cli |
-| 8 | L | ~~`arango_cypher/service.py` at 2016 LOC~~ split 2026-05-02 (audit-v2 batch 4) — `service.py` is now `arango_cypher/service/` with 8 focused submodules + a routes subpackage. `arango_cypher/translate_v0.py` at 5063 LOC still pending. | refactor |
+| 8 | L | ~~`arango_cypher/service.py` at 2016 LOC~~ split 2026-05-02 (audit-v2 batch 4) and ~~`arango_cypher/translate_v0.py` at 5063 LOC~~ split 2026-05-04 (audit-v2 batch 6). The public files are now compatibility shims; implementation lives behind focused packages. | refactor |
 | 9 | L | `ruff format --check` is intentionally skipped in CI (see the comment at `.github/workflows/ci.yml:19-21`) — follow-up tracked but never scheduled | ops |
 
 Severity legend:
@@ -300,6 +300,48 @@ a 422 on overlong input.
 
 ## 6. Structured logging is effectively absent — **L**
 
+> **Status: CLOSED — 2026-05-03 (audit-v2 batch 5).** New module
+> `arango_cypher/service/observability.py` adds:
+> (a) `CorrelationIdMiddleware` — an ASGI middleware that mints a
+> UUID4 on absent `X-Request-Id`, accepts safe inbound values
+> (`[A-Za-z0-9-]{1,128}`, anything else falls through to a fresh
+> UUID), echoes the chosen value back on the response, and propagates
+> via `correlation_id_var: ContextVar[str]` so every `logging.*` call
+> in any downstream module picks it up without signature changes;
+> (b) `CorrelationIdLogFilter` attached to the StreamHandler so
+> records propagated up from `arango_cypher.service.*` /
+> `arango_cypher.nl2cypher.*` carry the contextvar value;
+> (c) `log_endpoint_timing(endpoint, elapsed_ms, *, status="ok",
+> **extras)` — wired into **all 35** endpoints (12 that already
+> computed `elapsed_ms` for the response body, 23 that previously
+> hit the log stream zero times); string extras run through
+> `_sanitize_error` before emit so a stray URL / credential can't
+> leak via the new surface;
+> (d) `log_llm_call(...)` — emitted on `/nl2cypher` and `/nl2aql`
+> after every translation with `(provider, model, prompt_tokens,
+> completion_tokens, cached_tokens, cost_usd, elapsed_ms, method)`;
+> cost lookup is best-effort against a manually-maintained pricing
+> table (`_PRICING_PER_1K_TOKENS`); unknown `(provider, model)`
+> returns `0.0` (treat as "unpriced", not free).
+> (e) Default formatter is `key=value` for `tail -f`; flip to
+> single-line JSON via `ARANGO_CYPHER_LOG_JSON=1` for Datadog /
+> Loki / Splunk pipelines. Log level set by
+> `ARANGO_CYPHER_LOG_LEVEL` (default `INFO`).
+> New `tests/test_observability.py` (20 cases) pins the contract:
+> middleware mints + echoes + rejects unsafe inbound, contextvar
+> resets between requests, the log filter injects `correlation_id`
+> on records emitted from child loggers, `log_endpoint_timing`
+> redacts string extras, `log_llm_call` zeroes the cost on unknown
+> models without raising, and `configure_observability` is
+> idempotent. Total: 20 new tests, +1118 / -1097 in the unit-test
+> count.
+>
+> **Excluded by design:** `/health` is not instrumented — container
+> orchestrators poll it every few seconds and the operational signal
+> from logging it is zero. The endpoint still carries
+> `X-Request-Id` (the middleware doesn't discriminate) but emits
+> no log line.
+
 **Where:** `arango_cypher/service.py` has **4** `logging.*` /
 `logger.*` / `log.*` calls total in 2016 LOC. 3 of them are in
 `_validation_error_handler` (422-error logging, added by PR #7).
@@ -374,17 +416,26 @@ dating the legacy name's removal at the next major.
 
 ## 8. `translate_v0.py` 5063 LOC, `service.py` 2016 LOC — **L**
 
-> **Status: PARTIALLY CLOSED — 2026-05-02 (audit-v2 batch 4).**
+> **Status: CLOSED — 2026-05-04 (audit-v2 batch 6).**
 > `arango_cypher/service.py` (2232 LOC at split time) refactored into
 > the `arango_cypher/service/` package per the layout proposed below.
 > Zero behaviour change: the full unit suite (1097 tests) passes
 > byte-for-byte across the rename, and `from arango_cypher.service
 > import _X` keeps working for every previously-importable symbol via
-> the `__init__.py` re-export shim. Two-commit shape (rename → symbol
-> moves) so review is mechanical. `arango_cypher/translate_v0.py`
-> still pending — tracked separately because the AST-level split
-> needs golden re-baselines per slice and is at least a week of
-> careful work, not the half-day this batch budgeted.
+> the `__init__.py` re-export shim. The remaining half landed in
+> audit-v2 batch 6: `arango_cypher/translate_v0.py` is now a stable
+> compatibility shim over the private `arango_cypher/_translate_v0/`
+> package. The implementation is split into `core.py` (top-level
+> dispatch plus the still-tightly-coupled MATCH/expression pipeline),
+> `state.py` (contextvars, `_HopMeta`, `TranslateOptions`),
+> `formatting.py` (`WITH` injection and AQL reindent),
+> `hints.py` (VCI/index-hint and warning helpers), `naming.py`
+> (fresh variable/bind-key/label normalization helpers), `literals.py`
+> (literal/type helpers), `calls.py` (standalone and in-query CALL),
+> `unwind.py`, and `writes.py` (CREATE/MERGE/SET/DELETE/REMOVE/FOREACH).
+> Existing direct imports from `arango_cypher.translate_v0` continue to
+> work for `TranslateOptions`, `translate_v0`, and the helper internals
+> pinned by tests.
 
 **Where:** `arango_cypher/translate_v0.py`, ~~`arango_cypher/service.py`~~ → `arango_cypher/service/{__init__,app,security,models,mapping,registry,ui}.py` + `arango_cypher/service/routes/{health,connect,cypher,schema,tools,nl,owl,corrections}.py`.
 
