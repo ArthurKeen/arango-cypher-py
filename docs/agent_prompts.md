@@ -2293,3 +2293,13 @@ Use this checklist when running the waves:
 - [ ] Merge; full test run green; dual-push.
 - [ ] Update `docs/implementation_plan.md` tracking table: mark WP-27..WP-30 **Done** with merge dates.
 - [ ] Update `docs/python_prd.md` implementation-status rows for "Heuristic fallback correctness (hybrid schemas)" and "NL → Translate feedback loop" from *Known defect — scheduled* to **Done**.
+
+### Waves 7–11 (multi-tenant safety + v0.4+ residual tail)
+
+Continued in [`agent_prompts_multitenant.md`](./agent_prompts_multitenant.md). Covers:
+
+- **Wave 7** — MT-Phase 1: Layer 1 session binding + Layer 5 EXPLAIN-plan validator + `safe_execute` (1 agent, security-critical).
+- **Wave 8** — MT-Phase 2: 1 pre-step (`tenant_ast_common`) + 3 parallel agents (MT-2 guardrail hardening, MT-3 Cypher AST, MT-4 AQL AST).
+- **Wave 9** — MT-Phase 3: plan-shape LRU + admin cross-tenant bypass + audit stream (1 agent).
+- **Wave 10** — MT-8 standing red-team corpus (1 agent, ongoing).
+- **Wave 11** — v0.4+ residual tail: `RETURN DISTINCT` multi-column, `LIMIT`/`SKIP` exprs, native `shortestPath()`, index hint emission, VCI advisory polish (1 agent, independent of Waves 7–10).
