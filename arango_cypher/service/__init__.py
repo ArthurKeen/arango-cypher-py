@@ -177,6 +177,7 @@ from .security import (
     _nl_bucket,
     _prune_expired,
     _redact_value,
+    _optional_session,
     _require_session_in_public_mode,
     _sanitize_error,
     _sanitize_pydantic_errors,

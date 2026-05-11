@@ -65,9 +65,64 @@ def connect(req: ConnectRequest):
             detail=f"Connection failed: {detail}",
         ) from e
 
+    # ------------------------------------------------------------------
+    # Tenant binding (PRD docs/multitenant_prd.md §4 / Wave 7 part 1).
+    # ------------------------------------------------------------------
+    # When a tenantId is supplied, validate that a matching document
+    # exists in the database's Tenant collection (or its physical-mapping
+    # alias). If the collection doesn't exist (single-tenant /
+    # workbench-style deployments) we still accept the request — the
+    # session simply binds the caller-supplied id verbatim and Layer 5
+    # falls back to "session has no tenant_id" semantics for any query
+    # that touches a TENANT_SCOPED collection. The acceptance rule is
+    # intentionally permissive here so that legacy single-tenant
+    # deployments keep working; the hard refusal lives at Layer 5 for
+    # tenant-scoped reads.
+    tenant_id = req.tenantId
+    tenant_key = req.tenantKey if req.tenantKey is not None else tenant_id
+    if tenant_id is not None and tenant_key is not None:
+        try:
+            has_tenant_collection = db.has_collection("Tenant")
+        except Exception:
+            has_tenant_collection = False
+        if has_tenant_collection:
+            try:
+                tenant_doc = db.collection("Tenant").get(tenant_key)
+            except Exception as exc:
+                _svc_logger.warning(
+                    "tenant lookup failed for tenantKey=%r: %s",
+                    tenant_key,
+                    exc,
+                )
+                tenant_doc = None
+            if tenant_doc is None:
+                client.close()
+                log_endpoint_timing(
+                    "/connect",
+                    round((time.perf_counter() - t0) * 1000, 1),
+                    status="error",
+                    database=req.database,
+                    error_type="unknown_tenant",
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "unknown_tenant",
+                        "tenantId": tenant_id,
+                        "tenantKey": tenant_key,
+                    },
+                )
+
     _evict_lru()
     token = secrets.token_urlsafe(32)
-    _sessions[token] = _Session(token=token, db=db, client=client)
+    _sessions[token] = _Session(
+        token=token,
+        db=db,
+        client=client,
+        tenant_id=tenant_id,
+        tenant_key=tenant_key,
+        is_admin=bool(req.isAdmin),
+    )
 
     try:
         databases = [
@@ -81,8 +136,16 @@ def connect(req: ConnectRequest):
         round((time.perf_counter() - t0) * 1000, 1),
         database=req.database,
         databases_visible=len(databases),
+        tenant_id=tenant_id,
+        is_admin=bool(req.isAdmin),
     )
-    return ConnectResponse(token=token, databases=databases)
+    return ConnectResponse(
+        token=token,
+        databases=databases,
+        tenant_id=tenant_id,
+        tenant_key=tenant_key,
+        is_admin=bool(req.isAdmin),
+    )
 
 
 @app.post("/disconnect")

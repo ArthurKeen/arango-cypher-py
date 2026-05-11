@@ -104,14 +104,53 @@ def _max_sessions() -> int:
 
 
 class _Session:
-    __slots__ = ("token", "db", "client", "created_at", "last_used")
+    """Authenticated session carrying the connected DB and (optionally) a
+    tenant binding.
 
-    def __init__(self, token: str, db: StandardDatabase, client: ArangoClient):
+    The ``tenant_id`` / ``tenant_key`` fields hold the per-session
+    identifier the multi-tenant pipeline scopes every query against.
+    They are set at ``/connect`` from the validated request and are
+    never sourced from a request body thereafter (PRD
+    ``docs/multitenant_prd.md`` §4). A ``None`` ``tenant_id`` means
+    the session was opened in workbench / single-tenant mode; Layer 5
+    refuses to validate any tenant-scoped access in that state (PRD §8).
+
+    ``is_admin`` flags operator-style sessions that *may* opt into a
+    documented cross-tenant bypass via a per-request flag (PRD §10).
+    Admin sessions still go through Layer 5; only the explicit
+    ``cross_tenant=True`` request flag relaxes the boundary, and that
+    is Wave 9's concern.
+    """
+
+    __slots__ = (
+        "token",
+        "db",
+        "client",
+        "created_at",
+        "last_used",
+        "tenant_id",
+        "tenant_key",
+        "is_admin",
+    )
+
+    def __init__(
+        self,
+        token: str,
+        db: StandardDatabase,
+        client: ArangoClient,
+        *,
+        tenant_id: str | None = None,
+        tenant_key: str | None = None,
+        is_admin: bool = False,
+    ):
         self.token = token
         self.db = db
         self.client = client
         self.created_at = time.time()
         self.last_used = time.time()
+        self.tenant_id = tenant_id
+        self.tenant_key = tenant_key
+        self.is_admin = is_admin
 
     def touch(self) -> None:
         self.last_used = time.time()
@@ -160,6 +199,36 @@ def _get_session(request: Request) -> _Session:
             _sessions.pop(token, None)
             session.client.close()
         raise HTTPException(status_code=401, detail="Session expired or invalid")
+    session.touch()
+    return session
+
+
+def _optional_session(request: Request) -> _Session | None:
+    """Dependency: resolve the session from the request, or ``None``.
+
+    Identical to :func:`_get_session` except it never raises — when no
+    ``X-Arango-Session`` / ``Authorization: Bearer`` header is present,
+    or the token is unknown / expired, the dependency returns ``None``
+    instead of an HTTP 401. Use this on endpoints that *may* bind to a
+    session (e.g. for tenant-bound NL translation) but must keep working
+    when called anonymously (e.g. the pre-Wave-7 single-tenant
+    workbench flow). Endpoints that require authentication should keep
+    using :func:`_get_session`.
+    """
+    _prune_expired()
+    token = request.headers.get("X-Arango-Session", "")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        return None
+    session = _sessions.get(token)
+    if session is None or session.expired:
+        if session and session.expired:
+            _sessions.pop(token, None)
+            session.client.close()
+        return None
     session.touch()
     return session
 

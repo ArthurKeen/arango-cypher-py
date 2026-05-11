@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import time
 
 from fastapi import Depends, HTTPException
@@ -19,11 +21,80 @@ from ..security import (
     _COLLECTION_NAME_RE,
     _check_nl_rate_limit,
     _get_session,
+    _optional_session,
     _require_session_in_public_mode,
     _Session,
     _sessions,
     _translate_errors,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _workbench_mode_enabled() -> bool:
+    """Whether the service honors body-supplied ``tenant_context``.
+
+    PRD ``docs/multitenant_prd.md`` §4.2 / Wave 7 part 1:
+
+    * ``ARANGO_CYPHER_WORKBENCH`` ∈ {1, true, yes} — workbench mode.
+      The request body's ``tenant_context`` is honored verbatim. This
+      is the default for local development.
+    * Anything else (including unset) — tenant-user mode. The body's
+      ``tenant_context`` is silently overridden by the session-bound
+      tenant if the session carries one; a WARN log records the
+      override for audit.
+
+    Resolved per-call (not module-load) so tests can flip the env via
+    ``monkeypatch.setenv`` without re-importing the route module.
+    """
+    return os.getenv("ARANGO_CYPHER_WORKBENCH", "").lower() in {"1", "true", "yes"}
+
+
+def _apply_session_tenant_to_context(
+    body_ctx,
+    *,
+    session: _Session | None,
+    endpoint: str,
+):
+    """Return the ``TenantContext`` that the NL pipeline should use.
+
+    Imported locally to keep the route module free of the heavier
+    ``nl2cypher`` import on every cold start.
+
+    Behaviour matches PRD §4.2:
+
+    * Workbench mode → return ``body_ctx`` untouched (may be ``None``).
+    * Tenant-user mode with a session-bound tenant → return a
+      ``TenantContext`` built from the session, ignoring any body value
+      whose ``value`` differs from the session's ``tenant_id``. A
+      WARN log records the override for audit.
+    * Tenant-user mode without a session-bound tenant → return
+      ``body_ctx`` (the legacy behaviour). Layer 5 will refuse any
+      tenant-scoped read in this state, so leaving the body through is
+      a usability win for global / satellite-only queries without
+      compromising safety.
+    """
+    from ...nl2cypher.tenant_guardrail import TenantContext
+
+    if _workbench_mode_enabled():
+        return body_ctx
+
+    if session is None or not getattr(session, "tenant_id", None):
+        return body_ctx
+
+    if body_ctx is not None and body_ctx.value != session.tenant_id:
+        logger.warning(
+            "%s: body-supplied tenant_context=%r ignored; session-bound tenant=%r",
+            endpoint,
+            body_ctx.value,
+            session.tenant_id,
+        )
+
+    return TenantContext(
+        property="_key",
+        value=session.tenant_id,
+        display=(body_ctx.display if body_ctx is not None else None),
+    )
 
 
 @app.post("/nl2cypher")
@@ -31,6 +102,7 @@ def nl2cypher_endpoint(
     req: NL2CypherRequest,
     _: None = Depends(_check_nl_rate_limit),
     auth_session: _Session | None = Depends(_require_session_in_public_mode),
+    bound_session: _Session | None = Depends(_optional_session),
 ):
     """Translate a natural language question into Cypher.
 
@@ -68,6 +140,11 @@ def nl2cypher_endpoint(
             value=req.tenant_context.value,
             display=req.tenant_context.display,
         )
+    tenant_ctx = _apply_session_tenant_to_context(
+        tenant_ctx,
+        session=auth_session or bound_session,
+        endpoint="/nl2cypher",
+    )
 
     t0 = time.perf_counter()
     result = nl_to_cypher(
@@ -152,7 +229,8 @@ def nl_samples_endpoint(
 def nl2aql_endpoint(
     req: NL2AqlRequest,
     _: None = Depends(_check_nl_rate_limit),
-    _auth: _Session | None = Depends(_require_session_in_public_mode),
+    auth_session: _Session | None = Depends(_require_session_in_public_mode),
+    bound_session: _Session | None = Depends(_optional_session),
 ):
     """Translate a natural language question directly into AQL (bypassing Cypher)."""
     from ...nl2cypher import nl_to_aql
@@ -165,6 +243,11 @@ def nl2aql_endpoint(
             value=req.tenant_context.value,
             display=req.tenant_context.display,
         )
+    tenant_ctx = _apply_session_tenant_to_context(
+        tenant_ctx,
+        session=auth_session or bound_session,
+        endpoint="/nl2aql",
+    )
 
     t0 = time.perf_counter()
     result = nl_to_aql(
