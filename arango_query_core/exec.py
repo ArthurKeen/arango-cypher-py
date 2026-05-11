@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,67 @@ class AqlExecutor:
     def execute(self, query: AqlQuery, *, batch_size: int | None = None, **kwargs: Any) -> Any:
         aql = self.db.aql
         return aql.execute(query.text, bind_vars=query.bind_vars, batch_size=batch_size, **kwargs)
+
+
+def safe_execute(
+    *,
+    db: Any,
+    aql: str,
+    client_bind_vars: dict[str, Any] | None,
+    session: Any,
+    validator: Callable[..., None],
+    manifest: Any,
+    sharding_profile: dict[str, Any] | None,
+    collection_to_entity: dict[str, str] | None = None,
+    execute_kwargs: dict[str, Any] | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """Layer 6 — execute AQL only after Layer 5 has certified the plan.
+
+    Implements the contract from ``docs/multitenant_prd.md`` §9 / Wave 7
+    part 4. The bind-var spread order is load-bearing:
+
+    .. code-block:: python
+
+        bind_vars = {
+            **client_bind_vars,
+            "tenantId": session.tenant_id,
+            "tenantKey": session.tenant_key,
+        }
+
+    The session value silently overrides any caller-supplied
+    ``tenantId`` / ``tenantKey``. Layer 5 (``validator``) then
+    verifies the bind-var matches the session — closing T7 (bind-var
+    override) by construction.
+
+    Returns ``(cursor, bind_vars)`` so the caller can echo the final
+    bind vars back to the UI for transparency (§9.2). The validator is
+    injected rather than imported here so ``arango_query_core`` stays
+    free of an ``arango_cypher`` reverse dependency.
+
+    Raises whatever the validator raises — typically
+    ``arango_cypher.tenant_plan_validator.TenantScopeViolation`` — on
+    refusal. The execute never runs in that case.
+    """
+    if session is None:
+        raise PermissionError(
+            "safe_execute: no authenticated session; cannot bind tenant context"
+        )
+    bind_vars = dict(client_bind_vars or {})
+    bind_vars["tenantId"] = getattr(session, "tenant_id", None)
+    bind_vars["tenantKey"] = getattr(session, "tenant_key", None)
+
+    validator(
+        db=db,
+        aql=aql,
+        bind_vars=bind_vars,
+        manifest=manifest,
+        sharding_profile=sharding_profile,
+        collection_to_entity=collection_to_entity,
+        session=session,
+    )
+
+    cursor = db.aql.execute(aql, bind_vars=bind_vars, **(execute_kwargs or {}))
+    return cursor, bind_vars
 
 
 def explain_aql(

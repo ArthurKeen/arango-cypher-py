@@ -133,6 +133,10 @@ class ErrorResponse(BaseModel):
 class ExecuteAqlRequest(BaseModel):
     aql: str = Field(..., max_length=_MAX_AQL_LENGTH)
     bind_vars: dict[str, Any] = Field(default_factory=dict)
+    # Mapping bundle for Layer 5 (EXPLAIN-plan tenant-scope validator).
+    # Optional — pre-Wave-7 callers may omit it. With a tenant-bound
+    # session and no mapping, /execute-aql is refused fail-closed.
+    mapping: dict[str, Any] | None = None
 
 
 class ToolCallRequest(BaseModel):

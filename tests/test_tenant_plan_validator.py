@@ -57,7 +57,6 @@ from arango_cypher.tenant_plan_validator import (
     validate_plan,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: hand-crafted manifest, sharding profile, and plan fragments
 # ---------------------------------------------------------------------------

@@ -25,16 +25,15 @@ ArangoDB server.
 
 from __future__ import annotations
 
+import importlib
 import logging
+import sys
+from contextlib import contextmanager
 from typing import Any
 from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
-
-from arango_cypher import service
-from arango_cypher.service import app
-
 
 # ---------------------------------------------------------------------------
 # Fakes — minimal python-arango shape ``connect.py`` consumes
@@ -101,6 +100,76 @@ def _make_fake_client(db: _FakeDb):
     return _FakeClient
 
 
+def _fresh_service():
+    """Return the *live* ``arango_cypher.service`` module from
+    ``sys.modules``, re-importing if a previous test removed it.
+
+    Other test files (notably ``test_service_hardening.py``) reload
+    the service module via ``importlib.import_module`` and replace
+    ``sys.modules["arango_cypher.service"]``. A top-level
+    ``from arango_cypher import service`` captures the pre-reload
+    object; this helper re-resolves on every call so our tests always
+    patch the same module instance the routes actually import.
+    """
+    if "arango_cypher.service" not in sys.modules:
+        return importlib.import_module("arango_cypher.service")
+    return sys.modules["arango_cypher.service"]
+
+
+@contextmanager
+def _patched_arango_client(fake_client_factory):
+    """Patch ``arango_cypher.service.ArangoClient`` on *every* live
+    package object that holds a reference to it.
+
+    The test_service_hardening fixture reloads the service module via
+    ``importlib.import_module``, after which two distinct objects can
+    both claim to be ``arango_cypher.service``:
+
+    * ``sys.modules["arango_cypher.service"]`` — the version restored
+      by the fixture's teardown (the *saved* original).
+    * ``arango_cypher.service`` (attribute on the parent package) —
+      the *reloaded* module, which the autouse fixture monkeypatched
+      and whose ``ArangoClient`` may still be the test stub.
+
+    The ``/connect`` endpoint does ``from arango_cypher import service
+    as _svc``, which reads the parent-package attribute — i.e. the
+    reloaded module. To make the test deterministic regardless of which
+    test ran before us, we override ``ArangoClient`` on every live
+    candidate; cleanup restores the original references.
+    """
+    parent = sys.modules.get("arango_cypher")
+    candidates: list[Any] = []
+    sys_mod = sys.modules.get("arango_cypher.service")
+    if sys_mod is not None:
+        candidates.append(sys_mod)
+    parent_attr = getattr(parent, "service", None) if parent is not None else None
+    if parent_attr is not None and not any(parent_attr is c for c in candidates):
+        candidates.append(parent_attr)
+
+    if not candidates:
+        # Force-resolve when neither view exists yet.
+        candidates.append(importlib.import_module("arango_cypher.service"))
+
+    saved: list[tuple[Any, Any]] = []
+    for mod in candidates:
+        saved.append((mod, getattr(mod, "ArangoClient", None)))
+        mod.ArangoClient = fake_client_factory
+    try:
+        yield
+    finally:
+        for mod, orig in saved:
+            if orig is None:
+                if hasattr(mod, "ArangoClient"):
+                    delattr(mod, "ArangoClient")
+            else:
+                mod.ArangoClient = orig
+
+
+def _app():
+    """Resolve the FastAPI app from the *current* service module."""
+    return _fresh_service().app
+
+
 # ---------------------------------------------------------------------------
 # /connect — Layer 1 tenant validation
 # ---------------------------------------------------------------------------
@@ -117,8 +186,8 @@ class TestConnectTenantValidation:
                 "tenant-A-uuid": {"_key": "tenant-A-uuid", "NAME": "Acme"},
             },
         )
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -139,7 +208,7 @@ class TestConnectTenantValidation:
         assert body["is_admin"] is False
         assert "token" in body and body["token"]
 
-        sess = service._sessions[body["token"]]
+        sess = _fresh_service()._sessions[body["token"]]
         assert sess.tenant_id == "tenant-A-uuid"
         assert sess.tenant_key == "tenant-A-uuid"
         assert sess.is_admin is False
@@ -150,8 +219,8 @@ class TestConnectTenantValidation:
             has_tenant_collection=True,
             tenants={"tenant-A-uuid": {"_key": "tenant-A-uuid"}},
         )
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -176,8 +245,8 @@ class TestConnectTenantValidation:
         downstream — see ``test_tenant_plan_validator.py``.
         """
         fake_db = _FakeDb(has_tenant_collection=False)
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -203,8 +272,8 @@ class TestConnectTenantValidation:
         over purely satellite / global collections still execute.
         """
         fake_db = _FakeDb(has_tenant_collection=True, tenants={})
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -221,7 +290,7 @@ class TestConnectTenantValidation:
         assert body["tenant_key"] is None
         assert body["is_admin"] is False
 
-        sess = service._sessions[body["token"]]
+        sess = _fresh_service()._sessions[body["token"]]
         assert sess.tenant_id is None
         assert sess.tenant_key is None
         assert sess.is_admin is False
@@ -233,8 +302,8 @@ class TestConnectTenantValidation:
         the actual cross-tenant bypass is Wave 9 (MT-7) territory.
         """
         fake_db = _FakeDb(has_tenant_collection=False)
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -250,7 +319,7 @@ class TestConnectTenantValidation:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["is_admin"] is True
-        sess = service._sessions[body["token"]]
+        sess = _fresh_service()._sessions[body["token"]]
         assert sess.is_admin is True
 
     def test_connect_uses_tenant_id_as_default_tenant_key(self):
@@ -259,8 +328,8 @@ class TestConnectTenantValidation:
             has_tenant_collection=True,
             tenants={"tenant-A-uuid": {"_key": "tenant-A-uuid"}},
         )
-        with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-            client = TestClient(app)
+        with _patched_arango_client(_make_fake_client(fake_db)):
+            client = TestClient(_app())
             resp = client.post(
                 "/connect",
                 json={
@@ -297,8 +366,8 @@ def fake_nl_session(monkeypatch: pytest.MonkeyPatch):
     from arango_cypher.nl2cypher import _core as nl_core
 
     fake_db = _FakeDb(has_tenant_collection=False)
-    with mock.patch.object(service, "ArangoClient", _make_fake_client(fake_db)):
-        client = TestClient(app)
+    with _patched_arango_client(_make_fake_client(fake_db)):
+        client = TestClient(_app())
         resp = client.post(
             "/connect",
             json={
@@ -342,7 +411,7 @@ def fake_nl_session(monkeypatch: pytest.MonkeyPatch):
 
     yield token, captured
 
-    service._sessions.pop(token, None)
+    _fresh_service()._sessions.pop(token, None)
 
 
 class TestWorkbenchVsTenantUserMode:
@@ -357,7 +426,7 @@ class TestWorkbenchVsTenantUserMode:
         token, captured = fake_nl_session
         monkeypatch.setenv("ARANGO_CYPHER_WORKBENCH", "1")
 
-        client = TestClient(app)
+        client = TestClient(_app())
         resp = client.post(
             "/nl2cypher",
             headers={"X-Arango-Session": token},
@@ -387,7 +456,7 @@ class TestWorkbenchVsTenantUserMode:
         token, captured = fake_nl_session
         monkeypatch.delenv("ARANGO_CYPHER_WORKBENCH", raising=False)
 
-        client = TestClient(app)
+        client = TestClient(_app())
         with caplog.at_level(logging.WARNING, logger="arango_cypher.service.routes.nl"):
             resp = client.post(
                 "/nl2cypher",
@@ -420,7 +489,7 @@ class TestWorkbenchVsTenantUserMode:
         token, captured = fake_nl_session
         monkeypatch.delenv("ARANGO_CYPHER_WORKBENCH", raising=False)
 
-        client = TestClient(app)
+        client = TestClient(_app())
         resp = client.post(
             "/nl2cypher",
             headers={"X-Arango-Session": token},
@@ -442,7 +511,7 @@ class TestWorkbenchVsTenantUserMode:
         token, captured = fake_nl_session
         monkeypatch.delenv("ARANGO_CYPHER_WORKBENCH", raising=False)
 
-        client = TestClient(app)
+        client = TestClient(_app())
         with caplog.at_level(logging.WARNING, logger="arango_cypher.service.routes.nl"):
             resp = client.post(
                 "/nl2aql",

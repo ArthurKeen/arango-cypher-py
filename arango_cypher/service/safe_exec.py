@@ -1,0 +1,176 @@
+"""Service-side adapter for :func:`arango_query_core.exec.safe_execute`.
+
+The wave-7 Layer-6 wrapper (``safe_execute``) is intentionally placed
+in :mod:`arango_query_core.exec` so the lower core layer stays free of
+any reverse dependency on :mod:`arango_cypher`. This module wires the
+two halves together for the FastAPI routes:
+
+* Builds a :class:`~arango_cypher.nl2cypher.tenant_scope.TenantScopeManifest`
+  from the request's mapping bundle.
+* Extracts the ``shardingProfile`` block and computes a
+  ``collection_to_entity`` map from the physical mapping.
+* Injects :func:`arango_cypher.tenant_plan_validator.validate_plan` as
+  the Layer-5 validator and calls ``safe_execute``.
+
+Routes call :func:`safe_execute_aql` and receive ``(cursor, bind_vars)``
+just like the legacy ``db.aql.execute`` site, except the cursor only
+ever materialises if Layer 5 certified the plan first.
+
+When the request carries no mapping (e.g. the historical
+``/execute-aql`` flow), Layer 5 cannot be invoked — there is no
+manifest to validate against. In that case the wrapper refuses for
+tenant-bound sessions (fail-closed) and falls through to a direct
+execute for unbound / workbench sessions so the legacy single-tenant
+use-case keeps working.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from arango_query_core import safe_execute as _core_safe_execute
+
+from ..nl2cypher.tenant_scope import (
+    TenantScopeManifest,
+    analyze_tenant_scope,
+)
+from ..tenant_plan_validator import (
+    TenantScopeViolation,
+    validate_plan,
+)
+from .mapping import _mapping_from_dict
+from .security import _Session
+
+logger = logging.getLogger(__name__)
+
+
+def _physical_mapping(mapping: Any) -> dict[str, Any]:
+    if mapping is None:
+        return {}
+    if hasattr(mapping, "physical_mapping"):
+        pm = mapping.physical_mapping or {}
+    elif isinstance(mapping, dict):
+        pm = mapping.get("physical_mapping") or mapping.get("physicalMapping") or {}
+    else:
+        pm = {}
+    return pm if isinstance(pm, dict) else {}
+
+
+def _metadata(mapping: Any) -> dict[str, Any]:
+    if mapping is None:
+        return {}
+    if hasattr(mapping, "metadata"):
+        md = mapping.metadata or {}
+    elif isinstance(mapping, dict):
+        md = mapping.get("metadata") or {}
+    else:
+        md = {}
+    return md if isinstance(md, dict) else {}
+
+
+def _collection_to_entity_map(mapping: Any) -> dict[str, str]:
+    """Map each physical collection name back to its conceptual entity.
+
+    Inverts the ``physical_mapping.entities[entity].collectionName``
+    relation. When the analyzer didn't supply a collection name (older
+    bundles, hand-crafted fixtures) the entity name is assumed to
+    double as the collection name — the convention every existing
+    test relies on.
+    """
+    pm = _physical_mapping(mapping).get("entities") or {}
+    if not isinstance(pm, dict):
+        return {}
+    out: dict[str, str] = {}
+    for entity_name, entry in pm.items():
+        if not isinstance(entity_name, str):
+            continue
+        coll = (
+            entry.get("collectionName")
+            if isinstance(entry, dict) and isinstance(entry.get("collectionName"), str)
+            else entity_name
+        )
+        out[coll] = entity_name
+    return out
+
+
+def _build_validator_inputs(
+    mapping_dict: dict[str, Any] | None,
+) -> tuple[TenantScopeManifest | None, dict[str, Any] | None, dict[str, str]]:
+    """Return ``(manifest, sharding_profile, collection_to_entity)``
+    for the validator. Each may be ``None`` / empty when the bundle is
+    missing the corresponding block; callers fail-closed when the
+    bundle is incomplete and the session is tenant-bound.
+    """
+    if not mapping_dict:
+        return None, None, {}
+    mapping = _mapping_from_dict(mapping_dict)
+    if mapping is None:
+        return None, None, {}
+    manifest = analyze_tenant_scope(mapping)
+    md = _metadata(mapping)
+    sharding_profile = md.get("shardingProfile") if isinstance(md.get("shardingProfile"), dict) else None
+    coll_to_entity = _collection_to_entity_map(mapping)
+    return manifest, sharding_profile, coll_to_entity
+
+
+def safe_execute_aql(
+    *,
+    db: Any,
+    aql: str,
+    bind_vars: dict[str, Any] | None,
+    session: _Session,
+    mapping_dict: dict[str, Any] | None,
+    execute_kwargs: dict[str, Any] | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """Layer-6 entry point used by every Cypher- or AQL-execute route.
+
+    When *mapping_dict* is supplied, Layer 5 fully validates the
+    EXPLAIN plan against the manifest derived from it. When no mapping
+    is supplied:
+
+    * If the session is tenant-bound (``session.tenant_id is not None``)
+      the call is refused with :class:`TenantScopeViolation`
+      (``code="NO_MAPPING_FOR_VALIDATION"``). This is the strict
+      tenant-user-mode contract — no mapping, no validation, no
+      execute.
+    * If the session is unbound (workbench / single-tenant), the call
+      falls through to a direct ``db.aql.execute`` with the session
+      tenant bind vars still spread on top of the caller's. A WARNING
+      records the bypass for audit.
+    """
+    manifest, sharding_profile, coll_to_entity = _build_validator_inputs(mapping_dict)
+
+    if manifest is None:
+        if getattr(session, "tenant_id", None) is not None:
+            raise TenantScopeViolation(
+                code="NO_MAPPING_FOR_VALIDATION",
+                message=(
+                    "tenant-bound session requires a mapping bundle so "
+                    "Layer 5 (EXPLAIN-plan validator) can certify the "
+                    "plan against the schema — refusing fail-closed"
+                ),
+            )
+        logger.warning(
+            "safe_execute_aql: no mapping supplied and session has no "
+            "tenant_id; bypassing Layer 5 for unbound session=%s",
+            (session.token[:8] if getattr(session, "token", None) else "-"),
+        )
+        bv = dict(bind_vars or {})
+        cursor = db.aql.execute(aql, bind_vars=bv, **(execute_kwargs or {}))
+        return cursor, bv
+
+    return _core_safe_execute(
+        db=db,
+        aql=aql,
+        client_bind_vars=bind_vars,
+        session=session,
+        validator=validate_plan,
+        manifest=manifest,
+        sharding_profile=sharding_profile,
+        collection_to_entity=coll_to_entity,
+        execute_kwargs=execute_kwargs,
+    )
+
+
+__all__ = ["safe_execute_aql"]
