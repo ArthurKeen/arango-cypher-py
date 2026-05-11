@@ -143,6 +143,10 @@ class TestConnectDefaultsRedaction:
         # scanners don't flag them as real credentials and (b) a reader
         # grepping the test tree knows instantly these are fixtures
         # rather than leaked production data.
+        # Clear ARANGO_PASSWORD (which `.env` may have populated at process
+        # start) so the legacy ARANGO_PASS probe is the only source of
+        # truth for this test.
+        monkeypatch.delenv("ARANGO_PASSWORD", raising=False)
         monkeypatch.setenv("ARANGO_PASS", "REDACTION-PROBE-VALUE-1")
         monkeypatch.delenv("ARANGO_CYPHER_EXPOSE_DEFAULTS_PASSWORD", raising=False)
         resp = client.get("/connect/defaults")
@@ -158,6 +162,10 @@ class TestConnectDefaultsRedaction:
         client: TestClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # Clear ARANGO_PASSWORD (which `.env` may have populated at process
+        # start) so the legacy ARANGO_PASS probe is the only source of
+        # truth for this test.
+        monkeypatch.delenv("ARANGO_PASSWORD", raising=False)
         monkeypatch.setenv("ARANGO_PASS", "REDACTION-PROBE-VALUE-2")
         monkeypatch.setenv("ARANGO_CYPHER_EXPOSE_DEFAULTS_PASSWORD", "1")
         resp = client.get("/connect/defaults")
