@@ -121,6 +121,17 @@ class EntityScope:
     # by traversal" (no denorm field, but reachable) from "global"
     # (no denorm field, not reachable).
     reachable_from_tenant: bool = False
+    # MT-0 residual (PRD docs/multitenant_prd.md §3, last paragraph /
+    # Wave 7 part 2): the BFS-derived edge path from the Tenant entity
+    # to this entity, expressed as the ordered list of relationship-
+    # type names. ``None`` when the entity is the Tenant root, has a
+    # ``denorm_field`` (no traversal needed), is reachable but the
+    # path could not be derived deterministically, or is unreachable.
+    # Consumed by Wave 8a's Cypher AST rewrite (Layer 3) to inject a
+    # constrained traversal pattern for TENANT_SCOPED entities that
+    # lack an inline tenant column, and read by Layer 5 to recognise
+    # a constrained traversal as safe.
+    scoping_path: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +170,15 @@ class TenantScopeManifest:
 
     def global_entities(self) -> list[str]:
         return [name for name, scope in self.entities.items() if scope.role is EntityTenantRole.GLOBAL]
+
+    def scoping_path_of(self, entity_name: str) -> tuple[str, ...] | None:
+        """Return the relationship-type path from ``Tenant`` to
+        ``entity_name``, or ``None`` if no path was derived.
+
+        See :class:`EntityScope.scoping_path` for the contract.
+        """
+        e = self.entities.get(entity_name)
+        return e.scoping_path if e else None
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +356,123 @@ def _explicit_scope_from_mapping(
     )
 
 
+def _relationship_type_name(rel: dict[str, Any]) -> str | None:
+    """Extract the relationship-type name from a conceptual-schema
+    relationship dict, tolerating every shape the analyzer has emitted.
+
+    Looks for ``type`` → ``name`` → ``label`` → ``relationshipType`` in
+    that order. Returns ``None`` when none are present or non-string.
+    """
+    for key in ("type", "name", "label", "relationshipType"):
+        v = rel.get(key)
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _build_relationship_path_graph(
+    cs: dict[str, Any],
+) -> dict[str, list[tuple[str, str]]]:
+    """Build an undirected adjacency map of entity → [(neighbour, edge_type)].
+
+    Parallel to :func:`_build_relationship_graph` but retains the
+    relationship-type name of each edge so a BFS can return the
+    sequence of edge types — not just the sequence of nodes — between
+    two entities. Tolerates the same endpoint-shape zoo as
+    :func:`_build_relationship_graph` and silently drops edges whose
+    type cannot be recovered (a path through a nameless edge is
+    indistinguishable from the no-edge case downstream).
+    """
+    rels = cs.get("relationships") or []
+    adj: dict[str, list[tuple[str, str]]] = {}
+    if not isinstance(rels, list):
+        return adj
+    for r in rels:
+        if not isinstance(r, dict):
+            continue
+        src = _endpoint_label(
+            r.get("from") or r.get("fromEntity") or r.get("source") or r.get("sourceEntity")
+        )
+        dst = _endpoint_label(r.get("to") or r.get("toEntity") or r.get("target") or r.get("targetEntity"))
+        if not src or not dst:
+            continue
+        rtype = _relationship_type_name(r)
+        if not rtype:
+            continue
+        adj.setdefault(src, []).append((dst, rtype))
+        adj.setdefault(dst, []).append((src, rtype))
+    return adj
+
+
+def compute_scoping_path(
+    cs_or_mapping: Any,
+    *,
+    from_label: str = _TENANT_ENTITY_NAME,
+    to_label: str,
+    max_hops: int = 6,
+) -> tuple[str, ...] | None:
+    """Return the ordered relationship-type names connecting
+    ``from_label`` to ``to_label`` via the conceptual relationship
+    graph, or ``None`` if no path exists.
+
+    PRD ``docs/multitenant_prd.md`` §3 (last paragraph) / Wave 7
+    part 2: the schema mapper supplies per-entity ``tenantScope.role``
+    and ``tenantScope.tenantField``; it does **not** supply the BFS-
+    derived edge path from ``Tenant`` to a ``TENANT_SCOPED`` entity
+    that lacks a denormalised tenant column. We compute it locally
+    so Layer 3 (Cypher AST rewrite, Wave 8a) can inject a constrained
+    traversal pattern, and Layer 5 can recognise such a traversal as
+    safe.
+
+    BFS is shortest-path with a deterministic tiebreak: when multiple
+    paths share the minimum length, the lexicographically smallest
+    sequence of relationship-type names is preferred. Self-paths
+    (``from_label == to_label``) return the empty tuple. Unreachable
+    targets return ``None``.
+
+    Parameters
+    ----------
+    cs_or_mapping:
+        Either a conceptual-schema dict (the inner ``conceptual_schema``
+        block) or the outer mapping bundle / dict — accepted symmetrically
+        so callers can pass whichever they have at hand.
+    from_label, to_label:
+        Source and target entity names as they appear in
+        ``conceptual_schema.entities[*].name``.
+    max_hops:
+        Cap on BFS depth. Default 6 — long enough to cover every
+        chain we have observed in the wild without exploding on
+        cyclic graphs.
+    """
+    if not isinstance(to_label, str) or not to_label:
+        return None
+    if from_label == to_label:
+        return ()
+    if isinstance(cs_or_mapping, dict) and "entities" in cs_or_mapping:
+        cs = cs_or_mapping
+    else:
+        cs = _conceptual_schema(cs_or_mapping)
+    adj = _build_relationship_path_graph(cs)
+    if from_label not in adj or to_label not in adj:
+        return None
+    frontier: deque[tuple[str, tuple[str, ...]]] = deque([(from_label, ())])
+    best_at_depth: dict[str, tuple[str, ...]] = {from_label: ()}
+    while frontier:
+        node, path = frontier.popleft()
+        if len(path) >= max_hops:
+            continue
+        for neighbour, rtype in sorted(adj.get(node, []), key=lambda nr: (nr[1], nr[0])):
+            new_path = path + (rtype,)
+            existing = best_at_depth.get(neighbour)
+            if existing is None or (
+                len(new_path) < len(existing)
+                or (len(new_path) == len(existing) and new_path < existing)
+            ):
+                best_at_depth[neighbour] = new_path
+                frontier.append((neighbour, new_path))
+    return best_at_depth.get(to_label)
+
+
 def _build_relationship_graph(
     cs: dict[str, Any],
 ) -> dict[str, set[str]]:
@@ -488,11 +625,36 @@ def analyze_tenant_scope(
     out: dict[str, EntityScope] = {}
     explicit_count = 0
 
+    def _scoping_path_for(target: str) -> tuple[str, ...] | None:
+        """BFS edge-type path from Tenant to ``target``.
+
+        Guarded by ``tenant_entity is not None`` at call sites because
+        ``compute_scoping_path`` requires a known root.
+        """
+        return compute_scoping_path(
+            cs,
+            from_label=tenant_entity,  # type: ignore[arg-type]
+            to_label=target,
+            max_hops=max_traversal_hops,
+        )
+
     for name, entity in by_name.items():
         # Step 1: explicit annotation wins.
         explicit = _explicit_scope_from_mapping(pm_entities.get(name))
         if explicit is not None:
-            out[name] = explicit
+            scoping_path: tuple[str, ...] | None = None
+            if (
+                explicit.role is EntityTenantRole.TENANT_SCOPED
+                and explicit.denorm_field is None
+                and tenant_entity is not None
+            ):
+                scoping_path = _scoping_path_for(name)
+            out[name] = EntityScope(
+                role=explicit.role,
+                denorm_field=explicit.denorm_field,
+                reachable_from_tenant=explicit.reachable_from_tenant,
+                scoping_path=scoping_path,
+            )
             explicit_count += 1
             continue
 
@@ -502,6 +664,7 @@ def analyze_tenant_scope(
                 role=EntityTenantRole.TENANT_ROOT,
                 denorm_field=None,
                 reachable_from_tenant=True,
+                scoping_path=None,
             )
             continue
 
@@ -512,6 +675,7 @@ def analyze_tenant_scope(
                 role=EntityTenantRole.TENANT_SCOPED,
                 denorm_field=denorm,
                 reachable_from_tenant=name in reachable,
+                scoping_path=None,
             )
             continue
 
@@ -521,6 +685,7 @@ def analyze_tenant_scope(
                 role=EntityTenantRole.TENANT_SCOPED,
                 denorm_field=None,
                 reachable_from_tenant=True,
+                scoping_path=_scoping_path_for(name),
             )
             continue
 
@@ -529,6 +694,7 @@ def analyze_tenant_scope(
             role=EntityTenantRole.GLOBAL,
             denorm_field=None,
             reachable_from_tenant=False,
+            scoping_path=None,
         )
 
     if explicit_count and explicit_count == len(out):
@@ -569,4 +735,5 @@ __all__ = [
     "EntityTenantRole",
     "TenantScopeManifest",
     "analyze_tenant_scope",
+    "compute_scoping_path",
 ]
