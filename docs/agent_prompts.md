@@ -1682,9 +1682,11 @@ a CI gate that prevents future regressions.
 
 ---
 
-## Wave 6 prompts — Schema inference + NL feedback-loop bug-fix (WP-27..WP-30)
+## Wave 6 prompts — Schema inference + NL feedback-loop bug-fix (WP-27..WP-30) — **Shipped**
 
 Derived from: [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) and [`implementation_plan.md`](./implementation_plan.md) WP-27..WP-30.
+
+> **Status (2026-05-06): All four work packages are merged to `main`.** Wave 6a shipped 2026-04-23 across commits `0313395` (WP-27 heuristic + transpiler backtick strip) and `ac6eaff` (WP-28 analyzer visibility + force-reacquire + UI banner). Wave 6b shipped 2026-04-24 across commits `d4a871f` (WP-29 NL prompt escaping + fail-closed retry) and `618aace` (WP-30 `editorCypherSource` reducer + regenerate-from-NL action). The prompt bodies below are kept verbatim as historical reference for the eventual sub-agent post-mortem and to seed similar bug-fix waves in future. Do not re-launch any of these sub-agents — running them now produces an empty PR. The only outstanding bug-fix-wave item is the manual §11.4 closeout E2E walkthrough on `ic-knowledge-graph-temporal` documented in [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md).
 
 **Summary.** Fixes the six-defect cascade that produced an unrecoverable Translate-time parse error on a hybrid (GraphRAG + PG) database: heuristic mis-classification of a scalar data field named `label` as an LPG type discriminator (D1); silent analyzer-unavailable fallback with indefinite cache poisoning (D2); NL prompt missing backtick-escaping guidance (D3); retry loop returning invalid Cypher on exhaustion instead of failing closed (D4); transpiler not stripping label backticks before resolver lookup (D5); Translate-button parse failures having no route back into NL inference (D6).
 
@@ -2280,19 +2282,18 @@ Use this checklist when running the waves:
 - [ ] Update PRD §1.2.1: mark implemented techniques with `*(implemented)*` and link the baseline report.
 - [ ] Update `docs/implementation_plan.md` status table WP-25 row to **Done** with the merge date.
 
-### Wave 6 (schema-inference + NL feedback-loop bug fix)
-- [ ] **Wave 6a** (Phase A/B, parallel, single PR): launch WP-27 (heuristic + transpiler backtick-strip) and WP-28 (analyzer visibility + force-reacquire + service startup) in parallel on sibling branches off `main`.
-- [ ] Review WP-27: new heuristic tests pass; no existing tests regress; transpiler round-trip tests for backticked labels pass.
-- [ ] Review WP-28: service refuses to start without the analyzer unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`; `/schema/force-reacquire` returns a fresh analyzer-sourced bundle; `/schema/introspect` surfaces `warnings`; UI banner renders.
-- [ ] Merge both; resolve the small overlap in `arango_cypher/schema_acquire.py` around `_build_fresh_bundle` (WP-27 changes the heuristic body; WP-28 changes the `ImportError` branch — expect near-zero textual overlap).
-- [ ] Full test run: `pytest -m "not integration and not tck"` — all green; `ruff check .` clean; `cd ui && npx tsc --noEmit -p tsconfig.app.json && npm run build` clean.
-- [ ] Operational step: on each deployed service, run `POST /schema/force-reacquire` once to evict any cached bundles that were poisoned by the pre-WP-27 heuristic on hybrid databases.
-- [ ] **Wave 6b** (Phase C, parallel within, separate PR off the merged Wave 6a tip): launch WP-29 (prompt escaping + fail-closed retry + `retry_context` plumbing) and WP-30 (Translate-feedback UI) in parallel. WP-30 rebases on WP-29 once WP-29's `retry_context` contract lands.
-- [ ] Review WP-29: zero-shot prompt byte-identical for bare-identifier schemas (regression pin); `validation_failed` branch returns empty cypher; UI renders red banner; WP-25.5 eval shows no regression.
-- [ ] Review WP-30: state-machine unit tests pass; regenerate button appears only for `editorCypherSource === "nl_pipeline"`; `retry_context` forwarded correctly on click.
-- [ ] Merge; full test run green; dual-push.
-- [ ] Update `docs/implementation_plan.md` tracking table: mark WP-27..WP-30 **Done** with merge dates.
-- [ ] Update `docs/python_prd.md` implementation-status rows for "Heuristic fallback correctness (hybrid schemas)" and "NL → Translate feedback loop" from *Known defect — scheduled* to **Done**.
+### Wave 6 (schema-inference + NL feedback-loop bug fix) — **Shipped**
+- [x] **Wave 6a** (Phase A/B, single PR): WP-27 (heuristic + transpiler backtick-strip) and WP-28 (analyzer visibility + force-reacquire + service startup) merged 2026-04-23 (commits `0313395`, `ac6eaff`). The two waves were ultimately consolidated into a single agent because both modify `arango_cypher/schema_acquire.py` and the textual overlap, while small, is non-zero — coordinating one agent across both eliminated merge-resolution overhead.
+- [x] Reviewed WP-27: heuristic tests pass; no existing tests regress; transpiler round-trip tests for backticked labels pass.
+- [x] Reviewed WP-28: service refuses to start without the analyzer unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`; `/schema/force-reacquire` returns a fresh analyzer-sourced bundle; `/schema/introspect` surfaces `warnings`; UI banner renders.
+- [x] Full test run on the merge tip: `pytest -m "not integration and not tck"` green; `ruff check .` clean; UI typecheck + build clean.
+- [ ] **Operational step (deferred to deployment):** on each deployed service, run `POST /schema/force-reacquire` once to evict any cached bundles that were poisoned by the pre-WP-27 heuristic on hybrid databases. (Tracked in the §11 closeout runbook of [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) as P5.)
+- [x] **Wave 6b** (Phase C, separate PR off the merged Wave 6a tip): WP-29 (prompt escaping + fail-closed retry + `retry_context` plumbing) merged 2026-04-24 (commit `d4a871f`); WP-30 (Translate-feedback UI) merged 2026-04-24 (commit `618aace`).
+- [x] Reviewed WP-29: zero-shot prompt byte-identical for bare-identifier schemas (regression pin held); `validation_failed` branch returns empty cypher; UI renders red banner; WP-25.5 eval showed no regression.
+- [x] Reviewed WP-30: state-machine unit tests pass; regenerate button appears only for `editorCypherSource === "nl_pipeline"`; `retry_context` forwarded correctly on click.
+- [x] Updated `docs/implementation_plan.md` tracking table: WP-27..WP-30 marked **Done** with merge commit refs (this PR).
+- [x] Updated `docs/python_prd.md` implementation-status rows for "Heuristic fallback correctness (hybrid schemas)" and "NL → Translate feedback loop" from *Known defect — scheduled* to **Done** (this PR).
+- [ ] **Manual closeout (pending):** run the §11.4 E2E walkthrough on `ic-knowledge-graph-temporal` per [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) §11 and fill in the AC-1..AC-6 closeout log. Until that runs, the bug-fix PRD itself remains marked OPEN even though all four implementation WPs are merged.
 
 ### Waves 7–11 (multi-tenant safety + v0.4+ residual tail)
 
