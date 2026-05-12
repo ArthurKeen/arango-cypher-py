@@ -1,5 +1,6 @@
 from .aql import AqlFragment, AqlQuery
 from .errors import CoreError
+from .exec import AqlExecutor, explain_aql, safe_execute
 from .extensions import ExtensionPolicy, ExtensionRegistry
 from .mapping import (
     COLLECTION_NAME_RE,
@@ -22,11 +23,14 @@ except ImportError:
 
 __all__ = [
     "COLLECTION_NAME_RE",
+    "AqlExecutor",
     "AqlFragment",
     "AqlQuery",
     "CoreError",
     "ExtensionPolicy",
     "ExtensionRegistry",
+    "explain_aql",
+    "safe_execute",
     "IndexInfo",
     "MappingBundle",
     "MappingResolver",

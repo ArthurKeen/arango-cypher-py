@@ -175,6 +175,7 @@ from .security import (
     _evict_lru,
     _get_session,
     _nl_bucket,
+    _optional_session,
     _prune_expired,
     _redact_value,
     _require_session_in_public_mode,

@@ -1,7 +1,7 @@
 # Disjoint SmartGraph Multi-Tenancy — PRD + Implementation Plan
 Date: 2026-04-21  
 Last updated: 2026-04-21  
-Status: **Draft** (standalone document; to be merged into `python_prd.md` — see §Merge notes)
+Status: **Draft — Phase 1 (MT-0 / MT-1 / MT-5) shipped in Wave 7** (standalone document; to be merged into `python_prd.md` — see §Merge notes)
 
 ### Changelog
 | Date | Changes |
@@ -602,19 +602,19 @@ Admin users never issue ad-hoc NL queries against the cross-tenant dataset throu
 
 | Work package | Description | Status | Estimate |
 |---|---|---|---|
-| **MT-0** | Schema-mapper uplift: `physicalLayout` block + `scopingPathFromTenant` on manifest | **Superseded** for the `physicalLayout` half (replaced by `analyzer>=0.5.0` `metadata.shardingProfile`, PRD §6.2 bullet 3). `scopingPathFromTenant` still pending, tracked with MT-1/5. | n/a (`physicalLayout`); ~20 LOC (`scopingPathFromTenant`) |
-| **MT-1** | Session-bound `@tenantId`; strip body-supplied tenant in tenant-user mode | Not started | ~80 LOC + tests |
+| **MT-0** | Schema-mapper uplift: `physicalLayout` block + `scopingPathFromTenant` on manifest | **Done** — `physicalLayout` half superseded by `analyzer>=0.5.0` `metadata.shardingProfile` (PRD §6.2 bullet 3); `scopingPathFromTenant` shipped in Wave 7 (`compute_scoping_path` BFS in `arango_cypher/nl2cypher/tenant_scope.py`, surfaced on `EntityScope.scoping_path` + `TenantScopeManifest.scoping_path_of`). | n/a (`physicalLayout`); ~80 LOC + 15 tests (`scopingPathFromTenant`) |
+| **MT-1** | Session-bound `@tenantId`; strip body-supplied tenant in tenant-user mode | **Done** (Wave 7) — `_Session` carries `tenant_id`/`tenant_key`/`is_admin`; `/connect` validates tenant against `Tenant` collection; `/nl2cypher` + `/nl2aql` honor session tenant in tenant-user mode (workbench mode preserves body tenant). | ~150 LOC + 10 tests |
 | **MT-2** | Guardrail hardening: reject literal tenant predicates in LLM output | Not started | ~30 LOC + 4 tests |
 | **MT-3** | Cypher AST tenant injection pass | Not started | ~400 LOC + 20 tests |
 | **MT-4** | AQL AST tenant injection pass | Not started | ~500 LOC + 25 tests |
-| **MT-5** | EXPLAIN-plan validator + `safe_execute` wrapper | Not started | ~300 LOC + 30 tests |
+| **MT-5** | EXPLAIN-plan validator + `safe_execute` wrapper | **Done** (Wave 7) — Layer 5 validator (`arango_cypher/tenant_plan_validator.py`) walks EXPLAIN nodes (EnumerateCollection / Index / Traversal / Subquery), rejects unconstrained scans + literal tenant predicates, and logs every pass/refusal with AQL+plan digests. Layer 6 `safe_execute` (`arango_query_core/exec.py`) + service adapter (`arango_cypher/service/safe_exec.py`) overrides client bind vars with session tenant before validation; wired into `/execute`, `/execute-aql`, `/aql-profile` and surfaces violations as HTTP 403. | ~700 LOC + 32 tests |
 | **MT-6** | Plan-shape LRU for Layer 5 performance | Not started | ~80 LOC + 6 tests |
 | **MT-7** | Admin bypass + audit log stream | Not started | ~150 LOC + 10 tests |
 | **MT-8** | Security review + red-team corpus | Not started | Ongoing |
 
 Suggested phasing:
 
-- **Phase 1 (demoable MVP):** MT-0, MT-1, MT-5. Smallest set that closes T1, T4, T5, T7 for the common case and gives auditable proof (the EXPLAIN validator's log).
+- **Phase 1 (demoable MVP):** MT-0, MT-1, MT-5. **Shipped in Wave 7.** Closes T1, T4, T5, T7 for the common case and gives auditable proof (the EXPLAIN validator's log).
 - **Phase 2 (hardening):** MT-2, MT-3, MT-4. Closes T2, T6 structurally. The demo for a security review is "open the network tab, see every query rewritten, see the validator refuse every hand-tampered query."
 - **Phase 3 (operability):** MT-6, MT-7. Needed before any production deployment.
 - **Ongoing:** MT-8. Red-team corpus lives next to the existing NL eval corpus; every known attempted escape becomes a test case that the validator must refuse.

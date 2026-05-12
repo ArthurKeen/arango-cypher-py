@@ -43,6 +43,14 @@ class ConnectRequest(BaseModel):
     database: str = Field(default="_system", max_length=_MAX_FIELD_LENGTH)
     username: str = Field(default="root", max_length=_MAX_FIELD_LENGTH)
     password: str = Field(default="", max_length=_MAX_FIELD_LENGTH)
+    # Multi-tenant session binding (PRD docs/multitenant_prd.md §4).
+    # When supplied at /connect, the tenant identifier is server-bound
+    # on the session and Layer 5 (EXPLAIN-plan validator) enforces it
+    # against every query — independent of any subsequent request body.
+    # Optional so workbench / single-tenant deployments keep working.
+    tenantId: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+    tenantKey: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+    isAdmin: bool = Field(default=False)
 
     @field_validator("url")
     @classmethod
@@ -64,6 +72,12 @@ class ConnectRequest(BaseModel):
 class ConnectResponse(BaseModel):
     token: str
     databases: list[str]
+    # Echoed for UI transparency: which tenant the session is bound to,
+    # if any. UI surfaces this in the connect status badge so the user
+    # always sees the active tenant alongside the active database.
+    tenant_id: str | None = None
+    tenant_key: str | None = None
+    is_admin: bool = False
 
 
 class TranslateRequest(BaseModel):
@@ -119,6 +133,10 @@ class ErrorResponse(BaseModel):
 class ExecuteAqlRequest(BaseModel):
     aql: str = Field(..., max_length=_MAX_AQL_LENGTH)
     bind_vars: dict[str, Any] = Field(default_factory=dict)
+    # Mapping bundle for Layer 5 (EXPLAIN-plan tenant-scope validator).
+    # Optional — pre-Wave-7 callers may omit it. With a tenant-bound
+    # session and no mapping, /execute-aql is refused fail-closed.
+    mapping: dict[str, Any] | None = None
 
 
 class ToolCallRequest(BaseModel):

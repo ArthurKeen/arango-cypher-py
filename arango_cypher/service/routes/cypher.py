@@ -13,6 +13,7 @@ from arango_query_core import CoreError
 
 from ... import corrections as _corrections
 from ...api import translate, validate_cypher_profile
+from ...tenant_plan_validator import TenantScopeViolation
 from ..app import app
 from ..mapping import _mapping_from_dict
 from ..models import (
@@ -26,6 +27,7 @@ from ..models import (
 )
 from ..observability import log_endpoint_timing
 from ..registry import _default_registry
+from ..safe_exec import safe_execute_aql
 from ..security import (
     _check_compute_rate_limit,
     _get_session,
@@ -140,11 +142,29 @@ def execute_endpoint(
     if correction:
         warnings.insert(0, {"message": f"Using learned correction #{correction.id}"})
 
-    with _translate_errors("AQL execution failed"):
-        t_exec = time.perf_counter()
-        cursor = session.db.aql.execute(run_aql, bind_vars=run_bind)
-        results = list(cursor)
-        exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    try:
+        with _translate_errors("AQL execution failed"):
+            t_exec = time.perf_counter()
+            cursor, run_bind = safe_execute_aql(
+                db=session.db,
+                aql=run_aql,
+                bind_vars=run_bind,
+                session=session,
+                mapping_dict=req.mapping,
+            )
+            results = list(cursor)
+            exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    except TenantScopeViolation as v:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tenant_scope_violation",
+                "code": v.code,
+                "message": v.message,
+                "aql_digest": v.aql_digest[:16],
+                "plan_digest": v.plan_digest[:16],
+            },
+        ) from v
 
     log_endpoint_timing(
         "/execute",
@@ -172,12 +192,38 @@ def execute_aql_endpoint(
     _: None = Depends(_check_compute_rate_limit),
     session: _Session = Depends(_get_session),
 ):
-    """Execute a raw AQL query directly (used by NL→AQL direct path)."""
-    with _translate_errors("AQL execution failed"):
-        t_exec = time.perf_counter()
-        cursor = session.db.aql.execute(req.aql, bind_vars=req.bind_vars)
-        results = list(cursor)
-        exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    """Execute a raw AQL query directly (used by NL→AQL direct path).
+
+    Wave 7: gated through Layer 5 via :func:`safe_execute_aql`. When
+    the session is tenant-bound and the caller does not supply a
+    mapping, the request is refused (the validator has nothing to
+    certify against). Unbound / workbench sessions keep working with a
+    direct execute and a WARN audit log.
+    """
+    final_bind = req.bind_vars
+    try:
+        with _translate_errors("AQL execution failed"):
+            t_exec = time.perf_counter()
+            cursor, final_bind = safe_execute_aql(
+                db=session.db,
+                aql=req.aql,
+                bind_vars=req.bind_vars,
+                session=session,
+                mapping_dict=req.mapping,
+            )
+            results = list(cursor)
+            exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    except TenantScopeViolation as v:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tenant_scope_violation",
+                "code": v.code,
+                "message": v.message,
+                "aql_digest": v.aql_digest[:16],
+                "plan_digest": v.plan_digest[:16],
+            },
+        ) from v
 
     log_endpoint_timing(
         "/execute-aql",
@@ -188,7 +234,7 @@ def execute_aql_endpoint(
     return ExecuteResponse(
         results=results,
         aql=req.aql,
-        bind_vars=req.bind_vars,
+        bind_vars=final_bind,
         warnings=[],
         exec_ms=exec_ms,
     )
@@ -296,17 +342,33 @@ def aql_profile_endpoint(
             detail={"error": _sanitize_error(str(e)), "code": e.code},
         ) from e
 
-    t_exec = time.perf_counter()
-    with _translate_errors("AQL profiled execution failed"):
-        cursor = session.db.aql.execute(
-            transpiled.aql,
-            bind_vars=transpiled.bind_vars,
-            profile=True,
-        )
-        results = list(cursor)
-        stats = cursor.statistics()
-        profile_data = cursor.profile() if hasattr(cursor, "profile") else None
-    exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    final_bind = transpiled.bind_vars
+    try:
+        t_exec = time.perf_counter()
+        with _translate_errors("AQL profiled execution failed"):
+            cursor, final_bind = safe_execute_aql(
+                db=session.db,
+                aql=transpiled.aql,
+                bind_vars=transpiled.bind_vars,
+                session=session,
+                mapping_dict=req.mapping,
+                execute_kwargs={"profile": True},
+            )
+            results = list(cursor)
+            stats = cursor.statistics()
+            profile_data = cursor.profile() if hasattr(cursor, "profile") else None
+        exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    except TenantScopeViolation as v:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tenant_scope_violation",
+                "code": v.code,
+                "message": v.message,
+                "aql_digest": v.aql_digest[:16],
+                "plan_digest": v.plan_digest[:16],
+            },
+        ) from v
 
     log_endpoint_timing(
         "/aql-profile",
@@ -319,7 +381,7 @@ def aql_profile_endpoint(
     )
     return {
         "aql": transpiled.aql,
-        "bind_vars": transpiled.bind_vars,
+        "bind_vars": final_bind,
         "results": results,
         "statistics": stats,
         "profile": profile_data,
