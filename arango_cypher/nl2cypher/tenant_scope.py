@@ -141,10 +141,23 @@ class TenantScopeManifest:
     ``tenant_entity`` is the conceptual entity name that plays the
     tenant-root role (typically ``"Tenant"``); ``None`` when the
     schema is single-tenant.
+
+    ``known_tenant_keys`` is the snapshot of tenant-collection keys
+    that were known to exist at manifest-build time, populated by
+    ``acquire_mapping_bundle`` via a one-shot ``FOR t IN Tenant
+    RETURN t._key`` (and analogous denorm-field harvest). Consumed
+    by ``tenant_ast_common.is_literal_tenant_value`` (Wave 8-pre)
+    so the Layer 2/3/4 rewriters can decide whether a literal in
+    user-supplied Cypher/AQL is a tenant key being smuggled in
+    (T2 defense; PRD §5.2 / §6.2 / §7.2). ``None`` means "not
+    sampled" — callers fail-closed and refuse any literal-tenant
+    comparison rather than silently accepting them, because the
+    alternative ("can't tell, allow") is the original T2 bug.
     """
 
     tenant_entity: str | None
     entities: dict[str, EntityScope] = field(default_factory=dict)
+    known_tenant_keys: frozenset[str] | None = None
 
     def role_of(self, entity_name: str) -> EntityTenantRole:
         """Return the role for ``entity_name``, defaulting to GLOBAL.
