@@ -213,9 +213,7 @@ class TestSafeExecuteServiceAdapter:
             )
         assert cursor == "<cursor:1>"
         assert bind_vars == {}
-        warn_records = [
-            r for r in caplog.records if "bypassing Layer 5" in r.getMessage()
-        ]
+        warn_records = [r for r in caplog.records if "bypassing Layer 5" in r.getMessage()]
         assert warn_records, f"expected bypass WARN; got {caplog.records!r}"
 
     def test_tenant_bound_session_without_mapping_refused(self) -> None:

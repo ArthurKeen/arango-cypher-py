@@ -180,8 +180,7 @@ def validate_plan(
             violation = TenantScopeViolation(
                 code="NO_SESSION_TENANT",
                 message=(
-                    "session has no tenant_id; cannot validate tenant-scoped "
-                    "query under tenant-user mode"
+                    "session has no tenant_id; cannot validate tenant-scoped query under tenant-user mode"
                 ),
                 **digests,
             )
@@ -193,8 +192,7 @@ def validate_plan(
             violation = TenantScopeViolation(
                 code="TENANT_BIND_MISMATCH",
                 message=(
-                    f"bind_vars['tenantId']={bv_tenant!r} does not match "
-                    f"session.tenant_id={session_tenant!r}"
+                    f"bind_vars['tenantId']={bv_tenant!r} does not match session.tenant_id={session_tenant!r}"
                 ),
                 **digests,
             )
@@ -419,10 +417,7 @@ class _PlanWalker:
                 return
             violation = TenantScopeViolation(
                 code="TENANT_ROOT_UNCONSTRAINED",
-                message=(
-                    f"Tenant-root collection {coll!r} scanned without "
-                    "@tenantKey predicate"
-                ),
+                message=(f"Tenant-root collection {coll!r} scanned without @tenantKey predicate"),
                 **digests,
             )
             _log_violation(violation, session=session)
@@ -445,10 +440,7 @@ class _PlanWalker:
         if not self._has_tenant_predicate(node, coll):
             violation = TenantScopeViolation(
                 code="UNCONSTRAINED_COLLECTION_SCAN",
-                message=(
-                    f"{coll!r} scanned without @tenantId predicate "
-                    "(physical kind=" + kind + ")"
-                ),
+                message=(f"{coll!r} scanned without @tenantId predicate (physical kind=" + kind + ")"),
                 **digests,
             )
             _log_violation(violation, session=session)
@@ -475,9 +467,7 @@ class _PlanWalker:
                 return
             violation = TenantScopeViolation(
                 code="TENANT_ROOT_UNCONSTRAINED",
-                message=(
-                    f"Tenant-root index lookup on {coll!r} not keyed by @tenantKey"
-                ),
+                message=(f"Tenant-root index lookup on {coll!r} not keyed by @tenantKey"),
                 **digests,
             )
             _log_violation(violation, session=session)
@@ -495,10 +485,7 @@ class _PlanWalker:
         if not _index_covers_tenant(node, tenant_field):
             violation = TenantScopeViolation(
                 code="INDEX_MISSING_TENANT_PREDICATE",
-                message=(
-                    f"IndexNode on {coll!r} does not equality-match "
-                    f"{tenant_field!r} == @tenantId"
-                ),
+                message=(f"IndexNode on {coll!r} does not equality-match {tenant_field!r} == @tenantId"),
                 **digests,
             )
             _log_violation(violation, session=session)
@@ -680,12 +667,8 @@ def _calc_matches_tenant_eq_bindvar(
         return False
     lhs, rhs = sides
     return (
-        _is_attribute_access_on(lhs, var_name=var_name, attr=attr)
-        and _is_bindvar_named(rhs, "tenantId")
-    ) or (
-        _is_attribute_access_on(rhs, var_name=var_name, attr=attr)
-        and _is_bindvar_named(lhs, "tenantId")
-    )
+        _is_attribute_access_on(lhs, var_name=var_name, attr=attr) and _is_bindvar_named(rhs, "tenantId")
+    ) or (_is_attribute_access_on(rhs, var_name=var_name, attr=attr) and _is_bindvar_named(lhs, "tenantId"))
 
 
 def _calc_matches_tenant_eq_literal(
@@ -723,11 +706,9 @@ def _calc_matches_key_eq_bindvar(
         return False
     lhs, rhs = sides
     return (
-        _is_attribute_access_on(lhs, var_name=var_name, attr="_key")
-        and _is_bindvar_named(rhs, bindvar_name)
+        _is_attribute_access_on(lhs, var_name=var_name, attr="_key") and _is_bindvar_named(rhs, bindvar_name)
     ) or (
-        _is_attribute_access_on(rhs, var_name=var_name, attr="_key")
-        and _is_bindvar_named(lhs, bindvar_name)
+        _is_attribute_access_on(rhs, var_name=var_name, attr="_key") and _is_bindvar_named(lhs, bindvar_name)
     )
 
 
@@ -768,9 +749,7 @@ def _condition_covers_tenant(
         ):
             return True
     for sub in cond.get("subNodes") or []:
-        if isinstance(sub, dict) and _condition_covers_tenant(
-            sub, outvar=outvar, tenant_field=tenant_field
-        ):
+        if isinstance(sub, dict) and _condition_covers_tenant(sub, outvar=outvar, tenant_field=tenant_field):
             return True
     return False
 
@@ -791,11 +770,9 @@ def _condition_keyed_by_tenant_key(cond: Any, *, outvar: str) -> bool:
     if sides is not None:
         lhs, rhs = sides
         if (
-            _is_attribute_access_on(lhs, var_name=outvar, attr="_key")
-            and _is_bindvar_named(rhs, "tenantKey")
+            _is_attribute_access_on(lhs, var_name=outvar, attr="_key") and _is_bindvar_named(rhs, "tenantKey")
         ) or (
-            _is_attribute_access_on(rhs, var_name=outvar, attr="_key")
-            and _is_bindvar_named(lhs, "tenantKey")
+            _is_attribute_access_on(rhs, var_name=outvar, attr="_key") and _is_bindvar_named(lhs, "tenantKey")
         ):
             return True
     for sub in cond.get("subNodes") or []:
@@ -863,8 +840,7 @@ def _digests(
 def _log_violation(violation: TenantScopeViolation, *, session: Any) -> None:
     token_prefix = _session_token_prefix(session)
     logger.warning(
-        "TENANT_SCOPE_VIOLATION code=%s session=%s tenant=%s "
-        "aql_digest=%s plan_digest=%s message=%s",
+        "TENANT_SCOPE_VIOLATION code=%s session=%s tenant=%s aql_digest=%s plan_digest=%s message=%s",
         violation.code,
         token_prefix,
         getattr(session, "tenant_id", None),

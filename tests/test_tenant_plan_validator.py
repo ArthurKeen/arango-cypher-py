@@ -247,9 +247,7 @@ def _call_validate(
 
 class TestEnumerateCollection:
     def test_satellite_only_query_accepted_without_tenant_binding(self) -> None:
-        plan = _wrap_plan(
-            [_singleton_node(), _enum_node(nid=2, collection="Country"), _return_node(nid=3)]
-        )
+        plan = _wrap_plan([_singleton_node(), _enum_node(nid=2, collection="Country"), _return_node(nid=3)])
         # No bind-var, no session tenant — still accepted because the
         # plan touches no tenant-scoped collections.
         _call_validate(
@@ -259,9 +257,7 @@ class TestEnumerateCollection:
         )
 
     def test_scan_without_tenant_filter_rejected(self) -> None:
-        plan = _wrap_plan(
-            [_singleton_node(), _enum_node(nid=2, collection="Employee"), _return_node(nid=3)]
-        )
+        plan = _wrap_plan([_singleton_node(), _enum_node(nid=2, collection="Employee"), _return_node(nid=3)])
         with pytest.raises(TenantScopeViolation) as exc_info:
             _call_validate(plan=plan)
         assert exc_info.value.code == "UNCONSTRAINED_COLLECTION_SCAN"
@@ -272,9 +268,7 @@ class TestEnumerateCollection:
             [
                 _singleton_node(),
                 _enum_node(nid=2, collection="Employee"),
-                _calc_eq_attr_literal(
-                    nid=3, var_name="doc", attr="TENANT_HEX_ID", literal="tenant-A-uuid"
-                ),
+                _calc_eq_attr_literal(nid=3, var_name="doc", attr="TENANT_HEX_ID", literal="tenant-A-uuid"),
                 _filter_node(nid=4, calc_id=3),
                 _return_node(nid=5),
             ]
@@ -289,9 +283,7 @@ class TestEnumerateCollection:
             [
                 _singleton_node(),
                 _enum_node(nid=2, collection="Employee"),
-                _calc_eq_attr_bindvar(
-                    nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"
-                ),
+                _calc_eq_attr_bindvar(nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"),
                 _filter_node(nid=4, calc_id=3),
                 _return_node(nid=5),
             ]
@@ -304,9 +296,7 @@ class TestEnumerateCollection:
             [
                 _singleton_node(),
                 _enum_node(nid=2, collection="Employee"),
-                _calc_eq_attr_bindvar(
-                    nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"
-                ),
+                _calc_eq_attr_bindvar(nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"),
                 _filter_node(nid=4, calc_id=3),
                 _return_node(nid=5),
             ]
@@ -591,9 +581,7 @@ class TestTraversalNode:
 
 class TestSubqueryNode:
     def test_unconstrained_inner_scan_rejected(self) -> None:
-        inner = _wrap_plan(
-            [_enum_node(nid=10, collection="Employee"), _return_node(nid=11)]
-        )
+        inner = _wrap_plan([_enum_node(nid=10, collection="Employee"), _return_node(nid=11)])
         outer = _wrap_plan(
             [
                 _singleton_node(),
@@ -635,16 +623,12 @@ class TestSubqueryNode:
 
 
 class TestAuditLogging:
-    def test_pass_emits_tenant_scope_ok_with_digests(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_pass_emits_tenant_scope_ok_with_digests(self, caplog: pytest.LogCaptureFixture) -> None:
         plan = _wrap_plan(
             [
                 _singleton_node(),
                 _enum_node(nid=2, collection="Employee"),
-                _calc_eq_attr_bindvar(
-                    nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"
-                ),
+                _calc_eq_attr_bindvar(nid=3, var_name="doc", attr="TENANT_HEX_ID", bindvar="tenantId"),
                 _filter_node(nid=4, calc_id=3),
                 _return_node(nid=5),
             ]
@@ -658,18 +642,12 @@ class TestAuditLogging:
         assert "aql_digest=" in line
         assert "plan_digest=" in line
 
-    def test_violation_emits_structured_warning_with_digests(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        plan = _wrap_plan(
-            [_singleton_node(), _enum_node(nid=2, collection="Employee"), _return_node(nid=3)]
-        )
+    def test_violation_emits_structured_warning_with_digests(self, caplog: pytest.LogCaptureFixture) -> None:
+        plan = _wrap_plan([_singleton_node(), _enum_node(nid=2, collection="Employee"), _return_node(nid=3)])
         with caplog.at_level(logging.WARNING, logger="arango_cypher.tenant_plan_validator"):
             with pytest.raises(TenantScopeViolation):
                 _call_validate(plan=plan)
-        warn_lines = [
-            r.getMessage() for r in caplog.records if "TENANT_SCOPE_VIOLATION" in r.getMessage()
-        ]
+        warn_lines = [r.getMessage() for r in caplog.records if "TENANT_SCOPE_VIOLATION" in r.getMessage()]
         assert warn_lines, f"expected violation record; got {caplog.records!r}"
         line = warn_lines[-1]
         assert "code=UNCONSTRAINED_COLLECTION_SCAN" in line

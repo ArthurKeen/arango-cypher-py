@@ -56,9 +56,7 @@ def safe_execute(
     refusal. The execute never runs in that case.
     """
     if session is None:
-        raise PermissionError(
-            "safe_execute: no authenticated session; cannot bind tenant context"
-        )
+        raise PermissionError("safe_execute: no authenticated session; cannot bind tenant context")
     bind_vars = dict(client_bind_vars or {})
     bind_vars["tenantId"] = getattr(session, "tenant_id", None)
     bind_vars["tenantKey"] = getattr(session, "tenant_key", None)

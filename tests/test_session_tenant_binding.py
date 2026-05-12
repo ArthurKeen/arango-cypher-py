@@ -530,6 +530,6 @@ class TestWorkbenchVsTenantUserMode:
         assert seen is not None
         assert seen.value == "tenant-A-uuid"
         warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
-        assert not any(
-            "ignored" in m and "tenant-A-uuid" in m for m in warning_messages
-        ), f"unexpected override warning when body == session: {warning_messages!r}"
+        assert not any("ignored" in m and "tenant-A-uuid" in m for m in warning_messages), (
+            f"unexpected override warning when body == session: {warning_messages!r}"
+        )

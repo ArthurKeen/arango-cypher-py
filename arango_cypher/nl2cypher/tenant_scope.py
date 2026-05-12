@@ -465,8 +465,7 @@ def compute_scoping_path(
             new_path = path + (rtype,)
             existing = best_at_depth.get(neighbour)
             if existing is None or (
-                len(new_path) < len(existing)
-                or (len(new_path) == len(existing) and new_path < existing)
+                len(new_path) < len(existing) or (len(new_path) == len(existing) and new_path < existing)
             ):
                 best_at_depth[neighbour] = new_path
                 frontier.append((neighbour, new_path))
