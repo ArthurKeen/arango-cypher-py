@@ -347,10 +347,7 @@ def _scan_denorm_predicates(
                 # introduces a new ``parameter`` node shape in
                 # EXPLAIN plans) is fixed in exactly one place.
                 synthetic_node = {"type": "parameter", "name": bindvar}
-                if any(
-                    is_bindvar_reference(synthetic_node, name=n)
-                    for n in _ACCEPTED_TENANT_BIND_NAMES
-                ):
+                if any(is_bindvar_reference(synthetic_node, name=n) for n in _ACCEPTED_TENANT_BIND_NAMES):
                     bind_var_satisfied = True
                 # A non-tenant bind-var (``$departmentId`` etc.) is
                 # not scope proof and not a literal — silently
@@ -717,9 +714,7 @@ def _manifest_prompt_body(
     # never compare a tenant column to a string literal. The two-line
     # wrap matches the existing rule-line style; the test
     # ``test_prompt_section_contains_literal_rule`` pins both lines.
-    lines.append(
-        "- Tenant identifiers are bind variables (@tenantId, @tenantKey)."
-    )
+    lines.append("- Tenant identifiers are bind variables (@tenantId, @tenantKey).")
     lines.append("  Never compare a tenant column to a literal string.")
     return "\n".join(lines)
 
