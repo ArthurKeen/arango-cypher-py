@@ -137,8 +137,26 @@ def _counter_dict(counter: Counter[str]) -> dict[str, int]:
     return dict(sorted(counter.items()))
 
 
-def analyze() -> dict[str, Any]:
-    """Return structured dry-run coverage metrics for the bundled TCK."""
+def scenario_id(category: str, feature_stem: str, scenario_name: str, ordinal: int) -> str:
+    """Stable identifier for one TCK scenario.
+
+    Scenario-outline rows expand to several scenarios sharing a name, so an
+    ordinal disambiguates them.  The id is the ledger's primary key and must not
+    change between runs, or the conformance ratchet reports phantom churn.
+    """
+    base = f"{category}/{feature_stem}/{scenario_name}"
+    return base if ordinal == 1 else f"{base}#{ordinal}"
+
+
+def analyze(*, collect_scenarios: bool = False) -> dict[str, Any]:
+    """Return structured dry-run coverage metrics for the bundled TCK.
+
+    With ``collect_scenarios`` the result also carries a ``scenarios`` mapping of
+    scenario id to outcome, which is what ``tests/tck/ledger.py`` writes to the
+    committed conformance ledger.  It is opt-in so the default payload (and the
+    ``--json`` output consumed by CI) stays unchanged.
+    """
+    records: dict[str, str] = {}
     full_total = 0
     core_total = 0
     full_passable = 0
@@ -164,7 +182,15 @@ def analyze() -> dict[str, Any]:
             by_category[category] = Counter()
 
         feat = parse_feature(feat_file)
+        seen_names: Counter = Counter()
         for sc in feat.scenarios:
+            seen_names[sc.name] += 1
+            sid = scenario_id(category, feat_file.stem, sc.name, seen_names[sc.name])
+
+            def _rec(outcome: str, _sid: str = sid) -> None:
+                if collect_scenarios:
+                    records[_sid] = outcome
+
             full_total += 1
             by_category[category]["total"] += 1
             if is_core:
@@ -174,11 +200,13 @@ def analyze() -> dict[str, Any]:
             if not steps_ok:
                 harness_skip_reasons[step_reason] += 1
                 by_category[category]["harness_skip"] += 1
+                _rec("harness_skip")
                 continue
 
             query = _get_main_query(sc)
             if not query:
                 by_category[category]["no_query"] += 1
+                _rec("no_query")
                 continue
 
             expects_error = _scenario_expects_error(sc)
@@ -194,9 +222,11 @@ def analyze() -> dict[str, Any]:
                     if is_core:
                         core_passable += 1
                         core_correct_rejections += 1
+                    _rec("correct_rejection")
                     continue
                 translate_fail_reasons[str(e)[:60]] += 1
                 by_category[category]["translate_fail"] += 1
+                _rec("parse_rejected")
                 continue
 
             full_parseable += 1
@@ -213,6 +243,7 @@ def analyze() -> dict[str, Any]:
                 if is_core:
                     core_passable += 1
                     core_translatable += 1
+                _rec("translatable")
             except CoreError as e:
                 if expects_error:
                     full_passable += 1
@@ -221,9 +252,11 @@ def analyze() -> dict[str, Any]:
                     if is_core:
                         core_passable += 1
                         core_correct_rejections += 1
+                    _rec("correct_rejection")
                 else:
                     translate_fail_reasons[str(e)[:60]] += 1
                     by_category[category]["translate_fail"] += 1
+                    _rec("translate_fail")
             except Exception:
                 if expects_error:
                     full_passable += 1
@@ -232,8 +265,10 @@ def analyze() -> dict[str, Any]:
                     if is_core:
                         core_passable += 1
                         core_correct_rejections += 1
+                    _rec("correct_rejection")
                 else:
                     by_category[category]["translate_fail"] += 1
+                    _rec("translate_fail")
 
     full_rate = (full_passable / full_total * 100) if full_total else 0
     core_rate = (core_passable / core_total * 100) if core_total else 0
@@ -276,6 +311,7 @@ def analyze() -> dict[str, Any]:
         "harness_skip_reasons": _counter_dict(harness_skip_reasons),
         "translation_failure_reasons": _counter_dict(translate_fail_reasons),
         "categories": categories,
+        **({"scenarios": dict(sorted(records.items()))} if collect_scenarios else {}),
     }
 
 
