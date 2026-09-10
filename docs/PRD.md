@@ -513,6 +513,36 @@ Eight JSON-in/JSON-out tools: `cypher_translate`, `suggest_indexes`,
 (`profile_schema_version`-versioned) lets NL/agent gateways discover the supported
 subset programmatically.
 
+### 10.3 Caller-supplied postconditions
+
+Callers MUST be able to attach domain invariants to the generate-validate-repair
+loop, alongside the built-in parse, `EXPLAIN` and tenant-scope checks. A
+postcondition is a caller-supplied object exposing `code`,
+`check(query, *, context)` and `prompt_section()`.
+
+Semantics the loop MUST honour:
+
+* Postconditions run only after parse and `EXPLAIN` succeed, so a retry is spent
+  only on syntactically and physically valid Cypher.
+* The tenant guardrail runs **first**. A statement violating both reports the
+  tenant violation, because a cross-tenant leak is a security failure and a
+  domain-correctness problem is not.
+* Violations share the caller's `max_retries` budget; they get no separate
+  allowance.
+* The **first** violation wins; checks are not accumulated.
+* On budget exhaustion the loop fails closed — a statement that never satisfies a
+  postcondition is never returned.
+* `prompt_section()` is rendered **once** into the cacheable system prefix and
+  MUST NOT vary between attempts of the same call, preserving provider-side
+  prompt caching.
+* A check that raises is treated as a violation (`{code}_error`), never allowed
+  to abort translation.
+
+The mechanism is owned by the shared NL engine
+(`arango_query_core.nl.postconditions`, `>=0.2.0`) so `nl2cypher` and `nl2sparql`
+cannot re-diverge; `arango_cypher.nl2cypher.postconditions` re-exports it and
+hosts Cypher-specific checks.
+
 ---
 
 ## 11. Multi-tenant safety (defense-in-depth)
@@ -559,20 +589,29 @@ bypass + audit log, MT-8 security review) live in
   row-by-row (`assert_result_equivalent`). Two suites pass end-to-end: Movies
   20/20, Northwind 14/14. Gated by `RUN_INTEGRATION=1 RUN_CROSS=1`
   (`docker-compose.neo4j.yml`, Bolt 27687).
-- **openCypher TCK harness** — 220 feature files / 3,861 scenarios. The
-  2026-08-06 dry run measures 2,676 / 3,861 (69.3%) Full passability and
-  2,527 / 2,805 (90.1%) Core passability, where Core excludes only temporal
-  and generic `CALL` categories. After execution-correctness work on boolean
-  operators, `collect()` lowering, and setup fallback, a live ArangoDB run
-  executed 2,408 translated scenarios; 1,296 matched their TCK result/error
-  assertion. The assertion
-  outcome is not a direct Neo4j-equivalence claim; use cross-validation for
-  that evidence. Full measurements and definitions live in
-  [`tests/tck/COVERAGE_REPORT.md`](../tests/tck/COVERAGE_REPORT.md).
+- **openCypher TCK harness** — 220 feature files / 3,861 scenarios, measured in
+  four separate outcomes: parses, translates, executes, and satisfies the TCK's
+  declared result/error assertion. Core excludes only temporal and generic
+  `CALL` categories. **Current figures are deliberately not reproduced here** —
+  they are regenerated into
+  [`tests/tck/COVERAGE_REPORT.md`](../tests/tck/COVERAGE_REPORT.md), which is the
+  authoritative measurement. Figures quoted in prose have drifted twice; cite the
+  report instead. The assertion outcome is not a direct Neo4j-equivalence claim;
+  use cross-validation for that evidence.
+- **Conformance ratchet** — every scenario's outcome is recorded per scenario in
+  [`tests/tck/conformance_ledger.tsv`](../tests/tck/conformance_ledger.tsv).
+  `tests/tck/test_conformance_ratchet.py` runs in the default suite (no database,
+  ~9s) and MUST fail if any scenario leaves a passing outcome, and if
+  improvements go unrecorded. Aggregate coverage cannot detect a change that
+  fixes ten scenarios and breaks nine; the per-scenario ledger diff makes every
+  state change reviewable. Regenerate with
+  `./.venv/bin/python tests/tck/ledger.py --write`. Passing outcomes are
+  `translatable` and `correct_rejection` — never "translates" alone, since 690
+  scenarios are negative tests where translating is the defect.
 - **NL eval gate** — opt-in (`RUN_NL2CYPHER_EVAL=1`), nightly CI matrix over
   OpenAI + Anthropic against committed baselines.
-- **CI** — `ci.yml` (ruff + unit + integration on Py 3.11/3.12 against Arango
-  3.11) on every push/PR; `nl2cypher-eval.yml` nightly (non-blocking); and
+- **CI** — `ci.yml` (ruff + unit incl. the conformance ratchet + integration on
+  Py 3.11/3.12 against Arango 3.11) on every push/PR; `nl2cypher-eval.yml` nightly (non-blocking); and
   `tck-coverage.yml` weekly/manual, publishing translation and live-execution
   metrics while running the Neo4j cross-validation suites.
 
@@ -626,7 +665,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |
-| openCypher TCK | **69.3%** Full dry-run passability; **90.1%** Core dry-run passability; live execution/TCK assertion metrics tracked separately |
+| openCypher TCK | Dry-run and live-execution passability tracked per scenario in [`tests/tck/conformance_ledger.tsv`](../tests/tck/conformance_ledger.tsv); current rates in [`tests/tck/COVERAGE_REPORT.md`](../tests/tck/COVERAGE_REPORT.md) (figures intentionally not inlined — they drift) |
 
 ---
 
@@ -637,7 +676,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | **v0.1** ✅ | Core read-only transpiler; mapping; extensions; service; UI; golden + integration tests |
 | **v0.2** | Write-clause + aggregation completeness; live-DB mapping; CLI; TCK Match ≥ 40% |
 | **v0.3** | Language breadth (full OPTIONAL MATCH, EXISTS, named paths); OWL round-trip; index-aware mapping; NL pipeline; UI completeness; TCK ≥ 25% |
-| **v0.4+** | Translation-only TCK ≥ 60% Full (achieved: 69.3%); improve execution-grounded compatibility, temporal/procedure support, and optimization (filter pushdown, translation caching, relationship uniqueness) |
+| **v0.4+** | Translation-only TCK ≥ 60% Full (**target met** — see `COVERAGE_REPORT.md` for the current rate); improve execution-grounded compatibility, temporal/procedure support, and optimization (filter pushdown, translation caching, relationship uniqueness) |
 | **Multi-tenant** | MT-3b route wiring, MT-6 plan-shape LRU, MT-7 admin bypass + audit, MT-8 red-team |
 | **Compiler architecture** | Normalized AST / logical plan; retain and broaden the implemented leading-`WITH`/`UNWIND` computational pipeline support |
 
