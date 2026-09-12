@@ -1766,7 +1766,8 @@ def acquire_mapping_bundle(
     except ImportError:
         raise ImportError(
             "arangodb-schema-analyzer is not installed. "
-            "Install it with: pip install 'arangodb-schema-analyzer>=0.6.1,<0.7'"
+            "Install it with: pip install 'arango-cypher-py[analyzer]' — the "
+            "canonical pin, so this guidance cannot drift from pyproject.toml."
         ) from None
 
     analyzer = AgenticSchemaAnalyzer()
