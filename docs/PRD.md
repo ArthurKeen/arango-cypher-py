@@ -291,11 +291,19 @@ right-click acts, overlays over routes) are enforced project-wide.
 
 ### 7.1 Mapping model
 
-`arangodb-schema-analyzer` (>=0.12.1,<0.13.0, from PyPI) is the **primary tier** for
-all schema types. It produces a `MappingBundle` (conceptual schema + physical
-mapping + metadata). When the analyzer is unavailable, a heuristic fallback runs
-and emits an `ANALYZER_NOT_INSTALLED` warning; the service refuses to start on a
-heuristic bundle unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`.
+`arangodb-schema-analyzer` (from PyPI) is the **primary tier** for all schema
+types. It produces a `MappingBundle` (conceptual schema + physical mapping +
+metadata). When the analyzer is unavailable, a heuristic fallback runs and emits
+an `ANALYZER_NOT_INSTALLED` warning; the service refuses to start on a heuristic
+bundle unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`.
+
+**The supported analyzer band is declared in `pyproject.toml`, not here.** It
+tracks the analyzer's current minor and MUST stay aligned with
+`arango-sparql-py`'s band: the two are co-installed (CDF's query path, any
+sibling dev venv) and mutually exclusive bands are unsatisfiable — a lower
+ceiling silently downgrades a co-installed newer analyzer and breaks its
+consumers. Raising the band is therefore a coordinated change across both
+repositories, never a unilateral one.
 
 Physical styles the mapping layer resolves:
 
@@ -551,9 +559,19 @@ bypass + audit log, MT-8 security review) live in
 
 - **Golden tests** — YAML fixtures in `tests/fixtures/cases/` and `cases_v03/`,
   exact AQL + bind-var matches.
-- **Integration tests** — Movies (~170 nodes, 20-query corpus, PG + LPG),
-  Northwind (14-query corpus), social (PG/LPG/hybrid), ICIJ Paradise Papers.
-  Gated by `RUN_INTEGRATION=1` (Arango on host port 28529 / 28530).
+- **Integration tests** — corpus execution (Movies ~170 nodes, 20-query corpus,
+  PG + LPG; Northwind 14-query corpus; social PG/LPG/hybrid; ICIJ Paradise
+  Papers) **and live schema acquisition**. Gated by `RUN_INTEGRATION=1` (Arango
+  on host port 28529 / 28530).
+- **Live-database requirement coverage** — every requirement in §7 (schema
+  detection, mapping, cardinality statistics, change detection) MUST have
+  integration coverage exercising it against a real ArangoDB, not only unit tests
+  over recorded fixtures. §7 describes behaviour that is only observable against a
+  live instance; fixture-based tests cannot detect a change in what the analyzer
+  returns, nor a defect in a code path they stub out. See
+  [`tests/integration/test_schema_acquisition.py`](../tests/integration/test_schema_acquisition.py),
+  whose first run exposed a fingerprint defect that had been latent behind
+  stubbed unit tests.
 - **Neo4j cross-validation** — every corpus query runs against Neo4j (the
   reference Cypher engine) *and* the translated AQL; result sets are diffed
   row-by-row (`assert_result_equivalent`). Two suites pass end-to-end: Movies
