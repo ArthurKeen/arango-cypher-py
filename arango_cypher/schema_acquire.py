@@ -396,7 +396,12 @@ def _scope_bundle_to_graph(db: StandardDatabase, bundle: MappingBundle, graph_na
     return _filter_bundle_to_graph(bundle, vertex, edges)
 
 
-def _fallback_fingerprint(db: StandardDatabase, *, include_counts: bool) -> str:
+def _fallback_fingerprint(
+    db: StandardDatabase,
+    *,
+    include_counts: bool,
+    cache_collection: str = DEFAULT_CACHE_COLLECTION,
+) -> str:
     """Coarse local fingerprint used only when ``schema_analyzer`` is unavailable.
 
     The heuristic mapping tier is advertised as "works without the analyzer
@@ -416,7 +421,7 @@ def _fallback_fingerprint(db: StandardDatabase, *, include_counts: bool) -> str:
         if isinstance(c, dict)
         and isinstance(c.get("name"), str)
         and not c["name"].startswith("_")
-        and c["name"] != DEFAULT_CACHE_COLLECTION
+        and c["name"] != cache_collection
     )
     parts = [db.name, *names]
     if include_counts:
@@ -428,7 +433,7 @@ def _fallback_fingerprint(db: StandardDatabase, *, include_counts: bool) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
-def _shape_fingerprint(db: StandardDatabase) -> str:
+def _shape_fingerprint(db: StandardDatabase, *, cache_collection: str = DEFAULT_CACHE_COLLECTION) -> str:
     """Hash of the schema *shape*: collection set, types, and index digests.
 
     Thin wrapper around ``schema_analyzer.fingerprint_physical_shape`` (v0.3.0+)
@@ -451,12 +456,12 @@ def _shape_fingerprint(db: StandardDatabase) -> str:
     try:
         from schema_analyzer import fingerprint_physical_shape
     except ImportError:
-        return _fallback_fingerprint(db, include_counts=False)
+        return _fallback_fingerprint(db, include_counts=False, cache_collection=cache_collection)
 
-    return fingerprint_physical_shape(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
+    return fingerprint_physical_shape(db, exclude_collections={cache_collection})
 
 
-def _full_fingerprint(db: StandardDatabase) -> str:
+def _full_fingerprint(db: StandardDatabase, *, cache_collection: str = DEFAULT_CACHE_COLLECTION) -> str:
     """Shape fingerprint + per-collection row counts.
 
     Thin wrapper around ``schema_analyzer.fingerprint_physical_counts``
@@ -472,9 +477,9 @@ def _full_fingerprint(db: StandardDatabase) -> str:
     try:
         from schema_analyzer import fingerprint_physical_counts
     except ImportError:
-        return _fallback_fingerprint(db, include_counts=True)
+        return _fallback_fingerprint(db, include_counts=True, cache_collection=cache_collection)
 
-    return fingerprint_physical_counts(db, exclude_collections={DEFAULT_CACHE_COLLECTION})
+    return fingerprint_physical_counts(db, exclude_collections={cache_collection})
 
 
 @dataclass(frozen=True)
@@ -534,8 +539,8 @@ def describe_schema_change(
     Inspects the in-memory cache first, then the persistent ArangoDB
     collection cache. Does not mutate either cache — purely read-only.
     """
-    shape_fp = _shape_fingerprint(db)
-    full_fp = _full_fingerprint(db)
+    shape_fp = _shape_fingerprint(db, cache_collection=cache_collection)
+    full_fp = _full_fingerprint(db, cache_collection=cache_collection)
     key = _cache_key(db)
     cache = ArangoSchemaCache(collection_name=cache_collection, cache_key=cache_key)
 
@@ -2294,8 +2299,9 @@ def get_mapping(
 
     # Slow path (cache empty, stale, or past its TTL): compute the authoritative
     # fingerprints and validate / rebuild against them.
-    shape_fp = _shape_fingerprint(db)
-    full_fp = _full_fingerprint(db)
+    _fp_exclude = cache_collection or DEFAULT_CACHE_COLLECTION
+    shape_fp = _shape_fingerprint(db, cache_collection=_fp_exclude)
+    full_fp = _full_fingerprint(db, cache_collection=_fp_exclude)
 
     if not force_refresh and key:
         cached = _lookup_cache(db, key, persistent)

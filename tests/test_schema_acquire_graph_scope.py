@@ -125,8 +125,11 @@ class TestGetMappingGraphScoping:
     def _patch(self, monkeypatch: pytest.MonkeyPatch) -> Any:
         db = MagicMock()
         db.name = "testdb"
-        monkeypatch.setattr(sa, "_shape_fingerprint", lambda _db: "shape")
-        monkeypatch.setattr(sa, "_full_fingerprint", lambda _db: "full")
+        # Keyword-tolerant to mirror the real signatures, which take
+        # ``cache_collection`` so the fingerprint excludes whichever cache
+        # collection is actually in use.
+        monkeypatch.setattr(sa, "_shape_fingerprint", lambda _db, **_k: "shape")
+        monkeypatch.setattr(sa, "_full_fingerprint", lambda _db, **_k: "full")
         monkeypatch.setattr(sa, "_safe_refresh_statistics", lambda _db, b: b)
         monkeypatch.setattr(sa, "acquire_mapping_bundle", lambda _db, **_k: _full_bundle())
         monkeypatch.setattr(sa, "graph_collections", lambda _db, _name: ({"Node"}, {"relations"}))
