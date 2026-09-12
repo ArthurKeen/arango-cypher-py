@@ -106,7 +106,7 @@ requires-dist = [
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'service'" },
     { name = "arango-query-core", specifier = ">=0.2.0,<0.3.0" },
-    { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.9.0,<0.10.0" },
+    { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.12.1,<0.13.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
@@ -139,16 +139,16 @@ wheels = [
 
 [[package]]
 name = "arangodb-schema-analyzer"
-version = "0.9.0"
+version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "python-arango" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/a6/81c93432fc276289441f8db5a80be6e1b2f8b60f8f3147fa801c92a9cc49/arangodb_schema_analyzer-0.9.0.tar.gz", hash = "sha256:664ac77ba4e6dc336772de465fad53a0fa45c22a71cb7447263cae58100d5810", size = 159278, upload-time = "2026-07-01T22:46:52.396Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/8b/449e7f7d1933112b1ed8805659839beb9e70b402b8955f5ab865a60ca606/arangodb_schema_analyzer-0.12.1.tar.gz", hash = "sha256:f4613c9a50889e6c62f0397b104f5766687d429ebbfe5cbed672b05fcc6e6655", size = 199876, upload-time = "2026-08-22T02:01:21.03Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/36/e3b7e501cd06066309ed554a26fc1baf938bb3648e0b405d4ab5e1d880db/arangodb_schema_analyzer-0.9.0-py3-none-any.whl", hash = "sha256:e7ddfd6ccde9ba388d5138fcbc9accaf10637cfeb49b55d0645f7ff85b231bcf", size = 162565, upload-time = "2026-07-01T22:46:50.945Z" },
+    { url = "https://files.pythonhosted.org/packages/73/3f/23378780105e99e61c1fdac8c76d2140bd8a8c29de7422c865c1fee0446a/arangodb_schema_analyzer-0.12.1-py3-none-any.whl", hash = "sha256:bfadeac657f241a599c8351218309f6ce50135ff0dcb7783dbb52dadf855fa6b", size = 202583, upload-time = "2026-08-22T02:01:19.683Z" },
 ]
 
 [[package]]

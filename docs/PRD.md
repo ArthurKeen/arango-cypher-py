@@ -291,7 +291,7 @@ right-click acts, overlays over routes) are enforced project-wide.
 
 ### 7.1 Mapping model
 
-`arangodb-schema-analyzer` (>=0.9.0,<0.10.0, from PyPI) is the **primary tier** for
+`arangodb-schema-analyzer` (>=0.12.1,<0.13.0, from PyPI) is the **primary tier** for
 all schema types. It produces a `MappingBundle` (conceptual schema + physical
 mapping + metadata). When the analyzer is unavailable, a heuristic fallback runs
 and emits an `ANALYZER_NOT_INSTALLED` warning; the service refuses to start on a

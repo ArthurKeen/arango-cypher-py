@@ -29,20 +29,27 @@ Issues = "https://github.com/arango-solutions/arango-cypher-py/issues"
 
 [project.optional-dependencies]
 analyzer = [
-  # 0.6.1 floor: pulls in the upstream tool-contract DoS bound
-  # (request-size maxLength / maxItems) and the optional
-  # SCHEMA_ANALYZER_ALLOWED_HOSTS / SCHEMA_ANALYZER_CACHE_ROOT env
-  # guards. No API change vs 0.6.0 so this is a safe, additive bump
-  # in the existing 0.6.x band.
-  #
   # Canonical spelling of the analyzer pin. Every other extra that
   # needs the analyzer references this one via `arango-cypher-py[analyzer]`
   # so there is a single source of truth (PEP 621 / PEP 735
   # self-referencing extras — supported by pip, uv, and hatchling).
-  # 0.9.0 floor: adds named-graph membership (metadata.graphMembership +
-  # per-entry graphs), graphScope, CSI v1, GraphRAG detection, and
-  # gold/metric-history — all consumed by this package.
-  "arangodb-schema-analyzer>=0.9.0,<0.10.0",
+  #
+  # Band tracks the analyzer's current minor, and MUST stay aligned with
+  # arango-sparql-py's. The two are co-installed (CDF's query path, any
+  # sibling dev venv), and mutually exclusive bands are unsatisfiable: a
+  # `<0.10` ceiling here silently DOWNGRADES a co-installed 0.12 and breaks
+  # its consumers. Observed 2026-09-06; see
+  # contextual-data-fabric/docs/research/unified-ontology-mapping-architecture.md
+  # §3.1 and step 0 of §9.
+  #
+  # This package consumes five analyzer symbols, all additive across
+  # 0.9 -> 0.12 and none of them the 0.12 tool-contract additions
+  # (entityStrategy / detectForeignKeys): `fingerprint_physical_shape`,
+  # `fingerprint_physical_counts`, `AgenticSchemaAnalyzer`, `export_mapping`,
+  # and `owl_export.export_conceptual_model_as_owl_turtle`. The 0.9.0
+  # features the previous floor cited (named-graph membership, graphScope,
+  # CSI v1, GraphRAG detection, gold/metric-history) are all still present.
+  "arangodb-schema-analyzer>=0.12.1,<0.13.0",
 ]
 service = [
   # Headless service installs (ServiceMaker / Container Manager /
