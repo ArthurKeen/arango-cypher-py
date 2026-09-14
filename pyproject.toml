@@ -49,7 +49,12 @@ analyzer = [
   # and `owl_export.export_conceptual_model_as_owl_turtle`. The 0.9.0
   # features the previous floor cited (named-graph membership, graphScope,
   # CSI v1, GraphRAG detection, gold/metric-history) are all still present.
-  "arangodb-schema-analyzer>=0.12.1,<0.13.0",
+  # 0.13 adds bitemporal provenance (§3.13.5: transactionTime / validTime /
+  # validTimeSource / predecessorFingerprint) that the CDF reverse-CSI export
+  # consumes; none of the five symbols above changed. The band spans 0.12 and
+  # 0.13 so a co-installed arango-sparql-py on either minor still resolves —
+  # raised together with its band on 2026-09-14 (docs/PRD.md band invariant).
+  "arangodb-schema-analyzer>=0.12.1,<0.14.0",
 ]
 service = [
   # Headless service installs (ServiceMaker / Container Manager /

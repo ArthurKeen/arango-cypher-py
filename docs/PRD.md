@@ -298,8 +298,8 @@ an `ANALYZER_NOT_INSTALLED` warning; the service refuses to start on a heuristic
 bundle unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`.
 
 **The supported analyzer band is declared in `pyproject.toml`, not here.** It
-tracks the analyzer's current minor and MUST stay aligned with
-`arango-sparql-py`'s band: the two are co-installed (CDF's query path, any
+admits the analyzer's current minor (and the previous one while a coordinated
+raise is in flight) and MUST stay aligned with `arango-sparql-py`'s band: the two are co-installed (CDF's query path, any
 sibling dev venv) and mutually exclusive bands are unsatisfiable — a lower
 ceiling silently downgrades a co-installed newer analyzer and breaks its
 consumers. Raising the band is therefore a coordinated change across both
