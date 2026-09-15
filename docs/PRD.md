@@ -313,11 +313,22 @@ Physical styles the mapping layer resolves:
 | **Hybrid** | mix per type | mix per relationship type |
 | **Embedded** | — | `EMBEDDED` (object/array on the parent doc) |
 
+> **Note (2026-09-15).** `arangodb-schema-analyzer` 0.14.0 is the portfolio owner of
+> LPG type detection (tier-1 discriminator names qualify on coverage alone; candidate
+> fields `@type` / `entity_type` / `category` / `predicate`) and answers the `LABEL` /
+> `GENERIC_WITH_TYPE` questions in the CSI it emits. This package's presence-based
+> detector in `arango_cypher/schema_acquire.py` is **planned for retirement** in favour
+> of consuming those answers (CDF unified-architecture paper, step 4); until then it
+> remains the heuristic fallback described above.
+
 Property roles are classified (`identifier`, `name`, `categorical`, `temporal`,
 `numeric`, `free_text`) and surfaced to both the NL prompt and the entity resolver
 so name-vs-token matching strategies are chosen correctly. Open-vocabulary edge
 collections are capped and normalized (per-type domain/range derived from
-`_fromType`/`_toType`) so GraphRAG schemas render and resolve sanely.
+`_fromType`/`_toType`) so GraphRAG schemas render and resolve sanely. *(2026-09-15:
+the analyzer 0.14.0 now performs `_fromType`/`_toType` endpoint resolution itself; the
+local derivation is retained only for the heuristic fallback path and is slated to go
+with the detector retirement noted above.)*
 
 ### 7.2 Cardinality statistics
 

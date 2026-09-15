@@ -114,7 +114,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The `[service]`, `[analyzer]`, and `[dev]` extras pull `arangodb-schema-analyzer` (>=0.6.1, <0.7) directly from PyPI — the analyzer no longer requires a sibling dev checkout. The NL-prompt builder consumes the analyzer's `physicalLayout`, `physicalMapping.shardFamilies`, and `metadata.multitenancy.{style, tenantKey[], physicalEnforcement}` fields; the multi-tenant guardrail in `nl2cypher/tenant_scope.py` consumes `tenantScope.role` / `tenantScope.tenantField`.
+The `[service]`, `[analyzer]`, and `[dev]` extras pull `arangodb-schema-analyzer` directly from PyPI — the analyzer no longer requires a sibling dev checkout. The supported analyzer band is declared in `pyproject.toml` (not repeated here) and is kept aligned with `arango-sparql-py`'s band; see the band invariant in `docs/PRD.md` §7.1. The NL-prompt builder consumes the analyzer's `physicalLayout`, `physicalMapping.shardFamilies`, and `metadata.multitenancy.{style, tenantKey[], physicalEnforcement}` fields; the multi-tenant guardrail in `nl2cypher/tenant_scope.py` consumes `tenantScope.role` / `tenantScope.tenantField`.
 
 ### Usage
 
@@ -458,7 +458,7 @@ RUN_INTEGRATION=1 pytest tests/integration/test_profile_integration.py -q
 # Cross-validate translated AQL against reference Neo4j (same query corpus,
 # result-set diff). Bolt on host port 27687.
 docker compose -f docker-compose.neo4j.yml -p arango_cypher_neo4j up -d
-pip install 'arango-cypher-py[neo4j]'
+pip install -e '.[neo4j]'   # from this checkout; arango-cypher-py is not published on PyPI
 RUN_INTEGRATION=1 RUN_CROSS=1 pytest tests/integration/test_movies_crossvalidate.py -q
 docker compose -f docker-compose.neo4j.yml -p arango_cypher_neo4j down
 
@@ -592,7 +592,7 @@ The LLM only sees the **conceptual** schema — label names, relationship types,
 ## Related projects
 
 - [arango-cypher-foxx](https://github.com/ArthurKeen/arango-cypher-foxx) — Foxx/JS implementation (runs inside ArangoDB coordinators)
-- [arangodb-schema-analyzer](https://github.com/ArthurKeen/arangodb-schema-analyzer) — schema detection and conceptual→physical mapping
+- [arango-schema-analyzer](https://github.com/ArthurKeen/arango-schema-analyzer) — schema detection and conceptual→physical mapping (PyPI package `arangodb-schema-analyzer`)
 
 ## License
 

@@ -37,7 +37,7 @@ Design principle: core is **deterministic** and **LLM-free**; agentic add-ons be
 ## 3) Mapping bundle API surface
 
 ### 3.1 Inputs and data contracts
-Core mapping should be grounded in the **stable transpiler export** from `arangodb-schema-analyzer` (a.k.a. `arango-schema-mapper`):
+Core mapping should be grounded in the **stable transpiler export** from `arangodb-schema-analyzer` (repo `arango-schema-analyzer`; formerly `arango-schema-mapper`):
 - library call or tool-contract call
 - output contains:
   - `conceptualSchema`

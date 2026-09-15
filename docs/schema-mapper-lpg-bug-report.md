@@ -1,5 +1,7 @@
 # Bug Report: Baseline inference fails to extract correct ontology from LPG-style databases
 
+> **Resolution (2026-09-15).** The LPG type detection this report concerns converged in `arangodb-schema-analyzer` 0.14.0 (2026-09-14): the analyzer is now the portfolio owner of LPG type detection and `_fromType`/`_toType` endpoint resolution. The analyzer repo is now `arango-schema-analyzer` (formerly `arango-schema-mapper`; this file keeps its historical name). Consumption of the analyzer's `LABEL` / `GENERIC_WITH_TYPE` answers in place of this package's presence-based detector is planned — see `docs/PRD.md` §7.1.
+
 **Component:** `arangodb-schema-analyzer` (baseline / deterministic inference)
 **Version:** 0.1.0
 **Severity:** High — produces an incorrect ontology and unusable mapping for LPG databases

@@ -242,7 +242,7 @@ except ImportError:
     bundle = _attach_warning(bundle, code="ANALYZER_NOT_INSTALLED",
                               message="arangodb-schema-analyzer not installed; "
                                       "using heuristic fallback.",
-                              install_hint="pip install arangodb-schema-analyzer")
+                              install_hint="pip install -e '.[analyzer]'")  # resolves the band declared in pyproject.toml
     logger.warning(  # escalated from info
         "Heuristic schema path used — install arangodb-schema-analyzer for accurate mappings on hybrid schemas.",
     )
@@ -262,7 +262,7 @@ def _require_analyzer_unless_opted_out():
     except ImportError as exc:
         raise RuntimeError(
             "FastAPI service requires arangodb-schema-analyzer. "
-            "Install it (`pip install arangodb-schema-analyzer`) or set "
+            "Install it (`pip install -e '.[analyzer]'`, within the band declared in pyproject.toml) or set "
             "ARANGO_CYPHER_ALLOW_HEURISTIC=1 to accept degraded mappings."
         ) from exc
 ```
