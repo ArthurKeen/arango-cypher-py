@@ -4,7 +4,7 @@ Last updated: 2026-05-11
 Workspace: `arango-cypher-py`  
 Related repos:
 - `~/code/arango-cypher-foxx` (Foxx/JS implementation; renamed from `arango-cypher` on 2026-04-17 — see §11 naming resolution)
-- `~/code/arango-schema-mapper` (a.k.a. `arangodb-schema-analyzer`, schema detection + mapping)
+- `~/code/arango-schema-analyzer` (package `arangodb-schema-analyzer`, schema detection + mapping; formerly repo-named `arango-schema-mapper`)
 
 ### Changelog
 | Date | Changes |
@@ -679,7 +679,7 @@ Service endpoints used by the connection model:
 ## 5) Schema detection & mapping (hard requirement)
 
 ### 5.1 Required dependency: `arangodb-schema-analyzer`
-`~/code/arango-schema-mapper` is a Python library named `arangodb-schema-analyzer` with:
+`~/code/arango-schema-analyzer` is a Python library named `arangodb-schema-analyzer` with:
 - `AgenticSchemaAnalyzer` library API
 - A stable **tool contract v1** (`schema_analyzer.tool.run_tool(request_dict)` or CLI `arangodb-schema-analyzer`)
 - Export formats:
@@ -700,7 +700,7 @@ This aligns exactly with your hybrid requirement: mapping is per entity type and
 The `arangodb-schema-analyzer` is the **canonical source** for reverse-engineering ontologies from ArangoDB schemas. When the transpiler encounters a situation where the analyzer's output is incomplete, incorrect, or missing a needed capability:
 
 1. **Do not work around it** in the transpiler. Workarounds create hidden coupling, obscure the real gap, and lead to divergent behavior when the analyzer is later fixed.
-2. **File a bug or feature report** against `arangodb-schema-analyzer` (repo: `~/code/arango-schema-mapper`). Include:
+2. **File a bug or feature report** against `arangodb-schema-analyzer` (repo: `~/code/arango-schema-analyzer`). Include:
    - The database schema that triggered the gap (collections, sample documents)
    - What the analyzer currently produces
    - What the transpiler needs it to produce
@@ -2033,11 +2033,11 @@ This section covers how `arango-cypher-py` is packaged for, and deployed to, the
 
 ### 15.1 Design decision: fix the root cause upstream, don't build a toolchain here
 
-**Status (resolved 2026-04-23).** Our sibling library `arangodb-schema-analyzer` (source at `~/code/arango-schema-mapper`) is **published to PyPI**. The `[analyzer]`, `[service]`, and `[dev]` extras of `pyproject.toml` pin it as `arangodb-schema-analyzer>=0.6.1,<0.7`. Inside the ServiceMaker build container, `uv sync --extra service` resolves it directly from the public index; no private registry, no git auth, no vendored wheels.
+**Status (resolved 2026-04-23).** Our sibling library `arangodb-schema-analyzer` (source at `~/code/arango-schema-analyzer`) is **published to PyPI**. The `[analyzer]`, `[service]`, and `[dev]` extras of `pyproject.toml` pin it to a version band. *(2026-09-15: the `>=0.6.1,<0.7` band quoted here at resolution time is historical — the current band is declared in `pyproject.toml` only and follows the alignment invariant in `docs/PRD.md` §7.1; do not treat any literal in this section as current.)* Inside the ServiceMaker build container, `uv sync --extra service` resolves it directly from the public index; no private registry, no git auth, no vendored wheels.
 
 With the upstream fix in place, *this repo needs no packaging tooling at all*. Deployment is `tar -czf` of the repo plus the three documented curl commands in [`docs/arango_packaging_service/deployment_runbook.md`](./arango_packaging_service/deployment_runbook.md).
 
-**Historical context.** Prior to 2026-04-23 the analyzer was declared in `[analyzer]` as a bare name with no version, path, or URL — on a developer machine it worked because `pip install -e ~/code/arango-schema-mapper` pre-installed it, but inside the ServiceMaker build container (no private-index network, no git auth) resolution failed with "no matching distribution found." The chosen remediation was the simplest: publish once in the sibling repo rather than paper over the resolution failure in every consumer. The first published release was `0.6.0` (2026-04-23); `0.6.1` (adopted via PR #8 on 2026-04-24) adds the DoS hardening and schema-analyzer cache-path tunables that §4.4.5 now documents.
+**Historical context.** Prior to 2026-04-23 the analyzer was declared in `[analyzer]` as a bare name with no version, path, or URL — on a developer machine it worked because `pip install -e ~/code/arango-schema-analyzer` pre-installed it, but inside the ServiceMaker build container (no private-index network, no git auth) resolution failed with "no matching distribution found." The chosen remediation was the simplest: publish once in the sibling repo rather than paper over the resolution failure in every consumer. The first published release was `0.6.0` (2026-04-23); `0.6.1` (adopted via PR #8 on 2026-04-24) adds the DoS hardening and schema-analyzer cache-path tunables that §4.4.5 now documents.
 
 ### 15.2 Why this over the alternatives
 
@@ -2069,7 +2069,7 @@ All this repo owns:
    - Redeploy: bump `pyproject.toml` version, rebuild, upload, deploy (same three commands with a new version).
    - Teardown: `curl DELETE` against FileManager and ACP.
 
-2. **Prerequisite checklist** in that same doc: ensure `arangodb-schema-analyzer` is pinned in `pyproject.toml` to a published version (no bare names, no paths, no git URLs) before packaging. *Satisfied as of 2026-04-24: the pin is `>=0.6.1,<0.7` in all three consumer extras.*
+2. **Prerequisite checklist** in that same doc: ensure `arangodb-schema-analyzer` is pinned in `pyproject.toml` to a published version (no bare names, no paths, no git URLs) before packaging. *Satisfied as of 2026-04-24 (then `>=0.6.1,<0.7`); the current band lives in `pyproject.toml` and follows `docs/PRD.md` §7.1 — checked 2026-09-15.*
 
 3. **A smoke test in CI** (gated behind `RUN_PACKAGING=1`, off by default): run `uv sync` against the packaged tarball inside a clean container and confirm it succeeds. Catches dependency-graph regressions that would break a deploy — without the overhead of an actual platform round-trip.
 
@@ -2137,7 +2137,7 @@ See [`docs/multitenant_prd.md`](./multitenant_prd.md) for the threat model (T1�
 
 For contributor onboarding and development workflow, see:
 
-- **Environment setup**: install with `pip install -e ".[dev,service]"`. Requires Python 3.10+.
+- **Environment setup**: install with `pip install -e ".[dev,service]"`. Requires Python 3.11+ (`requires-python` in `pyproject.toml`).
 - **Running tests**:
   - Unit + golden: `pytest -m "not integration and not tck"`
   - Integration (requires ArangoDB): `docker compose up -d && RUN_INTEGRATION=1 pytest -m integration`

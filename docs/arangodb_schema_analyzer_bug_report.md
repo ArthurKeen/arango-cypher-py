@@ -1,6 +1,6 @@
 # Bug report: `arangodb-schema-analyzer` tool contract v1 response validation failures
 
-This repo (`arango-cypher-py`) uses `arangodb-schema-analyzer` (from `~/code/arango-schema-mapper`) to generate mapping fixtures for transpiler tests.
+This repo (`arango-cypher-py`) uses `arangodb-schema-analyzer` (from `~/code/arango-schema-analyzer`) to generate mapping fixtures for transpiler tests.
 
 While integrating via `schema_analyzer.tool.run_tool()` (tool contract v1), I hit **deterministic INTERNAL_ERROR failures** caused by **the tool validating its own responses against `response.schema.json`**.
 
@@ -35,7 +35,7 @@ Result: the tool raised internal validation errors like:
 
 Prereqs:
 - ArangoDB reachable (e.g. `docker compose up -d` in `arango-cypher-py` and `.env` set)
-- `arangodb-schema-analyzer` installed editable from `~/code/arango-schema-mapper`
+- `arangodb-schema-analyzer` installed editable from `~/code/arango-schema-analyzer`
 
 Minimal repro:
 
@@ -68,5 +68,5 @@ I applied two minimal changes in `arangodb-schema-analyzer`:
 - `schema_analyzer/tool.py`: omit `requestId` if not provided
 - `schema_analyzer/types.py` + `schema_analyzer/tool.py`: add Pydantic aliases and use `model_dump(by_alias=True)` for metadata
 
-If you want, I can open a PR in the `arango-schema-mapper` repo with these changes, or you can copy them from local modifications.
+If you want, I can open a PR in the `arango-schema-analyzer` repo with these changes, or you can copy them from local modifications.
 
