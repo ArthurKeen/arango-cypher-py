@@ -51,10 +51,15 @@ analyzer = [
   # CSI v1, GraphRAG detection, gold/metric-history) are all still present.
   # 0.13 adds bitemporal provenance (§3.13.5: transactionTime / validTime /
   # validTimeSource / predecessorFingerprint) that the CDF reverse-CSI export
-  # consumes; none of the five symbols above changed. The band spans 0.12 and
-  # 0.13 so a co-installed arango-sparql-py on either minor still resolves —
-  # raised together with its band on 2026-09-14 (docs/PRD.md band invariant).
-  "arangodb-schema-analyzer>=0.12.1,<0.14.0",
+  # consumes; none of the five symbols above changed. 0.14 converges LPG
+  # type detection on the analyzer (tier-1 acceptance, `@type`/`entity_type`/
+  # `category`/`predicate` candidates, `_fromType`/`_toType` endpoint
+  # resolution) — the detector this package's schema_acquire.py will defer to;
+  # again none of the five symbols changed (fast suite green on 0.14.0). The
+  # band spans 0.12–0.14 so a co-installed arango-sparql-py on any of those
+  # minors still resolves — raised together with its band on 2026-09-14 (0.13)
+  # and 2026-09-15 (0.14) under the docs/PRD.md band invariant.
+  "arangodb-schema-analyzer>=0.12.1,<0.15.0",
 ]
 service = [
   # Headless service installs (ServiceMaker / Container Manager /

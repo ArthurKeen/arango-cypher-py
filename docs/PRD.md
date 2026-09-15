@@ -299,8 +299,7 @@ bundle unless `ARANGO_CYPHER_ALLOW_HEURISTIC=1`.
 
 **The supported analyzer band is declared in `pyproject.toml`, not here.** It
 admits the analyzer's current minor (and the previous one while a coordinated
-raise is in flight) and MUST stay aligned with `arango-sparql-py`'s band: the two are co-installed (CDF's query path, any
-sibling dev venv) and mutually exclusive bands are unsatisfiable — a lower
+raise is in flight) and MUST stay aligned with `arango-sparql-py`'s band: the two are co-installed in sibling dev venvs (CDF installs `arango-sparql-py` and the analyzer, not this package — verified 2026-09-15) and mutually exclusive bands are unsatisfiable — a lower
 ceiling silently downgrades a co-installed newer analyzer and breaks its
 consumers. Raising the band is therefore a coordinated change across both
 repositories, never a unilateral one.
