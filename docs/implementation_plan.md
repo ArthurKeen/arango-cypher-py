@@ -876,7 +876,7 @@ Every work package must update:
 When the transpiler encounters a gap in `arangodb-schema-analyzer` output (missing data, incorrect mapping, lacking a capability):
 
 1. **Do not work around it** in transpiler code. No shims, no fallback heuristics that duplicate analyzer logic, no special-case handling.
-2. **File a bug or feature report** against `~/code/arango-schema-mapper` with the database schema, current analyzer output, expected output, and a Cypher example.
+2. **File a bug or feature report** against `~/code/arango-schema-analyzer` with the database schema, current analyzer output, expected output, and a Cypher example.
 3. **Document the gap** in the PRD §5.3 status table with a reference to the filed issue.
 4. **Fail gracefully** with `CoreError(code="ANALYZER_GAP")` until the upstream fix lands.
 

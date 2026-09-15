@@ -123,11 +123,11 @@ docs/
 4. Do not add comments that narrate what code does — only explain non-obvious intent
 5. Do not create documentation files unless the work package specifies it
 6. Update the PRD §6.4 Cypher subset table if you add support for a new construct
-7. SCHEMA ANALYZER NO-WORKAROUND POLICY: arangodb-schema-analyzer (~/code/arango-schema-mapper)
+7. SCHEMA ANALYZER NO-WORKAROUND POLICY: arangodb-schema-analyzer (~/code/arango-schema-analyzer)
    is the canonical source for reverse-engineering ontologies from ArangoDB schemas.
    If the analyzer output is incomplete, incorrect, or missing a capability you need:
    - Do NOT work around it in transpiler code (no shims, no fallback heuristics, no special cases)
-   - File a bug or feature report against ~/code/arango-schema-mapper with:
+   - File a bug or feature report against ~/code/arango-schema-analyzer with:
      the database schema, current analyzer output, what you need, and a Cypher example
    - Document the gap in the PRD §5.3 status table referencing the issue
    - Fail gracefully with CoreError(code="ANALYZER_GAP") until the upstream fix lands
@@ -360,7 +360,7 @@ acquisition from a live ArangoDB database.
 
 ### Background
 
-The arangodb-schema-analyzer library (located at ~/code/arango-schema-mapper) provides:
+The arangodb-schema-analyzer library (located at ~/code/arango-schema-analyzer) provides:
 - AgenticSchemaAnalyzer class with library API
 - Tool contract: schema_analyzer.tool.run_tool({"operation": "export", ...}) → JSON export
 - Tool contract: schema_analyzer.tool.run_tool({"operation": "owl", ...}) → OWL Turtle string
@@ -467,7 +467,7 @@ or missing a capability that the transpiler needs:
 
 1. Do NOT work around it. No shims, no fallback logic that reimplements analyzer behavior,
    no special-case handling that papers over a gap.
-2. File a bug or feature report against ~/code/arango-schema-mapper. Include:
+2. File a bug or feature report against ~/code/arango-schema-analyzer. Include:
    - The database schema (collections, sample documents) that triggered the gap
    - What the analyzer currently produces (or fails to produce)
    - What the transpiler needs
