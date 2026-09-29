@@ -356,3 +356,100 @@ class TestUiCacheHeaders:
         assert "immutable" in cc and "max-age=31536000" in cc, (
             f"hashed asset missing immutable cache headers (got {cc!r})"
         )
+
+    def test_root_assets_load_under_a_baked_root_path(self):
+        """The shell at `/` must load its assets when ROOT_PATH is set.
+
+        On BYOC the platform proxy strips the mount prefix and ROOT_PATH is
+        baked into the bundle. A StaticFiles mount then 404'd every asset (it
+        strips root_path from an already-stripped path), so the launcher
+        showed a blank page behind a 200 at the root — shipped 2026-09-28.
+        """
+        from fastapi.testclient import TestClient
+
+        from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
+
+        assets_dir = _UI_DIR / "assets"
+        if not assets_dir.is_dir():
+            pytest.skip("ui/dist/assets not present")
+        first = next((p for p in assets_dir.iterdir() if p.is_file()), None)
+        if first is None:
+            pytest.skip("no built assets to probe")
+        mounted = TestClient(app, root_path="/_service/uds/_db/AIM/arango-cypher-py")
+
+        resp = mounted.get(f"/assets/{first.name}")
+
+        assert resp.status_code == 200
+        assert "immutable" in resp.headers.get("cache-control", "")
+
+    def test_a_missing_asset_is_a_real_404_not_the_shell(self):
+        """Serving HTML for a missing hashed asset fails in the browser as a MIME error."""
+        from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
+
+        if not (_UI_DIR / "assets").is_dir():
+            pytest.skip("ui/dist/assets not present")
+
+        resp = client.get("/assets/index-doesnotexist.js")
+
+        assert resp.status_code == 404
+
+
+class TestUiPathContainment:
+    """UI routes must never serve a file outside ui/dist.
+
+    uvicorn passes `..` segments through to the handler, so a raw
+    `GET /frontend/../../.env` reached `_UI_DIR / full_path` verbatim and
+    served any file in the bundle — a baked .env included. TestClient (httpx)
+    normalises `..` away, so these tests drive the ASGI app with a raw scope.
+    """
+
+    @staticmethod
+    def _raw_get(path: str) -> tuple[int, bytes]:
+        import asyncio
+
+        messages: list[dict] = []
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [],
+            "server": ("test", 80),
+            "client": ("test", 1),
+        }
+
+        async def receive() -> dict:
+            return {"type": "http.request", "body": b""}
+
+        async def send(message: dict) -> None:
+            messages.append(message)
+
+        asyncio.run(app(scope, receive, send))
+        start = next(m for m in messages if m["type"] == "http.response.start")
+        body = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body")
+        return start["status"], body
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/frontend/../../pyproject.toml",
+            "/ui/../../pyproject.toml",
+            "/assets/../../../pyproject.toml",
+            "/frontend/assets/../../../pyproject.toml",
+        ],
+    )
+    def test_dot_dot_never_escapes_ui_dist(self, path: str):
+        from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
+
+        if not (_UI_DIR / "assets").is_dir():
+            pytest.skip("ui/dist/assets not present")
+
+        status, body = self._raw_get(path)
+
+        assert status == 404, f"{path} -> {status}"
+        assert b"[project]" not in body

@@ -23,8 +23,8 @@ from __future__ import annotations
 import logging as _logging
 from pathlib import Path
 
+from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from .app import _svc_logger, app
 
@@ -142,18 +142,35 @@ if _UI_DIR.is_dir():
     def _html_response(path: Path) -> FileResponse:
         return FileResponse(path, headers={"Cache-Control": _HTML_NO_CACHE})
 
+    def _contained_file(base: Path, relative: str) -> Path | None:
+        """``base/relative`` if it is a regular file inside ``base``, else None.
+
+        The ASGI server does not normalise ``..`` out of the request path, so
+        a raw ``GET /frontend/../../.env`` reaches the handler verbatim. Joining
+        it onto ``base`` unchecked served any file in the bundle — including a
+        baked ``.env``. Resolving first and requiring containment closes that.
+        """
+        root = base.resolve()
+        candidate = (root / relative).resolve()
+        if not candidate.is_relative_to(root) or not candidate.is_file():
+            return None
+        return candidate
+
     def _spa_serve(full_path: str) -> FileResponse:
         """Serve a UI asset if it exists, otherwise fall back to index.html.
 
         Used by both the legacy ``/ui`` and AMP ``/frontend`` mounts so the
         cache-headers contract (HTML revalidates, hashed assets immutable) is
         identical across both prefixes — pinned by ``TestUiCacheHeaders``.
+        A path escaping ``ui/dist`` is a 404, never the file and never the shell.
         """
-        file = _UI_DIR / full_path
-        if file.is_file():
+        if ".." in Path(full_path).parts:
+            raise HTTPException(status_code=404, detail="Not Found")
+        file = _contained_file(_UI_DIR, full_path)
+        if file is not None:
             # Non-hashed files (e.g. an icon copied next to index.html) —
             # revalidate too. Hashed assets are served by the dedicated
-            # _ImmutableAssets mount below at /assets.
+            # /assets route below.
             headers = {"Cache-Control": _HTML_NO_CACHE} if file.suffix == ".html" else None
             return FileResponse(file, headers=headers) if headers else FileResponse(file)
         return _html_response(_UI_DIR / "index.html")
@@ -205,27 +222,24 @@ if _UI_DIR.is_dir():
     async def _root_index() -> FileResponse:
         return _html_response(_UI_DIR / "index.html")
 
-    # The Vite build emits root-relative URLs (`/assets/...`, `/favicon.svg`,
-    # `/icons.svg`) to match its dev server (`port: 5173`, no `base: '/ui/'`).
-    # Mount them at the app root so the production-mode `/ui` page can load
-    # its JS / CSS / icons without a rebuild.
+    # Hashed Vite assets at the app root, so the shell served at `/` (and the
+    # legacy `/ui`) loads its JS / CSS. An explicit route, not
+    # app.mount(StaticFiles): StaticFiles derives the file path by stripping
+    # `root_path` from the request path, but the platform proxy has already
+    # stripped the mount prefix, so under a baked ROOT_PATH every asset
+    # 404'd — the launcher showed a blank page behind a 200 at the root.
+    # Verified against the live BYOC deployment 2026-09-28.
     _UI_ASSETS = _UI_DIR / "assets"
     if _UI_ASSETS.is_dir():
 
-        class _ImmutableAssets(StaticFiles):
-            """StaticFiles subclass that marks hashed Vite assets immutable."""
-
-            async def get_response(self, path, scope):  # type: ignore[override]
-                response = await super().get_response(path, scope)
-                if response.status_code == 200:
-                    response.headers["Cache-Control"] = _ASSET_IMMUTABLE
-                return response
-
-        app.mount(
-            "/assets",
-            _ImmutableAssets(directory=str(_UI_ASSETS)),
-            name="ui_assets",
-        )
+        @app.api_route("/assets/{asset_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+        async def _ui_asset(asset_path: str) -> FileResponse:
+            file = None if ".." in Path(asset_path).parts else _contained_file(_UI_ASSETS, asset_path)
+            if file is None:
+                # A real 404, never the SPA shell: a missing hashed asset
+                # served as HTML fails in the browser as a MIME error.
+                raise HTTPException(status_code=404, detail="Not Found")
+            return FileResponse(file, headers={"Cache-Control": _ASSET_IMMUTABLE})
 
     for _icon in ("favicon.svg", "icons.svg"):
         _icon_path = _UI_DIR / _icon
