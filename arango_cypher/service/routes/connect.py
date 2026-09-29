@@ -10,6 +10,7 @@ import time
 
 from fastapi import Depends, HTTPException
 
+from ..._arango_sync import sync
 from ..._env import read_arango_password
 from ...api import get_cypher_profile
 from ..app import _PUBLIC_MODE, _svc_logger, app
@@ -126,7 +127,7 @@ def connect(req: ConnectRequest):
 
     try:
         databases = [
-            d for d in client.db("_system", username=req.username, password=req.password).databases()
+            d for d in sync(client.db("_system", username=req.username, password=req.password).databases())
         ]
     except Exception:
         databases = [req.database]
@@ -226,7 +227,7 @@ def list_graphs(session: _Session = Depends(_get_session)):
         _svc_logger.warning("listing named graphs failed: %s", exc)
         raw = []
 
-    for g in raw:
+    for g in sync(raw):
         edge_defs: list[dict] = []
         vertex: set[str] = set()
         edges: set[str] = set()

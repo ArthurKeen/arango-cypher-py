@@ -47,6 +47,7 @@ consumers who haven't migrated yet.
 
 from __future__ import annotations
 
+import builtins
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -128,7 +129,7 @@ class TenantContext:
     value: str
     display: str | None = None
 
-    @property
+    @builtins.property  # the dataclass field `property` shadows the builtin name here
     def display_name(self) -> str:
         return self.display or self.value
 

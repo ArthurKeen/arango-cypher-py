@@ -45,6 +45,7 @@ def _load_dotenv_unless_disabled(env: Mapping[str, str], loader: Callable[[], An
     return True
 
 
+_dotenv_loader: Callable[[], Any] | None
 try:
     from dotenv import load_dotenv as _dotenv_loader
 except ImportError:

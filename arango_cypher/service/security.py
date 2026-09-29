@@ -461,7 +461,7 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
     # leak via ``X-Arango-Session`` typos, etc.). Always run the same redaction
     # the error-translator uses, and skip body logging entirely in
     # public mode where the operator has signalled a hostile audience.
-    safe_errors = _sanitize_pydantic_errors(exc.errors())
+    safe_errors = _sanitize_pydantic_errors(list(exc.errors()))
     if _PUBLIC_MODE:
         _svc_logger.warning(
             "Pydantic 422 on %s %s: %s",

@@ -87,6 +87,8 @@ dev = [
   # Pinned to match the CI lint gate exactly (.github/workflows/ci.yml);
   # bump both together. A floor-only spec lets local and CI format differently.
   "ruff==0.16.4",
+  # Pinned with the CI typecheck job (.github/workflows/ci.yml); bump both together.
+  "mypy==2.3.1",
   "antlr4-tools",
   "PyYAML>=6.0.0",
   "httpx>=0.24.0",
@@ -139,6 +141,17 @@ markers = [
   "cross: cross-validates translated AQL against a reference Cypher engine (Neo4j); requires a running Neo4j (see docker-compose.neo4j.yml) plus RUN_INTEGRATION=1 and RUN_CROSS=1",
   "live: executes against a real remote service (ArangoDB, or an LLM API); opt-in via RUN_LIVE=1, then also needs the relevant ARANGO_* / API-key env. Credential presence alone never enables them.",
 ]
+
+# Whole package, not a scoped subset: it was brought to zero errors in one
+# pass, and a partial scope quietly leaves new modules unchecked. The ANTLR
+# output is generated code. python-arango's union return types are narrowed
+# once, in arango_cypher/_arango_sync.py, rather than ignored per call site.
+[tool.mypy]
+packages = ["arango_cypher"]
+exclude = ["arango_cypher/_antlr/"]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 110

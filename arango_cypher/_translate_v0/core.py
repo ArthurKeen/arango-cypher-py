@@ -388,7 +388,8 @@ def _emit_single_hop(
             lines.append(f"  FOR {h.v_trav} IN TO_ARRAY({current_var}.{embedded_path})")
         else:
             lines.append(f"  LET {h.v_trav} = {current_var}.{embedded_path}")
-        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type)
+        # An untyped hop has no type to report; type(r) is null, not a crash.
+        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type) if h.rel_type is not None else "null"
         for f in h.v_prop_filters:
             lines.append(f"    FILTER {f}")
         return
@@ -932,7 +933,7 @@ def _translate_match_body(
             filters.append(user_filter)
 
         # Build AQL
-        lines: list[str] = [for_line]
+        lines = [for_line]
         if labels:
             idx_hint = _build_collection_index_hint(primary, prop_filters, resolver)
             if idx_hint:
@@ -1658,10 +1659,14 @@ def _append_multipart_create_tail(
     has_writes = bool(set_clauses or remove_clauses)
     var_collections: dict[str, str] = {}
     num_creates = len(create_clauses)
+    create_resolver = _active_resolver.get()
+    if create_clauses and create_resolver is None:
+        raise CoreError("CREATE requires a mapping resolver", code="UNSUPPORTED")
     for ci, cc in enumerate(create_clauses):
+        assert create_resolver is not None  # narrowed above; loop runs only with clauses
         _compile_create(
             cc,
-            resolver=_active_resolver.get(),
+            resolver=create_resolver,
             bind_vars=bind_vars,
             var_env=var_env,
             lines=lines,
@@ -1866,7 +1871,10 @@ def _compile_optional_with_chains(
         if v_labels:
             v_primary = _pick_primary_entity_label(v_labels, resolver)
             v_map = resolver.resolve_entity(_strip_label_backticks(v_primary))
-            skip_coll_filter = resolver.edge_constrains_target(rel_type, v_primary, direction)
+            # An untyped edge carries no domain/range, so it never constrains the target.
+            skip_coll_filter = rel_type is not None and resolver.edge_constrains_target(
+                rel_type, v_primary, direction
+            )
             if not skip_coll_filter:
                 vcoll_key = _pick_bind_key("vCollection", bind_vars)
                 bind_vars[vcoll_key] = v_map.get("collectionName")
@@ -2065,7 +2073,7 @@ def _compile_match_multi_parts_from_parts(
             _warn_multi_label_collection(labels, primary)
         bound_labels[var] = primary
 
-    def emit_rel_type_filter(rel_var: str, rel_type: str) -> str | None:
+    def emit_rel_type_filter(rel_var: str, rel_type: str | None) -> str | None:
         r_map = _resolve_relationship_for_pattern(resolver, rel_type)
         r_style = r_map.get("style")
         if r_style == "GENERIC_WITH_TYPE":
@@ -3046,7 +3054,7 @@ def _apply_with(
     order_ctx = proj.oC_Order()
     skip_value, limit_value = _parse_skip_limit(proj, bind_vars)
 
-    env: dict[str, str] = {cy: aql for cy, aql, _ in compiled_nonagg}
+    env = {cy: aql for cy, aql, _ in compiled_nonagg}
     env.update({cy: aql for cy, aql, _ in compiled_agg})
 
     # AQL 3.11 does not accept PUSH()/UNIQUE() as COLLECT AGGREGATE

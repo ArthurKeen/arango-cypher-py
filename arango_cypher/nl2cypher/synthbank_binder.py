@@ -245,7 +245,7 @@ def profile_schema(mapping: MappingBundle, executor: Executor) -> SchemaProfile:
             continue
         for prop in entity.get("properties") or []:
             field_name = prop.get("name") if isinstance(prop, dict) else prop
-            if not _safe(field_name):
+            if not isinstance(field_name, str) or not _safe(field_name):
                 profile.skipped.append(f"property {name}.{field_name!r}: not a plain identifier")
                 continue
             rows = executor.run(
@@ -276,7 +276,7 @@ def profile_schema(mapping: MappingBundle, executor: Executor) -> SchemaProfile:
 
     for rel in _conceptual_relationships(mapping):
         rtype, src = rel.get("type"), rel.get("fromEntity")
-        if not _safe(rtype, src):
+        if not isinstance(rtype, str) or not isinstance(src, str) or not _safe(rtype, src):
             profile.skipped.append(f"relationship {rtype!r} from {src!r}: not a plain identifier")
             continue
         total = _count(executor, f"MATCH (x:{src}) RETURN count(x) AS n")

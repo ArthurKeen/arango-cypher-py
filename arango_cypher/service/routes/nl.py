@@ -10,6 +10,7 @@ import time
 
 from fastapi import Depends, HTTPException
 
+from ..._arango_sync import sync
 from ...tenant_ast_aql import AqlRewriteError
 from ...tenant_plan_validator import TenantScopeViolation
 from ..app import _PUBLIC_MODE, app
@@ -86,20 +87,21 @@ def _apply_session_tenant_to_context(
     if _workbench_mode_enabled():
         return body_ctx
 
-    if session is None or not getattr(session, "tenant_id", None):
+    tenant_id = getattr(session, "tenant_id", None) if session is not None else None
+    if not isinstance(tenant_id, str) or not tenant_id:
         return body_ctx
 
-    if body_ctx is not None and body_ctx.value != session.tenant_id:
+    if body_ctx is not None and body_ctx.value != tenant_id:
         logger.warning(
             "%s: body-supplied tenant_context=%r ignored; session-bound tenant=%r",
             endpoint,
             body_ctx.value,
-            session.tenant_id,
+            tenant_id,
         )
 
     return TenantContext(
         property="_key",
-        value=session.tenant_id,
+        value=tenant_id,
         display=(body_ctx.display if body_ctx is not None else None),
     )
 
@@ -515,7 +517,7 @@ def tenants_endpoint(
     )
     with _translate_errors("Tenant catalog query failed"):
         cursor = db.aql.execute(aql)
-        tenants = list(cursor)
+        tenants = list(sync(cursor))
 
     log_endpoint_timing(
         "/tenants",
@@ -608,7 +610,7 @@ def tenants_discover_endpoint(
                     "subdomain: t.SUBDOMAIN, hex_id: t.TENANT_HEX_ID}"
                 )
                 with _translate_errors("Tenant catalog query failed"):
-                    tenants = list(db.aql.execute(aql))
+                    tenants = list(sync(db.aql.execute(aql)))
                 log_endpoint_timing(
                     "/tenants/discover",
                     round((time.perf_counter() - t0) * 1000, 1),
@@ -657,7 +659,7 @@ def tenants_discover_endpoint(
             "RETURN {value: v, docs: n}"
         )
         with _translate_errors("Tenant discovery query failed"):
-            rows = list(db.aql.execute(aql, bind_vars={"field": field_name}))
+            rows = list(sync(db.aql.execute(aql, bind_vars={"field": field_name})))
         probed.append(coll)
         for r in rows:
             v = r.get("value")

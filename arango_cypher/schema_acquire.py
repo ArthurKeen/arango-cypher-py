@@ -32,11 +32,18 @@ from arango_query_core import (
     is_valid_collection_name,
 )
 
+from ._arango_sync import bind, sync
 from .schema_cache import (
     DEFAULT_CACHE_COLLECTION,
     DEFAULT_CACHE_KEY,
     ArangoSchemaCache,
 )
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    """*value* if it is a dict, else a fresh empty one."""
+    return value if isinstance(value, dict) else {}
+
 
 logger = logging.getLogger(__name__)
 
@@ -203,10 +210,11 @@ def graph_collections(db: StandardDatabase, graph_name: str) -> tuple[set[str], 
     # collections in the graph — both those referenced by an edge definition
     # and the orphan (edge-less) ones — so it subsumes orphan enumeration.
     try:
-        vertex.update(graph.vertex_collections() or [])
+        names: list[str] = sync(graph.vertex_collections() or [])
+        vertex.update(names)
     except Exception:  # pragma: no cover - defensive across driver versions
         pass
-    for ed in graph.edge_definitions() or []:
+    for ed in sync(graph.edge_definitions() or []):
         edge_col = ed.get("edge_collection") or ed.get("edgeCollection")
         if edge_col:
             edges.add(edge_col)
@@ -234,8 +242,8 @@ def _filter_bundle_to_graph(
     scoped graph (PRD §17.4).
     """
     pm = bundle.physical_mapping or {}
-    pm_entities = pm.get("entities") if isinstance(pm.get("entities"), dict) else {}
-    pm_rels = pm.get("relationships") if isinstance(pm.get("relationships"), dict) else {}
+    pm_entities = _dict_or_empty(pm.get("entities"))
+    pm_rels = _dict_or_empty(pm.get("relationships"))
 
     kept_entities = {
         label: emap
@@ -304,8 +312,8 @@ def _reconstruct_graph_membership(physical_mapping: dict[str, Any]) -> dict[str,
     live graph lookup.
     """
     pm = physical_mapping or {}
-    entities = pm.get("entities") if isinstance(pm.get("entities"), dict) else {}
-    rels = pm.get("relationships") if isinstance(pm.get("relationships"), dict) else {}
+    entities = _dict_or_empty(pm.get("entities"))
+    rels = _dict_or_empty(pm.get("relationships"))
 
     vertex_by_graph: dict[str, set[str]] = {}
     edge_by_graph: dict[str, set[str]] = {}
@@ -412,7 +420,7 @@ def _fallback_fingerprint(
     precision. Re-introduces ~6 LOC versus the ~51 LOC removed in PR-2.
     """
     try:
-        cols = db.collections() or []
+        cols = sync(db.collections() or [])
     except Exception:
         cols = []
     names = sorted(
@@ -662,7 +670,7 @@ def classify_schema(db: StandardDatabase) -> str:
     - If unclear -> unknown
     """
     try:
-        all_cols = db.collections()
+        all_cols = sync(db.collections())
     except Exception:
         return "unknown"
 
@@ -690,9 +698,9 @@ def classify_schema(db: StandardDatabase) -> str:
         try:
             cursor = db.aql.execute(
                 "FOR doc IN @@col LIMIT @n RETURN doc",
-                bind_vars={"@col": col_name, "n": sample_size},
+                bind_vars=bind({"@col": col_name, "n": sample_size}),
             )
-            docs = list(cursor)
+            docs = list(sync(cursor))
         except Exception:
             doc_signals.append("unknown")
             continue
@@ -714,7 +722,7 @@ def classify_schema(db: StandardDatabase) -> str:
                     f"FOR doc IN @@col COLLECT v = doc.`{found_type_field}` RETURN v",
                     bind_vars={"@col": col_name},
                 )
-                values = {str(v) for v in distinct_cursor if v is not None}
+                values = {str(v) for v in sync(distinct_cursor) if v is not None}
             except Exception:
                 values = set()
             if len(values) > 1:
@@ -730,9 +738,9 @@ def classify_schema(db: StandardDatabase) -> str:
         try:
             cursor = db.aql.execute(
                 "FOR doc IN @@col LIMIT @n RETURN doc",
-                bind_vars={"@col": col_name, "n": sample_size},
+                bind_vars=bind({"@col": col_name, "n": sample_size}),
             )
-            docs = list(cursor)
+            docs = list(sync(cursor))
         except Exception:
             edge_signals.append("unknown")
             continue
@@ -990,9 +998,9 @@ def _sample_properties(
     try:
         cursor = db.aql.execute(
             "FOR doc IN @@col LIMIT @n RETURN doc",
-            bind_vars={"@col": collection_name, "n": sample_size},
+            bind_vars=bind({"@col": collection_name, "n": sample_size}),
         )
-        docs = list(cursor)
+        docs = list(sync(cursor))
     except Exception:
         return []
 
@@ -1087,9 +1095,9 @@ def _detect_type_field(
     try:
         cursor = db.aql.execute(
             "FOR doc IN @@col LIMIT @n RETURN doc",
-            bind_vars={"@col": collection_name, "n": 20},
+            bind_vars=bind({"@col": collection_name, "n": 20}),
         )
-        docs = list(cursor)
+        docs = list(sync(cursor))
     except Exception:
         return None
 
@@ -1116,7 +1124,7 @@ def _detect_type_field(
             return tf
 
         try:
-            row_count = int(db.collection(collection_name).count() or 0)
+            row_count = int(sync(db.collection(collection_name).count() or 0))
         except Exception:
             row_count = len(docs)
 
@@ -1166,7 +1174,7 @@ def _type_field_values(db: StandardDatabase, collection_name: str, type_field: s
             bind_vars={"@col": collection_name},
         )
         vals: list[str] = []
-        for v in cursor:
+        for v in sync(cursor):
             if v is None:
                 continue
             if isinstance(v, list):
@@ -1192,9 +1200,9 @@ def _sample_properties_filtered(
     try:
         cursor = db.aql.execute(
             f"FOR doc IN @@col FILTER doc.`{type_field}` == @val LIMIT @n RETURN doc",
-            bind_vars={"@col": collection_name, "val": type_value, "n": sample_size},
+            bind_vars=bind({"@col": collection_name, "val": type_value, "n": sample_size}),
         )
-        docs = list(cursor)
+        docs = list(sync(cursor))
     except Exception:
         return []
 
@@ -1230,7 +1238,7 @@ def _infer_lpg_edge_endpoints(
     Samples edges matching the type_value, resolves the _from/_to documents,
     and looks up their type to find the correct conceptual entity label.
     """
-    col_type_map: dict[str, tuple[str, str]] = {}
+    col_type_map: dict[tuple[str, str], tuple[str, str]] = {}
     for label, pm in entities_pm.items():
         col = pm.get("collectionName", "")
         tf = pm.get("typeField")
@@ -1245,7 +1253,7 @@ def _infer_lpg_edge_endpoints(
             f"FOR e IN @@col FILTER e.`{type_field}` == @val LIMIT 10 RETURN {{f: e._from, t: e._to}}",
             bind_vars={"@col": edge_collection, "val": type_value},
         )
-        samples = list(cursor)
+        samples = list(sync(cursor))
     except Exception:
         return ("Any", "Any")
 
@@ -1257,7 +1265,7 @@ def _infer_lpg_edge_endpoints(
         if (col, "") in col_type_map:
             return col_type_map[(col, "")][0]
         try:
-            doc = db.document(doc_id)
+            doc = db.document({"_id": doc_id})
         except Exception:
             return "Any"
         if not isinstance(doc, dict):
@@ -1301,7 +1309,7 @@ def _infer_dedicated_edge_endpoints(
             "FOR e IN @@col LIMIT 20 RETURN {f: e._from, t: e._to}",
             bind_vars={"@col": edge_collection},
         )
-        samples = list(cursor)
+        samples = list(sync(cursor))
     except Exception:
         return ("Any", "Any")
 
@@ -1381,7 +1389,7 @@ def _aggregate_edge_endpoints(
     are absent (caller then leaves endpoints unresolved rather than guessing)."""
     try:
         sample = next(
-            db.aql.execute("FOR e IN @@c LIMIT 1 RETURN e", bind_vars={"@c": edge_collection}),
+            sync(db.aql.execute("FOR e IN @@c LIMIT 1 RETURN e", bind_vars={"@c": edge_collection})),
             None,
         )
     except Exception:
@@ -1390,11 +1398,13 @@ def _aggregate_edge_endpoints(
         return {}
     try:
         rows = list(
-            db.aql.execute(
-                f"FOR e IN @@c LIMIT @lim "
-                f"COLLECT t = e.`{type_field}`, ft = e._fromType, tt = e._toType "
-                f"WITH COUNT INTO n RETURN {{t: t, ft: ft, tt: tt, n: n}}",
-                bind_vars={"@c": edge_collection, "lim": sample_limit},
+            sync(
+                db.aql.execute(
+                    f"FOR e IN @@c LIMIT @lim "
+                    f"COLLECT t = e.`{type_field}`, ft = e._fromType, tt = e._toType "
+                    f"WITH COUNT INTO n RETURN {{t: t, ft: ft, tt: tt, n: n}}",
+                    bind_vars=bind({"@c": edge_collection, "lim": sample_limit}),
+                )
             )
         )
     except Exception as exc:  # noqa: BLE001
@@ -1464,16 +1474,20 @@ def _normalize_open_vocab_edges(
     for coll, type_field in shared.items():
         try:
             top = list(
-                db.aql.execute(
-                    f"FOR e IN @@c COLLECT t = e.`{type_field}` WITH COUNT INTO n "
-                    f"SORT n DESC LIMIT @k RETURN {{t: t, n: n}}",
-                    bind_vars={"@c": coll, "k": max_types},
+                sync(
+                    db.aql.execute(
+                        f"FOR e IN @@c COLLECT t = e.`{type_field}` WITH COUNT INTO n "
+                        f"SORT n DESC LIMIT @k RETURN {{t: t, n: n}}",
+                        bind_vars=bind({"@c": coll, "k": max_types}),
+                    )
                 )
             )
             total_types = next(
-                db.aql.execute(
-                    f"RETURN LENGTH(FOR e IN @@c COLLECT t = e.`{type_field}` RETURN 1)",
-                    bind_vars={"@c": coll},
+                sync(
+                    db.aql.execute(
+                        f"RETURN LENGTH(FOR e IN @@c COLLECT t = e.`{type_field}` RETURN 1)",
+                        bind_vars={"@c": coll},
+                    )
                 ),
                 0,
             )
@@ -1543,7 +1557,7 @@ def _normalize_open_vocab_edges(
 def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingBundle:
     """Build a MappingBundle from heuristics for PG or LPG schemas."""
     try:
-        all_cols = db.collections()
+        all_cols = sync(db.collections())
     except Exception as exc:
         raise CoreError("Failed to list collections", code="INVALID_ARGUMENT") from exc
 
@@ -1699,7 +1713,7 @@ def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingB
     col_indexes: dict[str, list[dict[str, Any]]] = {}
     for col_name in doc_cols + edge_cols:
         try:
-            raw_indexes = db.collection(col_name).indexes()
+            raw_indexes = sync(db.collection(col_name).indexes())
             filtered = []
             for idx in raw_indexes:
                 if not isinstance(idx, dict):
@@ -1964,7 +1978,7 @@ def compute_statistics(
             if col_name_safe:
                 try:
                     cursor = db.aql.execute(f"RETURN LENGTH(`{col_name}`)")
-                    count = next(cursor, 0)
+                    count = next(sync(cursor), 0)
                 except Exception:
                     count = 0
             col_counts[col_name] = {"count": count, "is_edge": False}
@@ -1979,7 +1993,7 @@ def compute_statistics(
                     f"FOR d IN `{col_name}` FILTER d.`{type_field}` == @tv COLLECT WITH COUNT INTO c RETURN c"
                 )
                 cursor = db.aql.execute(aql, bind_vars={"tv": type_value})
-                entity_count = next(cursor, 0)
+                entity_count = next(sync(cursor), 0)
             except Exception:
                 entity_count = col_counts.get(col_name, {}).get("count", 0)
         else:
@@ -2001,7 +2015,7 @@ def compute_statistics(
             if edge_col_safe:
                 try:
                     cursor = db.aql.execute(f"RETURN LENGTH(`{edge_col}`)")
-                    edge_count = next(cursor, 0)
+                    edge_count = next(sync(cursor), 0)
                 except Exception:
                     edge_count = 0
             col_counts[edge_col] = {"count": edge_count, "is_edge": True}
@@ -2017,7 +2031,7 @@ def compute_statistics(
                     f"FOR e IN `{edge_col}` FILTER e.`{type_field}` == @tv COLLECT WITH COUNT INTO c RETURN c"
                 )
                 cursor = db.aql.execute(aql, bind_vars={"tv": type_value})
-                edge_count = next(cursor, 0)
+                edge_count = next(sync(cursor), 0)
             except Exception:
                 edge_count = col_counts.get(edge_col, {}).get("count", 0)
         else:

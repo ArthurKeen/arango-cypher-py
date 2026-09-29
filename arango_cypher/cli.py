@@ -87,8 +87,8 @@ def _connect(
 
     h = host or os.getenv("ARANGO_HOST", "localhost")
     p = port or int(os.getenv("ARANGO_PORT", "8529"))
-    d = db or os.getenv("ARANGO_DB", "_system")
-    u = user or os.getenv("ARANGO_USER", "root")
+    d: str = db or os.getenv("ARANGO_DB") or "_system"
+    u: str = user or os.getenv("ARANGO_USER") or "root"
     pw = password if password is not None else read_arango_password(caller="arango_cypher.cli")
     client = ArangoClient(hosts=f"http://{h}:{p}")
     return client.db(d, username=u, password=pw)

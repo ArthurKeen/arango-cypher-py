@@ -379,7 +379,7 @@ def _translate_foreach_query(
                     bind_vars=bind_vars,
                 )
             else:
-                all_parts = []
+                all_parts: list[Any] = []
                 extra_wheres = []
                 for mc_item in match_ctxs:
                     pattern = mc_item.oC_Pattern()

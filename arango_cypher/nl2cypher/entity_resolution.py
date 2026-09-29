@@ -1062,8 +1062,8 @@ class EntityResolver:
             if not isinstance(value, str):
                 continue
             try:
-                score_f = float(row.get("score"))
-            except (TypeError, ValueError):
+                score_f = float(row["score"])
+            except (KeyError, TypeError, ValueError):
                 continue
             t = row.get("t")
             key = str(t) if t is not None else ""

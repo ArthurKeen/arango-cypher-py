@@ -52,7 +52,7 @@ class _HopMeta:
     r_prop_filters: list[str]
     direction: str
     r_map: dict[str, Any]
-    r_style: str
+    r_style: str | None
     edge_collection: str
     edge_key: str
     r_type_field: str | None

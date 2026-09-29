@@ -973,7 +973,8 @@ def _walk_plan(
     python-arango versions strip the wrapper, others don't —
     :func:`_coerce_plan` handles both).
     """
-    nodes = plan.get("nodes") if isinstance(plan.get("nodes"), list) else []
+    raw_nodes = plan.get("nodes")
+    nodes: list[Any] = raw_nodes if isinstance(raw_nodes, list) else []
     calcs_by_outvar = _gather_calcs_by_outvar(plan)
     for node in nodes:
         if not isinstance(node, dict):

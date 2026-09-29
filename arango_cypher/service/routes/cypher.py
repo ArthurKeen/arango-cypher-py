@@ -401,7 +401,8 @@ def execute_aql_endpoint(
     # EXPLAIN round-trip. An admin cross-tenant bypass skips Layer 4
     # (see /execute) so the raw AQL runs unscoped across tenants.
     if admin_bypass:
-        run_aql, final_bind, layer4_changes = req.aql, dict(req.bind_vars or {}), []
+        no_changes: list[str] = []
+        run_aql, final_bind, layer4_changes = req.aql, dict(req.bind_vars or {}), no_changes
     else:
         run_aql, final_bind, layer4_changes = _maybe_apply_layer4(
             session=session,

@@ -98,11 +98,8 @@ def _collection_to_entity_map(mapping: Any) -> dict[str, str]:
     for entity_name, entry in pm.items():
         if not isinstance(entity_name, str):
             continue
-        coll = (
-            entry.get("collectionName")
-            if isinstance(entry, dict) and isinstance(entry.get("collectionName"), str)
-            else entity_name
-        )
+        raw = entry.get("collectionName") if isinstance(entry, dict) else None
+        coll = raw if isinstance(raw, str) else entity_name
         out[coll] = entity_name
     return out
 

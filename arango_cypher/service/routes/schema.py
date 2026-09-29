@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from arango.database import StandardDatabase
-from arango_query_core import MappingResolver
+from arango_query_core import MappingBundle, MappingResolver
 from fastapi import Depends, HTTPException
 
+from ..._arango_sync import bind, sync
 from ..app import app
 from ..mapping import _mapping_from_dict
 from ..models import CreateIndexRequest, TranslateRequest
@@ -30,9 +31,9 @@ def _sample_properties(
     try:
         cursor = db.aql.execute(
             "FOR doc IN @@col LIMIT @n RETURN doc",
-            bind_vars={"@col": collection_name, "n": sample_size},
+            bind_vars=bind({"@col": collection_name, "n": sample_size}),
         )
-        docs = list(cursor)
+        docs = list(sync(cursor))
     except Exception:
         return {}
 
@@ -87,11 +88,11 @@ def _infer_edge_endpoints(
     try:
         cursor = db.aql.execute(
             "FOR e IN @@col LIMIT @n RETURN { f: e._from, t: e._to }",
-            bind_vars={"@col": edge_collection, "n": limit},
+            bind_vars=bind({"@col": edge_collection, "n": limit}),
         )
         from_cols: set[str] = set()
         to_cols: set[str] = set()
-        for doc in cursor:
+        for doc in sync(cursor):
             f, t = doc.get("f", ""), doc.get("t", "")
             if "/" in f:
                 from_cols.add(f.split("/", 1)[0])
@@ -184,6 +185,7 @@ def schema_introspect(
     from ...schema_acquire import get_mapping as _get_mapping
     from ...schema_acquire import read_cached_mapping as _read_cached
 
+    bundle: MappingBundle | None
     if force:
         bundle = _get_mapping(db, force_refresh=True, graph_name=graph_name)
     else:
@@ -543,7 +545,7 @@ def create_index(
         collection = db.collection(coll)
         # Idempotency guard: don't add a second inverted index over the same
         # field. Mirrors the resolver's own index-coverage probe.
-        for idx in collection.indexes():
+        for idx in sync(collection.indexes()):
             if str(idx.get("type", "")).lower() != "inverted":
                 continue
             names = {(f.get("name") if isinstance(f, dict) else f) for f in (idx.get("fields") or [])}

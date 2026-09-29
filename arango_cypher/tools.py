@@ -643,7 +643,7 @@ def schema_summary_tool(request: dict[str, Any]) -> dict[str, Any]:
 # All tools registry
 # ---------------------------------------------------------------------------
 
-ALL_TOOLS = [
+ALL_TOOLS: list[dict[str, Any]] = [
     {"schema": TRANSLATE_TOOL_SCHEMA, "function": translate_tool},
     {"schema": SUGGEST_INDEXES_TOOL_SCHEMA, "function": suggest_indexes_tool},
     {"schema": EXPLAIN_MAPPING_TOOL_SCHEMA, "function": explain_mapping_tool},

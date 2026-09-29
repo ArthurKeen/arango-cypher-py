@@ -39,6 +39,8 @@ if TYPE_CHECKING:
     from arango_query_core.nl.fewshot import FewShotIndex
 
     from .entity_resolution import EntityResolver
+    from .postconditions import PostconditionViolation
+    from .tenant_guardrail import TenantScopeViolation
 
 logger = logging.getLogger(__name__)
 
@@ -876,7 +878,7 @@ def _call_llm_with_retry(
                     # tenant isolation. Failure feeds a structured hint
                     # back into the next attempt; exhaustion falls
                     # through to the fail-closed path below.
-                    violation = check_tenant_scope(
+                    violation: TenantScopeViolation | PostconditionViolation | None = check_tenant_scope(
                         cypher,
                         tenant_context=tenant_context,
                         manifest=tenant_manifest,
@@ -1508,7 +1510,7 @@ def _get_default_fewshot_index() -> FewShotIndex | None:
     try:
         from pathlib import Path
 
-        from arango_query_core.nl.fewshot import BM25Retriever, FewShotIndex, _NoopRetriever
+        from arango_query_core.nl.fewshot import BM25Retriever, FewShotIndex, Retriever, _NoopRetriever
 
         corpora_dir = Path(__file__).parent / "corpora"
         paths = sorted(corpora_dir.glob("*.yml")) + _generated_bank_paths()
@@ -1530,7 +1532,7 @@ def _get_default_fewshot_index() -> FewShotIndex | None:
             return None
 
         try:
-            retriever = BM25Retriever(combined)
+            retriever: Retriever = BM25Retriever(combined)
         except ImportError as exc:
             logger.info("rank_bm25 not installed; FewShotIndex degrades to no-op: %s", exc)
             retriever = _NoopRetriever()
