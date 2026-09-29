@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from arango_query_core.mapping import MappingBundle
@@ -1456,6 +1458,32 @@ def _ensure_nl_corrections_listener() -> None:
         logger.info("nl_corrections listener registration failed: %s", exc)
 
 
+#: Generated few-shot banks to load after the shipped seed corpora — an
+#: ``os.pathsep``-separated list of files written by ``arango-cypher-py
+#: synthbank``. Opt-in: adding examples changes every NL prompt, which an eval
+#: run (``RUN_NL2CYPHER_EVAL=1``) must justify, so nothing is loaded by default.
+FEWSHOT_BANKS_ENV = "NL2CYPHER_FEWSHOT_BANKS"
+
+
+def _generated_bank_paths() -> list[Path]:
+    """Existing bank files named by :data:`FEWSHOT_BANKS_ENV`.
+
+    A configured path that does not exist is logged, not raised: the NL path
+    must keep serving, but a typo must not pass silently as "no examples".
+    """
+    raw = os.environ.get(FEWSHOT_BANKS_ENV, "")
+    found: list[Path] = []
+    for entry in (e.strip() for e in raw.split(os.pathsep)):
+        if not entry:
+            continue
+        path = Path(entry).expanduser()
+        if path.is_file():
+            found.append(path)
+        else:
+            logger.warning("%s names %s, which is not a file; skipped", FEWSHOT_BANKS_ENV, path)
+    return found
+
+
 def _get_default_fewshot_index() -> FewShotIndex | None:
     """Lazily build the default FewShotIndex from shipped corpora + user
     corrections.
@@ -1483,7 +1511,7 @@ def _get_default_fewshot_index() -> FewShotIndex | None:
         from arango_query_core.nl.fewshot import BM25Retriever, FewShotIndex, _NoopRetriever
 
         corpora_dir = Path(__file__).parent / "corpora"
-        paths = sorted(corpora_dir.glob("*.yml"))
+        paths = sorted(corpora_dir.glob("*.yml")) + _generated_bank_paths()
 
         seed_index = FewShotIndex.from_corpus_files(paths) if paths else None
         seed_examples: list[tuple[str, str]] = list(seed_index.examples) if seed_index is not None else []
