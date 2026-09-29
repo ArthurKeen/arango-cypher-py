@@ -667,6 +667,14 @@ environment to the container, and without `ROOT_PATH` the `/docs` page renders
 but points Swagger at the cluster-root spec — documenting ArangoDB's Core API
 instead of this service.
 
+The service MUST answer at its bare mount root: the platform's Apps view opens a
+BYOC service at its mount prefix, not at `/frontend`, so a service that serves
+only its named UI mounts appears as "App Not Responding" in the launcher while
+every other endpoint reports healthy. Only the exact root is bound — never a
+catch-all — so unknown paths still return a genuine 404 rather than the SPA shell
+with status 200. Deployment verification MUST probe the mount root, not only the
+endpoints the service defines.
+
 The persistent schema cache (a user-land collection in the connected DB) lets
 containerized replicas share a warm cache and survive restarts. See
 [`byoc-deployment.md`](./byoc-deployment.md) for the Container Manager runbook and
