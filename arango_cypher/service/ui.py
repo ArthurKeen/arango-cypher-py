@@ -190,6 +190,21 @@ if _UI_DIR.is_dir():
     async def _frontend_spa_fallback(full_path: str) -> FileResponse:
         return _spa_serve(full_path)
 
+    # Platform app-launcher mount: the service ROOT. The Arango platform's Apps
+    # view opens the service at its bare mount prefix, not at /frontend, so a
+    # service that only answers /frontend shows "App Not Responding … (HTTP
+    # status: 404)" in the launcher while every other probe passes. Verified
+    # against the live BYOC deployment 2026-09-28: /frontend, /ui and /health
+    # all returned 200 while the mount root returned 404.
+    #
+    # Only the exact root is bound — no catch-all — so unknown paths still get
+    # a real 404 from the API instead of silently returning the SPA shell.
+    # Assets resolve because the Vite build uses `base: "./"` and /assets is
+    # mounted at the app root just below.
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def _root_index() -> FileResponse:
+        return _html_response(_UI_DIR / "index.html")
+
     # The Vite build emits root-relative URLs (`/assets/...`, `/favicon.svg`,
     # `/icons.svg`) to match its dev server (`port: 5173`, no `base: '/ui/'`).
     # Mount them at the app root so the production-mode `/ui` page can load

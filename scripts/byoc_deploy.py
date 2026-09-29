@@ -405,7 +405,15 @@ def cmd_release(args: argparse.Namespace) -> int:
 def cmd_verify(args: argparse.Namespace) -> int:
     platform, endpoint, db_name = resolve_config(args)
     base = f"{endpoint.rstrip('/')}{mount_path(args.instance, db_name)}"
-    checks = [("/openapi.json", "API"), ("/connections", "service"), ("/frontend", "Workbench")]
+    # The root comes first deliberately: it is what the platform's Apps view
+    # opens, and a service can answer every other path while 404-ing there.
+    checks = [
+        ("/", "app root"),
+        ("/openapi.json", "API"),
+        ("/connections", "service"),
+        ("/frontend", "Workbench"),
+        ("/health", "health"),
+    ]
     ok = True
     for path, label in checks:
         url = f"{base}{path}"

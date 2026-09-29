@@ -313,6 +313,34 @@ class TestUiCacheHeaders:
         cc = resp.headers.get("cache-control", "")
         assert "no-cache" in cc
 
+    def test_service_root_serves_the_spa_for_the_platform_app_launcher(self):
+        """The bare mount root must serve the SPA, not 404.
+
+        The Arango platform's Apps view opens a BYOC service at its mount
+        prefix, not at /frontend. A service answering only /frontend shows
+        "App Not Responding ... (HTTP status: 404)" in the launcher while
+        /frontend, /ui, /health and /openapi.json all return 200 — which is
+        exactly how this shipped on 2026-09-28 and how the probes missed it.
+        """
+        if not self._ui_dist_present():
+            pytest.skip("ui/dist not built")
+
+        resp = client.get("/")
+
+        assert resp.status_code == 200
+        assert resp.headers.get("content-type", "").startswith("text/html")
+        assert "no-cache" in resp.headers.get("cache-control", "")
+
+    def test_root_mount_does_not_swallow_unknown_paths(self):
+        """Only the exact root is bound — an unknown path is still a real 404.
+
+        A catch-all at the root would make every mistyped API call return the
+        SPA shell with 200, turning client bugs into silent blank pages.
+        """
+        resp = client.get("/definitely-not-a-route")
+
+        assert resp.status_code == 404
+
     def test_ui_assets_immutable(self):
         from arango_cypher.service import _UI_DIR  # type: ignore[attr-defined]
 
