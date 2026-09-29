@@ -10,6 +10,11 @@ covered here:
 2. **Unnamed-edge collision** across MATCH clauses
    (`_compile_match_from_bound`): a second, unnamed edge's synthetic default name
    ``r`` aliased the first MATCH's edge ``r`` (``FOR m, r … FOR w, r``).
+3. **Single-column DISTINCT** (`_append_return`): ``RETURN DISTINCT p`` inferred
+   the collect variable ``p`` and emitted ``COLLECT p = p``, re-declaring the
+   loop variable — every bare-variable DISTINCT failed at execution. Found by
+   the synthbank generator's execution filter; the step-2 renderer tests only
+   checked that the Cypher translated.
 """
 
 from __future__ import annotations
@@ -130,3 +135,72 @@ class TestCollectGroupVarShadowing:
             mapping=pg,
         )
         assert "COLLECT name = p.name AGGREGATE c = COUNT(m)" in out.aql
+
+
+class TestSingleColumnDistinct:
+    """``COLLECT <v> = …`` must never re-declare a variable already in scope."""
+
+    @staticmethod
+    def _collect_var(aql: str) -> str:
+        match = re.search(r"\bCOLLECT\s+([A-Za-z_]\w*)\s*=", aql)
+        assert match, f"no COLLECT in AQL:\n{aql}"
+        return match.group(1)
+
+    @pytest.mark.parametrize(
+        "cypher",
+        [
+            "MATCH (p:Person) RETURN DISTINCT p",
+            "MATCH (result:Person) RETURN DISTINCT result",
+            "MATCH (p:Person) RETURN DISTINCT p ORDER BY p LIMIT 3",
+            # An alias naming another in-scope variable collides the same way.
+            "MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN DISTINCT m.title AS p",
+            "MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN DISTINCT m",
+        ],
+    )
+    def test_collect_variable_is_not_already_declared(self, pg, cypher: str):
+        aql = translate(cypher, mapping=pg).aql
+
+        collect_var = self._collect_var(aql)
+
+        assert collect_var not in _for_loop_vars(aql), f"COLLECT re-declares {collect_var!r}:\n{aql}"
+        assert re.search(rf"\bRETURN\s+{collect_var}\b", aql), aql
+
+    def test_a_non_colliding_key_is_unchanged(self, pg):
+        """Only a collision renames: ``p.name`` still collects into ``name``."""
+        aql = translate("MATCH (p:Person) RETURN DISTINCT p.name", mapping=pg).aql
+
+        assert self._collect_var(aql) == "name"
+
+
+class TestDeclaredAqlVars:
+    def test_collects_every_declaration_form(self):
+        from arango_cypher._translate_v0.naming import _declared_aql_vars
+
+        lines = [
+            "FOR p IN @@collection",
+            "  FOR m, r IN 1..1 OUTBOUND p @@edges",
+            "  FOR v, e, path IN 1..3 ANY m @@edges",
+            "  LET score = p.age * 2",
+            "  COLLECT g = m.genre, y = m.year AGGREGATE total = SUM(p.age) INTO rows",
+            "  COLLECT WITH COUNT INTO n",
+        ]
+
+        assert _declared_aql_vars(lines) == {
+            "p",
+            "m",
+            "r",
+            "v",
+            "e",
+            "path",
+            "score",
+            "g",
+            "y",
+            "total",
+            "rows",
+            "n",
+        }
+
+    def test_comparisons_are_not_declarations(self):
+        from arango_cypher._translate_v0.naming import _declared_aql_vars
+
+        assert _declared_aql_vars(["  FILTER a == b", "  LET x = (y == z)"]) == {"x"}

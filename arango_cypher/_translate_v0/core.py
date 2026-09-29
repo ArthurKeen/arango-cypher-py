@@ -27,6 +27,7 @@ from .hints import (
 from .literals import _aql_string_literal
 from .naming import (
     _aql_collection_ref,
+    _declared_aql_vars,
     _pick_bind_key,
     _pick_fresh_var,
     _rewrite_vars,
@@ -3326,6 +3327,14 @@ def _append_return(
         if len(compiled_items) == 1 and not is_star:
             alias, expr = compiled_items[0]
             col_var = alias or _infer_key(expr) or "value"
+            # `RETURN DISTINCT p` infers the key `p`, and `COLLECT p = p`
+            # re-declares the loop variable: ERR 1511 at execution, for every
+            # bare-variable DISTINCT. An alias naming any in-scope variable
+            # collides the same way. The column is scalar, so the collect
+            # variable's name never reaches the result — rename on collision.
+            declared = _declared_aql_vars(lines)
+            if col_var in declared:
+                col_var = _pick_fresh_var(f"{col_var}_distinct", forbidden_vars=declared)
             lines.append(f"  COLLECT {col_var} = {expr}")
             if order_ctx is not None:
                 lines.append(f"  SORT {col_var}")

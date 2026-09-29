@@ -20,6 +20,38 @@ def _pick_fresh_var(name: str, *, forbidden_vars: set[str]) -> str:
     return out
 
 
+_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
+_FOR_DECL = re.compile(rf"\bFOR\s+({_IDENT})(?:\s*,\s*({_IDENT}))?(?:\s*,\s*({_IDENT}))?\s+IN\b")
+_LET_DECL = re.compile(rf"\bLET\s+({_IDENT})\s*=(?!=)")
+_COLLECT_CLAUSE = re.compile(r"\bCOLLECT\b(.*)")
+_ASSIGN = re.compile(rf"(?:^|,)\s*({_IDENT})\s*=(?!=)")
+_INTO_DECL = re.compile(rf"\bINTO\s+({_IDENT})")
+_AGGREGATE_CLAUSE = re.compile(r"\bAGGREGATE\b(.*)")
+
+
+def _declared_aql_vars(lines: list[str]) -> set[str]:
+    """Every AQL variable the emitted *lines* declare (FOR, LET, COLLECT,
+    AGGREGATE, INTO).
+
+    For callers with no scope set of their own that are about to declare a
+    variable — reusing a declared name is ERR 1511 ("assigned multiple
+    times"). Deliberately over-inclusive: a name declared inside a subquery
+    is counted too, which costs at most an unneeded rename, never a collision.
+    """
+    declared: set[str] = set()
+    for line in lines:
+        for match in _FOR_DECL.finditer(line):
+            declared.update(g for g in match.groups() if g)
+        declared.update(_LET_DECL.findall(line))
+        declared.update(_INTO_DECL.findall(line))
+        for clause_re in (_COLLECT_CLAUSE, _AGGREGATE_CLAUSE):
+            clause = clause_re.search(line)
+            if clause:
+                head = re.split(r"\b(?:INTO|AGGREGATE|WITH COUNT|OPTIONS|KEEP)\b", clause.group(1))[0]
+                declared.update(_ASSIGN.findall(head))
+    return declared
+
+
 def _pick_bind_key(base: str, bind_vars: dict[str, Any]) -> str:
     if base not in bind_vars:
         return base
