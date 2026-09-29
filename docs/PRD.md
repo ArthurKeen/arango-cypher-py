@@ -474,6 +474,18 @@ The pipeline implements the SOTA Text2Cypher reference architecture
   `LLM_PROVIDER`. Without a key, a rule-based fallback runs (demo/offline only).
 - **Dynamic few-shot retrieval (WP-25.1)** — `FewShotIndex` with BM25 over shipped
   `movies`/`northwind`/`social` corpora plus user-approved corrections.
+- **Synthetic few-shot bank (query-first, build-time)** — `arango-cypher-py synthbank`
+  generates a per-database bank from the conceptual schema using the nine shared
+  `arango_query_core.nl.synthbank` shapes, with slots filled from values sampled
+  out of live data *through the transpiler* (the mapping stays authoritative).
+  Every kept gold Cypher MUST translate and execute non-empty; a ranking shape
+  MUST have a strictly unique extremum; an entity anchor MUST be near-unique
+  (≥ 0.95 distinct in the sample); a property is orderable only when its values
+  are real numbers or ISO dates. Paraphrase is opt-in — an LLM provider is passed
+  explicitly, never inferred from a configured key — and every paraphrase MUST
+  pass the offline slot-preserving guard. Generated banks load through
+  `FewShotIndex` only when listed in `NL2CYPHER_FEWSHOT_BANKS`: off by default,
+  because the prompt change must be justified by an eval run first.
 - **Pre-flight entity resolution (WP-25.2)** — `EntityResolver` rewrites user
   string literals against the live DB before generation, combining exact /
   contains / reverse-contains / `LEVENSHTEIN_DISTANCE` scoring with a configurable

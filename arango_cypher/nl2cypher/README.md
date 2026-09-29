@@ -15,6 +15,14 @@ the schema, and the transpiler converts it to AQL. This preserves the PRD
 | `entity_resolution.py` | `EntityResolver` for pre-flight entity resolution (WP-25.2) |
 | `tenant_guardrail.py` | Wave 4r tenant-scoping postcondition — `TenantContext`, `check_tenant_scope()`, `prompt_section()`. Fires when a context is active and the emitted Cypher contains no `:Tenant` binding; translator fails closed after retry exhaustion. |
 | `corpora/*.yml` | Seed corpora for the default few-shot index |
+| `predicate_index_builder.py` | Synthbank step 1: `PredicateIndex` + signals from a conceptual schema |
+| `synthbank_renderers.py` | Synthbank step 2: one Cypher renderer per shared shape |
+| `synthbank_binder.py` | Synthbank steps 3 + 5: profile the data, sample real fillers, execution-filter, write a loadable bank |
+| `synthbank_paraphrase.py` | Synthbank step 4: opt-in paraphrase behind the offline `slot_preserving` guard |
+
+Generate a bank with `arango-cypher-py synthbank --db <name> -o bank.yml`
+(`--paraphrase` to add LLM paraphrases), then load it by listing the file in
+`NL2CYPHER_FEWSHOT_BANKS` (`os.pathsep`-separated). Off by default.
 
 ## Multi-tenant scoping (Wave 4r)
 

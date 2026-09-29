@@ -238,6 +238,85 @@ def mapping(
 
 
 @app.command()
+def synthbank(
+    output: Path = typer.Option(..., "--output", "-o", help="Bank YAML to write"),
+    host: str = typer.Option(None, "--host", help="ArangoDB host"),
+    port: int = typer.Option(None, "--port", help="ArangoDB port"),
+    db: str = typer.Option(None, "--db", help="Database name"),
+    user: str = typer.Option(None, "--user", help="Username"),
+    password: str = typer.Option(None, "--password", help="Password"),
+    mapping_file: Path = typer.Option(
+        None, "--mapping-file", "-m", help="Mapping JSON (default: acquire live)"
+    ),
+    seed: int = typer.Option(0, "--seed", help="Sampling seed; same seed + data = same bank"),
+    paraphrase: bool = typer.Option(
+        False, "--paraphrase/--no-paraphrase", help="Add LLM paraphrases (uses LLM_PROVIDER / API-key env)"
+    ),
+    k: int = typer.Option(3, "--k", help="Paraphrases per example"),
+    report_file: Path = typer.Option(None, "--report", help="Write the per-shape yield report as JSON"),
+) -> None:
+    """Generate a synthetic few-shot bank from a live database.
+
+    Every example is sampled from real data, rendered as Cypher, translated and
+    executed; only non-empty results are kept. Load the bank by adding its path
+    to NL2CYPHER_FEWSHOT_BANKS.
+    """
+    from arango_cypher.nl2cypher.synthbank_binder import (
+        TranspilingExecutor,
+        generate_bank_with_report,
+        write_bank,
+    )
+    from arango_cypher.schema_acquire import get_mapping
+
+    provider = None
+    if paraphrase:
+        from arango_query_core.nl.providers import get_llm_provider
+
+        provider = get_llm_provider()
+        if provider is None:
+            console.print("[red]--paraphrase needs an LLM provider: set LLM_PROVIDER and its API key.[/red]")
+            raise typer.Exit(1)
+
+    try:
+        database = _connect(host, port, db, user, password)
+    except Exception as exc:
+        console.print(f"[red]Connection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    bundle = _load_mapping(mapping_file, None)
+    if bundle is None:
+        try:
+            bundle = get_mapping(database)
+        except Exception as exc:
+            console.print(f"[red]Failed to acquire mapping:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+    try:
+        bank, report = generate_bank_with_report(
+            bundle, TranspilingExecutor(database, bundle), seed=seed, provider=provider, k_paraphrases=k
+        )
+    except Exception as exc:
+        console.print(f"[red]Bank generation failed:[/red] {type(exc).__name__}: {exc}")
+        raise typer.Exit(1) from exc
+
+    written = write_bank(bank, output, source=f"database {database.name!r}, seed {seed}")
+    if report_file is not None:
+        report_file.write_text(json.dumps(report, indent=2, default=str))
+
+    table = Table(title="Synthbank yield")
+    table.add_column("Shape")
+    table.add_column("Kept", justify="right")
+    table.add_column("Dropped", justify="right")
+    for shape, entry in report.items():
+        if shape != "_profile":
+            table.add_row(shape, str(entry["kept"]), str(entry["dropped"]))
+    console.print(table)
+    console.print(
+        f"[green]{len(bank['examples'])} examples ({written} entries with paraphrases) written to {output}[/green]"
+    )
+
+
+@app.command()
 def doctor(
     host: str = typer.Option(None, "--host", help="ArangoDB host"),
     port: int = typer.Option(None, "--port", help="ArangoDB port"),
