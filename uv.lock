@@ -61,7 +61,7 @@ wheels = [
 [[package]]
 name = "arango-byoc-deploy"
 version = "0.1.0"
-source = { git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=6d2cfe6233796c2857b6a318d7e37a22bb0dbbac#6d2cfe6233796c2857b6a318d7e37a22bb0dbbac" }
+source = { git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=0006881506ce079af15170ee6c81e211596bca81#0006881506ce079af15170ee6c81e211596bca81" }
 dependencies = [
     { name = "requests" },
 ]
@@ -148,7 +148,7 @@ requires-dist = [
 provides-extras = ["analyzer", "service", "cli", "owl", "dev", "neo4j"]
 
 [package.metadata.requires-dev]
-deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=6d2cfe6233796c2857b6a318d7e37a22bb0dbbac" }]
+deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=0006881506ce079af15170ee6c81e211596bca81" }]
 
 [[package]]
 name = "arango-query-core"
