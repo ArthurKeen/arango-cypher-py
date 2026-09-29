@@ -19,6 +19,16 @@ export interface ConnectResponse {
   databases: string[];
 }
 
+// GET /connect/platform — whether this page came through the platform
+// gateway with the user's platform login, so the Workbench can open a
+// session without asking for credentials.
+export interface PlatformStatus {
+  available: boolean;
+  // The database a platform session opens by default: the instance's mount.
+  database: string;
+  reason: string | null;
+}
+
 export interface ConnectDefaults {
   url: string;
   database: string;
@@ -220,6 +230,19 @@ export async function connect(req: ConnectRequest): Promise<ConnectResponse> {
   return request("/connect", {
     method: "POST",
     body: JSON.stringify(req),
+  });
+}
+
+export async function getPlatformStatus(): Promise<PlatformStatus> {
+  return request("/connect/platform");
+}
+
+// Open a session as the signed-in platform user. No credentials: the
+// gateway forwards the platform login with the request.
+export async function connectPlatform(database?: string): Promise<ConnectResponse> {
+  return request("/connect/platform", {
+    method: "POST",
+    body: JSON.stringify(database ? { database } : {}),
   });
 }
 
