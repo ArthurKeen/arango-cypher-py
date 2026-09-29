@@ -414,11 +414,17 @@ class TestProviderResolution:
 
 
 class TestAnthropicLiveSmoke:
-    """Opt-in real-API smoke test (requires ANTHROPIC_API_KEY)."""
+    """Opt-in real-API smoke test (requires RUN_LIVE=1 and ANTHROPIC_API_KEY).
+
+    A key being *present* is not consent to spend it: developers keep keys in
+    ``.env`` for the NL pipeline, and a stale one previously turned this skip
+    into an HTTP 401 failure on every local run.
+    """
 
     @pytest.mark.skipif(
-        not __import__("os").environ.get("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set; skipping live Anthropic smoke",
+        __import__("os").environ.get("RUN_LIVE", "").strip() != "1"
+        or not __import__("os").environ.get("ANTHROPIC_API_KEY"),
+        reason="live Anthropic smoke is opt-in: set RUN_LIVE=1 with ANTHROPIC_API_KEY",
     )
     def test_live_cache_hit_on_second_identical_request(self) -> None:
         """Two identical calls in a row should yield ``cached_tokens > 0`` on the second.

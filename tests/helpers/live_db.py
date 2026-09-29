@@ -2,19 +2,22 @@
 
 Live tests execute translated AQL against a *real* remote ArangoDB so we can
 assert result *shape* (path vs scalar vs grouped row), not just transpile
-success. They are gated two ways so the default offline suite never touches a
-network:
+success. They run only on explicit consent: :func:`require_live_db` skips unless
+``RUN_LIVE=1``, matching the repo's ``RUN_INTEGRATION`` / ``RUN_CROSS`` /
+``RUN_TCK`` convention. It then also skips when ``ARANGO_URL`` is unset or the
+server is unreachable.
 
-* marked ``@pytest.mark.live`` and named with ``live`` so the repo's standard
-  ``-k "not live"`` invocation deselects them, and
-* :func:`require_live_db` calls ``pytest.skip`` when ``ARANGO_URL`` is unset or
-  the server is unreachable.
+Credential *presence* is deliberately not consent. ``arango_cypher.service``
+calls ``load_dotenv()`` at import time, so any test that imports the service
+inherits a developer's repo-root ``.env``. Before this gate, configuring real
+credentials for an unrelated purpose — a BYOC deploy, say — silently switched
+these tests on against whatever database ``.env`` named, where the FinReflectKG
+data does not exist, and "the suite is green" came to depend on who ran it.
 
-Credentials come from the same ``ARANGO_*`` environment variables the CLI and
-service use. Run them with, e.g.::
+Run them with, e.g.::
 
     set -a; source .env; set +a
-    .venv/bin/python -m pytest tests/test_live_finreflectkg_execution.py -q
+    RUN_LIVE=1 .venv/bin/python -m pytest tests/test_live_finreflectkg_execution.py -q
 """
 
 from __future__ import annotations
@@ -35,12 +38,20 @@ def _verify_ssl() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def live_opted_in() -> bool:
+    """True only when the caller has explicitly asked for live tests."""
+    return os.environ.get("RUN_LIVE", "").strip() == "1"
+
+
 def require_live_db(database: str):
     """Return a connected ``StandardDatabase`` or skip the test.
 
-    Skips (never fails) when ``ARANGO_URL`` is absent or the server/database is
-    unreachable, so a developer without live credentials still gets a green run.
+    Skips (never fails) unless ``RUN_LIVE=1``, and then when ``ARANGO_URL`` is
+    absent or the server/database is unreachable — so the default suite behaves
+    identically whether or not a developer has credentials configured.
     """
+    if not live_opted_in():
+        pytest.skip("live tests are opt-in: set RUN_LIVE=1")
     url = os.environ.get("ARANGO_URL")
     if not url:
         pytest.skip("ARANGO_URL not set; live execution tests skipped")

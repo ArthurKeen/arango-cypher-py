@@ -8,9 +8,8 @@ comes back — the concern the "show me, as a graph" defect surfaced:
 * a path ``RETURN p`` yields graph objects (``{nodes: [...], edges: [...]}``)
   the UI can actually render.
 
-They are opt-in (see :mod:`tests.helpers.live_db`): marked ``live`` and named
-with ``live`` so the default ``-k "not live"`` suite skips them, and they skip
-(never fail) when ``ARANGO_URL`` is unset. The live DB is large, so every query
+They are opt-in (see :mod:`tests.helpers.live_db`): they skip (never fail)
+unless ``RUN_LIVE=1``, and then when ``ARANGO_URL`` is unset. The live DB is large, so every query
 is tightly ``LIMIT``-bounded and runtime-capped.
 """
 
