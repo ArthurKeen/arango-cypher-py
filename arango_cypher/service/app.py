@@ -23,16 +23,34 @@ from __future__ import annotations
 
 import logging as _logging
 import os
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+#: Set to ``1`` to skip loading ``.env`` at import. The test suite sets it
+#: (tests/conftest.py): the repo ``.env`` names a real cluster, and loading it
+#: into every test process leaked ``ARANGO_DB`` / ``ARANGO_URL`` into tests
+#: that read those as their target. Deployments leave it unset — a BYOC
+#: bundle's baked ``ROOT_PATH`` arrives through exactly this load.
+NO_DOTENV_ENV = "ARANGO_CYPHER_NO_DOTENV"
+
+
+def _load_dotenv_unless_disabled(env: Mapping[str, str], loader: Callable[[], Any] | None) -> bool:
+    """Run *loader* unless :data:`NO_DOTENV_ENV` is ``1``; return whether it ran."""
+    if loader is None or env.get(NO_DOTENV_ENV, "").strip() == "1":
+        return False
+    loader()
+    return True
+
+
+try:
+    from dotenv import load_dotenv as _dotenv_loader
+except ImportError:
+    _dotenv_loader = None
+
+_load_dotenv_unless_disabled(os.environ, _dotenv_loader)
 
 
 def _require_analyzer_unless_opted_out() -> None:

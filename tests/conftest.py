@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# Before any test module imports arango_cypher.service: the service loads the
+# repo .env at import, which names a real cluster, and its ARANGO_DB /
+# ARANGO_URL then became the target of tests that read those variables.
+# Tests get connection settings only from the environment they are run with.
+# Live runs say so explicitly: `set -a; source .env; set +a; RUN_LIVE=1 ...`.
+os.environ.setdefault("ARANGO_CYPHER_NO_DOTENV", "1")
 
 import pytest
 
