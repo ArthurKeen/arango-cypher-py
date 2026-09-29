@@ -35,6 +35,9 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.helpers.service_reload import fresh_service as _fresh_service
+from tests.helpers.service_reload import patched_arango_client as _patched_arango_client
+
 # ---------------------------------------------------------------------------
 # Fakes — minimal python-arango shape ``connect.py`` consumes
 # ---------------------------------------------------------------------------
@@ -98,71 +101,6 @@ def _make_fake_client(db: _FakeDb):
             self.closed = True
 
     return _FakeClient
-
-
-def _fresh_service():
-    """Return the *live* ``arango_cypher.service`` module from
-    ``sys.modules``, re-importing if a previous test removed it.
-
-    Other test files (notably ``test_service_hardening.py``) reload
-    the service module via ``importlib.import_module`` and replace
-    ``sys.modules["arango_cypher.service"]``. A top-level
-    ``from arango_cypher import service`` captures the pre-reload
-    object; this helper re-resolves on every call so our tests always
-    patch the same module instance the routes actually import.
-    """
-    if "arango_cypher.service" not in sys.modules:
-        return importlib.import_module("arango_cypher.service")
-    return sys.modules["arango_cypher.service"]
-
-
-@contextmanager
-def _patched_arango_client(fake_client_factory):
-    """Patch ``arango_cypher.service.ArangoClient`` on *every* live
-    package object that holds a reference to it.
-
-    The test_service_hardening fixture reloads the service module via
-    ``importlib.import_module``, after which two distinct objects can
-    both claim to be ``arango_cypher.service``:
-
-    * ``sys.modules["arango_cypher.service"]`` — the version restored
-      by the fixture's teardown (the *saved* original).
-    * ``arango_cypher.service`` (attribute on the parent package) —
-      the *reloaded* module, which the autouse fixture monkeypatched
-      and whose ``ArangoClient`` may still be the test stub.
-
-    The ``/connect`` endpoint does ``from arango_cypher import service
-    as _svc``, which reads the parent-package attribute — i.e. the
-    reloaded module. To make the test deterministic regardless of which
-    test ran before us, we override ``ArangoClient`` on every live
-    candidate; cleanup restores the original references.
-    """
-    parent = sys.modules.get("arango_cypher")
-    candidates: list[Any] = []
-    sys_mod = sys.modules.get("arango_cypher.service")
-    if sys_mod is not None:
-        candidates.append(sys_mod)
-    parent_attr = getattr(parent, "service", None) if parent is not None else None
-    if parent_attr is not None and not any(parent_attr is c for c in candidates):
-        candidates.append(parent_attr)
-
-    if not candidates:
-        # Force-resolve when neither view exists yet.
-        candidates.append(importlib.import_module("arango_cypher.service"))
-
-    saved: list[tuple[Any, Any]] = []
-    for mod in candidates:
-        saved.append((mod, getattr(mod, "ArangoClient", None)))
-        mod.ArangoClient = fake_client_factory
-    try:
-        yield
-    finally:
-        for mod, orig in saved:
-            if orig is None:
-                if hasattr(mod, "ArangoClient"):
-                    delattr(mod, "ArangoClient")
-            else:
-                mod.ArangoClient = orig
 
 
 def _app():

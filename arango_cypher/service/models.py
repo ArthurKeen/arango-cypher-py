@@ -80,6 +80,26 @@ class ConnectResponse(BaseModel):
     is_admin: bool = False
 
 
+class PlatformConnectRequest(BaseModel):
+    """Body for ``POST /connect/platform``.
+
+    No credentials: the session authenticates as the platform JWT the
+    gateway forwards. ``database`` of ``None`` opens the instance's mount
+    database (see :func:`arango_cypher.service.platform_auth.default_database`).
+    """
+
+    database: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+
+
+class PlatformStatus(BaseModel):
+    """``GET /connect/platform`` — can this request open a platform session?"""
+
+    available: bool
+    database: str
+    #: Why ``available`` is false; ``None`` when it is true.
+    reason: str | None = None
+
+
 class TenantDiscoverRequest(BaseModel):
     """Body for ``POST /tenants/discover``.
 

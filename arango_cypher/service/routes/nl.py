@@ -138,6 +138,11 @@ def nl2cypher_endpoint(
             auth_session.touch()
     elif req.use_entity_resolution and req.session_token:
         sess = _sessions.get(req.session_token)
+        # A platform session acts as the JWT on the request; only the
+        # header-resolved ``bound_session`` has been re-bound to it, so a
+        # body token alone must not reach its (possibly stale) handle.
+        if sess is not None and sess.platform_token is not None and sess is not bound_session:
+            sess = None
         if sess is not None:
             db = sess.db
             sess.touch()

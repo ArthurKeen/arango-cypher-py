@@ -30,6 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .app import _PUBLIC_MODE, _svc_logger, app
+from .platform_auth import forwarded_token, open_platform_database
 
 # ---------------------------------------------------------------------------
 # Sessions (in-memory dict, TTL-based, LRU-evicted)
@@ -120,6 +121,11 @@ class _Session:
     Admin sessions still go through Layer 5; only the explicit
     ``cross_tenant=True`` request flag relaxes the boundary, and that
     is Wave 9's concern.
+
+    ``platform_token`` is set on sessions opened by ``/connect/platform``:
+    the platform JWT the ``db`` handle currently authenticates with. Such a
+    session follows the caller's forwarded JWT on every request (see
+    :func:`_follow_platform_identity`) and holds no password.
     """
 
     __slots__ = (
@@ -132,6 +138,7 @@ class _Session:
         "tenant_key",
         "is_admin",
         "graph_name",
+        "platform_token",
     )
 
     def __init__(
@@ -144,6 +151,7 @@ class _Session:
         tenant_key: str | None = None,
         is_admin: bool = False,
         graph_name: str | None = None,
+        platform_token: str | None = None,
     ):
         self.token = token
         self.db = db
@@ -156,6 +164,7 @@ class _Session:
         # Optional named-graph scoping (PRD §17): when set, mapping-consuming
         # endpoints restrict introspection to this graph's collections.
         self.graph_name = graph_name
+        self.platform_token = platform_token
 
     def touch(self) -> None:
         self.last_used = time.time()
@@ -186,12 +195,42 @@ def _evict_lru() -> None:
             s.client.close()
 
 
+#: Why a platform session's request was refused: it arrived without the
+#: platform JWT the session authenticates with.
+PLATFORM_TOKEN_MISSING = "This session uses your platform login, but the request did not carry it. Reload the page to sign in again."
+
+
+def _follow_platform_identity(session: _Session, request: Request, *, via_session_header: bool) -> bool:
+    """Keep a platform session authenticated as the caller's current JWT.
+
+    The platform rotates the JWT it forwards, so the one the session opened
+    with expires long before the session does. Each request re-binds the
+    ``db`` handle to the JWT that request carries. Returns ``False`` when a
+    platform session's request carries none — never fall back to the stored
+    token, which would let a request that bypassed the gateway act as the
+    user who opened the session.
+
+    When the session token itself arrived as ``Authorization: Bearer`` there
+    is no header left for a JWT, so such a request is refused too.
+    """
+    if session.platform_token is None:
+        return True
+    token = forwarded_token(request) if via_session_header else None
+    if token is None:
+        return False
+    if token != session.platform_token:
+        session.db = open_platform_database(session.client, session.db.name, token)
+        session.platform_token = token
+    return True
+
+
 def _get_session(request: Request) -> _Session:
     _prune_expired()
     # Prefer X-Arango-Session: the ArangoDB platform proxy replaces the standard
     # Authorization header with its own platform JWT before forwarding to the
     # BYOC container, making Bearer tokens unusable for app-level session auth.
     token = request.headers.get("X-Arango-Session", "")
+    via_session_header = bool(token)
     if not token:
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
@@ -204,6 +243,8 @@ def _get_session(request: Request) -> _Session:
             _sessions.pop(token, None)
             session.client.close()
         raise HTTPException(status_code=401, detail="Session expired or invalid")
+    if not _follow_platform_identity(session, request, via_session_header=via_session_header):
+        raise HTTPException(status_code=401, detail=PLATFORM_TOKEN_MISSING)
     session.touch()
     return session
 
@@ -222,6 +263,7 @@ def _optional_session(request: Request) -> _Session | None:
     """
     _prune_expired()
     token = request.headers.get("X-Arango-Session", "")
+    via_session_header = bool(token)
     if not token:
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
@@ -233,6 +275,8 @@ def _optional_session(request: Request) -> _Session | None:
         if session and session.expired:
             _sessions.pop(token, None)
             session.client.close()
+        return None
+    if not _follow_platform_identity(session, request, via_session_header=via_session_header):
         return None
     session.touch()
     return session
