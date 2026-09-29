@@ -1,0 +1,163 @@
+# Deploying arango-cypher-py as a BYOC service
+
+Deploys the FastAPI service plus the Cypher Workbench onto an ArangoDB platform
+cluster via the **Arango Container Manager** manual-packaging path: a single
+flat tarball onto a platform-provided Python base image. No OCI registry, no
+`docker build`.
+
+**Verified live on `prod.demo.pilot.arango.ai`**, 2026-09-28: package
+`arango-cypher-py 0.2.0-2`, service `arango-user-defined-ddrnc`, database `AIM`,
+at `/_service/uds/_db/AIM/arango-cypher-py/` — 38 routes, Workbench serving with
+both assets, 44 sample queries.
+
+This path is ported from `arango-ontoextract`, whose
+`docs/container-manager-deployment.md` is the fuller reference for the platform
+itself; everything below is what differs for this package.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Arango Container Manager pod (py12base + uv)                │
+│                                                              │
+│   ./entrypoint  (Python; line 1 is the literal `entrypoint`) │
+│      ├─ uv pip install -e ".[service]"                       │
+│      ├─ guard: loopback ARANGO_URL, missing analyzer         │
+│      └─ exec uvicorn arango_cypher.service:app               │
+│                                                              │
+│   FastAPI app                                                │
+│      ├─ /translate /execute /nl2cypher …  (38 routes)        │
+│      ├─ /frontend  → ui/dist   (AMP mount)                   │
+│      └─ /ui        → ui/dist   (legacy mount)                │
+└───────────────────────┬──────────────────────────────────────┘
+                        │ python-arango
+                        ▼
+              ArangoDB cluster (remote — never in this pod)
+```
+
+## Quick start
+
+```bash
+bash scripts/package-byoc.sh                       # build the tarball
+python3 scripts/byoc_deploy.py list                # what already exists
+python3 scripts/byoc_deploy.py release --replace   # upload + deploy + wait
+python3 scripts/byoc_deploy.py verify              # probe the public URL
+```
+
+Credentials come from repo-root `.env` (`ARANGO_URL`, `ARANGO_USER`,
+`ARANGO_PASSWORD`, `ARANGO_DB`). Nothing is written to disk and no credential is
+printed. `.env` is gitignored and is **not** bundled by default.
+
+## What ships in the tarball
+
+| Path in archive | Why |
+| --- | --- |
+| `entrypoint` | platform entry; **must** be at the root |
+| `arango_cypher/` | the package |
+| `pyproject.toml`, `uv.lock` | dependency resolution at boot |
+| `ui/dist/` | the Workbench; `arango_cypher/service/ui.py` resolves `<root>/ui/dist` |
+| `tests/fixtures/datasets/*/query-corpus.yml` | `/sample-queries` reads these (see below) |
+| `.env` | **only** with `PACKAGE_INCLUDE_ENV=1` — off by default |
+
+Flags: `PACKAGE_INCLUDE_UI=0` (headless API), `PACKAGE_BUILD_UI=0` (bundle the
+existing `ui/dist` without rebuilding), `PACKAGE_INCLUDE_SAMPLES=0`,
+`PACKAGE_USE_TOPDIR=1` (nested layout), `PACKAGE_INCLUDE_ENV=1`.
+
+## Platform behaviours that will bite
+
+**Entrypoint detection.** The platform runs `python /project/<first
+whitespace-separated word of the file named entrypoint>`. Line 1 must therefore
+begin with the literal token `entrypoint` — a shebang, docstring, comment or
+import there makes it try to execute `python /project/"""` and fail with a bare
+"No entrypoint found". Both the packager and `byoc_deploy.py preflight` assert
+this, because discovering it costs a full upload/deploy cycle.
+
+**Flat archive.** `entrypoint` at the tar root, not nested under a directory.
+
+**macOS xattrs.** Apple metadata (`com.apple.provenance`, `com.apple.quarantine`)
+leaks into PAX headers and makes some Linux extractors fail with `stream closed:
+EOF`. The packager exports `COPYFILE_DISABLE=1` and runs `xattr -cr`; both are
+no-ops on Linux.
+
+**No `pip` in the base venv.** `py12base` venvs frequently ship without a `pip`
+module, so the entrypoint prefers `uv pip install`, falling back to `ensurepip`.
+Pin the binary with `UV_BINARY` if `PATH` is minimal.
+
+**Base images are per-cluster.** The house standard `py13base` **does not exist**
+on `prod.demo.pilot.arango.ai`, which offers only `node22base`, `py12base`,
+`py12cugraph`, `py12torch`, `test`. This package supports 3.11/3.12, so
+`py12base` is the default here.
+
+**All deploy env values must be strings.** The platform decodes the `env` map as
+protobuf `string->string`; a JSON boolean is rejected with `invalid value for
+string field value: true`. Hence `has_ui: "true"`.
+
+**There is no update endpoint.** An update is delete-then-deploy, which is what
+`release --replace` does. Without `--replace` the script refuses rather than
+leaving two services on one instance name.
+
+**`DEPLOYED` does not mean serving.** The platform reports `DEPLOYED` as soon as
+the pod launches, but the entrypoint then installs dependencies — roughly 45
+seconds before the first 200. `verify` is the real check; expect 404s before it.
+
+## Package-specific notes
+
+**The `[service]` extra is mandatory.** `arango_cypher.service` calls
+`_require_analyzer_unless_opted_out` at import, so a bundle without
+`arangodb-schema-analyzer` cannot boot. The entrypoint installs `.[service]` and
+fails with a named error if the analyzer is still missing. Override only with
+`ARANGO_CYPHER_ALLOW_HEURISTIC=1`, accepting degraded mappings (PRD §7.1).
+
+**`ROOT_PATH` is not required.** The Workbench is built with Vite `base: "./"`,
+so its assets resolve relative to whatever prefix the platform mounts — verified
+live: both the JS and CSS bundles return 200 under
+`/_service/uds/_db/AIM/arango-cypher-py/`. Set `ROOT_PATH` only if something
+needs absolute generated URLs.
+
+**`/sample-queries` reads from `tests/`.** The handler
+(`arango_cypher/service/routes/schema.py:588`) resolves
+`<root>/tests/fixtures/datasets/*/query-corpus.yml`. Those files live under
+`tests/` but are demo content, not test scaffolding — the first bring-up
+returned `{"queries": []}` until the packager bundled them. 12K of YAML for 44
+queries.
+
+**No database lives in the pod.** The entrypoint refuses to start when
+`ARANGO_URL`/`ARANGO_ENDPOINT` points at loopback, so the mistake is named at
+boot rather than surfacing as a connection error on the first `/connect`.
+Bypass for local repro with `ARANGO_CYPHER_ALLOW_LOOPBACK=1`.
+
+## Environment variables
+
+Set these in the Container Manager UI (preferred) or bundle a sanitized `.env`.
+
+| Variable | Notes |
+| --- | --- |
+| `ARANGO_URL` / `ARANGO_ENDPOINT` | coordinator URL; both spellings accepted |
+| `ARANGO_DB`, `ARANGO_USER`, `ARANGO_PASSWORD` | omit to make the Workbench connect interactively |
+| `ARANGO_VERIFY_SSL` | `true` in production |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | required for the NL → Cypher path only |
+| `PORT`, `HOST`, `SERVICE_WORKERS` | uvicorn binding; the platform normally sets `PORT` |
+| `ROOT_PATH` | only for absolute generated URLs — see above |
+| `ARANGO_CYPHER_ALLOW_HEURISTIC` | start without the analyzer (degraded) |
+| `ARANGO_CYPHER_ALLOW_LOOPBACK` | defeat the loopback guard (debug) |
+| `ARANGO_CYPHER_SKIP_DEP_INSTALL` | skip the boot-time install for a pre-baked venv |
+| `UV_BINARY` | pin `uv` when `PATH` is minimal |
+
+## Rollback
+
+Packages are immutable per `(name, version)` and every upload keeps its build
+number, so rolling back is redeploying an earlier one:
+
+```bash
+python3 scripts/byoc_deploy.py list                 # see the build numbers
+python3 scripts/byoc_deploy.py release --version 0.2.0-1 --exact --replace
+```
+
+`delete` removes the running service and leaves the uploaded packages alone.
+
+## Open item
+
+An `arango-transpiler` package (1.0.0, 1.0.1) is already uploaded to
+`prod.demo` from an earlier containerization effort, with no service running
+from it. This path deliberately uses the `arango-cypher-py` name instead; decide
+whether to retire the old package or adopt its name before any wider rollout.

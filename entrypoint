@@ -1,0 +1,204 @@
+entrypoint = __file__
+
+# ^ Line 1 MUST be exactly that token. The Arango Container Manager runs
+# `python /project/<first whitespace-separated word of this file>`, so a
+# shebang, docstring, comment or import on line 1 makes it try to execute
+# `python /project/"""` (or similar) and the deploy fails with a bare
+# "No entrypoint found". Do not "tidy" this line.
+#
+# Boot sequence for the BYOC bundle (see docs/byoc-deployment.md):
+#   1. install dependencies into the platform interpreter
+#   2. fail fast on a loopback Arango URL — no database lives in this pod
+#   3. fail fast when the schema analyzer is absent, unless opted out
+#   4. exec uvicorn on arango_cypher.service:app
+#
+# Mirrors arango-ontoextract/backend/entrypoint, whose hard-won platform
+# quirks are documented in that repo's docs/container-manager-deployment.md.
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+_TRUE = ("1", "true", "yes")
+
+
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUE
+
+
+def _find_uv() -> str | None:
+    """Resolve the uv binary; PATH is often minimal when the platform starts us."""
+    env_uv = os.environ.get("UV_BINARY", "").strip()
+    if env_uv and os.path.isfile(env_uv) and os.access(env_uv, os.X_OK):
+        return env_uv
+    found = shutil.which("uv")
+    if found:
+        return found
+    home = Path.home()
+    for candidate in (
+        Path("/usr/local/bin/uv"),
+        Path("/usr/bin/uv"),
+        home / ".local" / "bin" / "uv",
+        home / ".cargo" / "bin" / "uv",
+    ):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def _ensure_dependencies(root: str) -> None:
+    """Install this package plus the ``[service]`` extra into the running interpreter.
+
+    The ``[service]`` extra is not optional here: ``arango_cypher.service``
+    calls ``_require_analyzer_unless_opted_out`` at import time, so a bundle
+    without ``arangodb-schema-analyzer`` fails at boot unless the deployer has
+    set ``ARANGO_CYPHER_ALLOW_HEURISTIC=1``.
+
+    ``uv pip install`` is preferred over ``pip``: platform base-image venvs
+    frequently ship without a ``pip`` module, and uv does not need one.
+    """
+    if _flag("ARANGO_CYPHER_SKIP_DEP_INSTALL"):
+        print("==> dependency install skipped (ARANGO_CYPHER_SKIP_DEP_INSTALL)", flush=True)
+        return
+
+    uv = _find_uv()
+    if uv:
+        print(f"==> using uv: {uv}", flush=True)
+        subprocess.run(
+            [uv, "pip", "install", "-e", ".[service]", "--python", sys.executable],
+            cwd=root,
+            check=True,
+            env=os.environ,
+        )
+        return
+
+    print(
+        "==> uv not found (set UV_BINARY to pin it); bootstrapping pip then installing...",
+        flush=True,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "ensurepip", "--upgrade", "--default-pip"],
+        cwd=root,
+        check=True,
+        env=os.environ,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade-strategy", "only-if-needed", "-e", ".[service]"],
+        cwd=root,
+        check=True,
+        env=os.environ,
+    )
+
+
+def _arango_url() -> str:
+    """The configured coordinator URL, under either accepted spelling.
+
+    ``ARANGO_URL`` is this package's name; ``ARANGO_ENDPOINT`` is the spelling
+    the platform and the sibling services use, so both are accepted here rather
+    than forcing one on the deployer.
+    """
+    return (os.environ.get("ARANGO_URL") or os.environ.get("ARANGO_ENDPOINT") or "").strip()
+
+
+def _fail_if_loopback(url: str) -> None:
+    """No ArangoDB runs inside this pod — a loopback URL can only be a mistake.
+
+    Caught before uvicorn binds so the failure names its cause, instead of
+    surfacing later as a connection error on the first ``/connect`` call.
+    """
+    if _flag("ARANGO_CYPHER_ALLOW_LOOPBACK"):
+        return
+    lowered = url.lower()
+    if "localhost" in lowered or "127.0.0.1" in lowered or "[::1]" in lowered:
+        print(
+            "ERROR: the Arango URL points at loopback, which is unreachable from this\n"
+            "container — no database runs in the service pod.\n"
+            "  Set ARANGO_URL (or ARANGO_ENDPOINT) to the cluster coordinator, e.g.\n"
+            "  https://prod.demo.pilot.arango.ai:8529\n"
+            "  Bypass for local repro only: ARANGO_CYPHER_ALLOW_LOOPBACK=1",
+            flush=True,
+        )
+        sys.exit(2)
+
+
+def _warn_if_no_url(url: str) -> None:
+    """Absent config is legitimate: the Workbench can /connect interactively."""
+    if not url:
+        print(
+            "==> no ARANGO_URL/ARANGO_ENDPOINT set; the service will start and wait "
+            "for an interactive /connect",
+            flush=True,
+        )
+
+
+def _check_analyzer() -> None:
+    """Name the missing analyzer before the service import does it obscurely."""
+    if _flag("ARANGO_CYPHER_ALLOW_HEURISTIC"):
+        print("==> heuristic mapping allowed (ARANGO_CYPHER_ALLOW_HEURISTIC=1)", flush=True)
+        return
+    try:
+        import schema_analyzer  # noqa: F401
+    except ImportError:
+        print(
+            "ERROR: arangodb-schema-analyzer is not importable after dependency install.\n"
+            "  The service refuses to start on a heuristic mapping bundle (PRD §7.1).\n"
+            "  Either ensure the bundle installs the [service] extra, or set\n"
+            "  ARANGO_CYPHER_ALLOW_HEURISTIC=1 to accept degraded mappings.",
+            flush=True,
+        )
+        sys.exit(3)
+
+
+def main() -> None:
+    root = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(root)
+
+    _ensure_dependencies(root)
+
+    prev = os.environ.get("PYTHONPATH", "")
+    os.environ["PYTHONPATH"] = root + (os.pathsep + prev if prev else "")
+
+    url = _arango_url()
+    _fail_if_loopback(url)
+    _warn_if_no_url(url)
+    _check_analyzer()
+
+    port = os.environ.get("PORT") or os.environ.get("SERVICE_PORT") or "8000"
+    host = os.environ.get("HOST", "0.0.0.0")
+    workers = os.environ.get("SERVICE_WORKERS", "1")
+    root_path = os.environ.get("ROOT_PATH", "")
+
+    print(f"==> arango-cypher-py starting from {root}", flush=True)
+    if url:
+        print(f"==> Arango coordinator: {url}", flush=True)
+    if root_path:
+        print(f"==> ROOT_PATH: {root_path}", flush=True)
+    ui_index = Path(root) / "ui" / "dist" / "index.html"
+    print(f"==> UI bundle: {'present' if ui_index.is_file() else 'ABSENT (/frontend will 404)'}", flush=True)
+    print(f"==> listening on {host}:{port} (workers={workers})", flush=True)
+
+    # proxy-headers + forwarded-allow-ips mirror main.py: the platform ingress
+    # terminates TLS and forwards, so without these every generated URL and
+    # client IP is wrong.
+    argv = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "arango_cypher.service:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--workers",
+        str(workers),
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
+    ]
+    os.execvp(sys.executable, argv)
+
+
+if __name__ == "__main__":
+    main()
