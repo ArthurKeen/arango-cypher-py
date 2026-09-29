@@ -7,6 +7,7 @@ import { bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { oneDark } from "./theme";
 import SchemaGraph from "./SchemaGraph";
+import { exportMappingOwl, importMappingOwl } from "../api/client";
 
 interface Props {
   mapping: Record<string, unknown>;
@@ -233,13 +234,7 @@ export default function MappingPanel({ mapping, onChange, onClose }: Props) {
   const handleExportOwl = useCallback(async () => {
     setOwlBusy(true);
     try {
-      const res = await fetch("/mapping/export-owl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mapping: mappingRef.current }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await exportMappingOwl(mappingRef.current);
       const blob = new Blob([data.turtle], { type: "text/turtle" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -264,13 +259,7 @@ export default function MappingPanel({ mapping, onChange, onClose }: Props) {
       setOwlBusy(true);
       try {
         const turtle = await file.text();
-        const res = await fetch("/mapping/import-owl", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ turtle }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+        const data = await importMappingOwl(turtle);
         const merged = {
           conceptualSchema: data.conceptualSchema,
           physicalMapping: data.physicalMapping,
