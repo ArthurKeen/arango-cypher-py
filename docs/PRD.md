@@ -252,7 +252,8 @@ extra).
 Endpoint families (all under `arango_cypher.service`):
 
 - **Connection & session** — `POST /connect`, `POST /disconnect`,
-  `GET /connections`, `GET /connect/defaults`.
+  `GET /connections`, `GET /connect/defaults`, `GET`/`POST /connect/platform`
+  (§13, platform sessions).
 - **Cypher → AQL** — `POST /translate`, `POST /execute`, `POST /validate`,
   `POST /explain`, `POST /aql-profile`, `GET /cypher-profile`.
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
@@ -686,6 +687,28 @@ every other endpoint reports healthy. Only the exact root is bound — never a
 catch-all — so unknown paths still return a genuine 404 rather than the SPA shell
 with status 200. Deployment verification MUST probe the mount root, not only the
 endpoints the service defines.
+
+On the platform the Workbench MUST NOT ask a signed-in user for cluster
+credentials. The platform gateway forwards the caller's platform JWT as
+`Authorization: Bearer`, and the operator injects the coordinator as
+`ARANGO_DEPLOYMENT_ENDPOINT`; `GET /connect/platform` reports whether a request
+carries both, and `POST /connect/platform` opens a session authenticated with
+that JWT — defaulting to the instance's mount database and listing the databases
+that user may open — so the user only picks a database and a graph (or all
+collections). Platform sessions MUST:
+
+- store and bake no credential; the coordinator validates the JWT, so the session
+  sees exactly what the user's platform permissions allow;
+- take the endpoint from server configuration only, never from the request;
+- follow the JWT each request carries (the platform rotates it), and refuse — not
+  fall back to the stored token — a request that carries none or one that does
+  not decode;
+- answer an unusable token with 401 and an unknown database with 404, never 500.
+
+`ARANGO_CYPHER_PLATFORM_AUTH=off` disables the path; off the platform the
+credentials dialog is unchanged. Every UI request MUST resolve against the
+service mount (the directory the SPA was served from), never the origin root,
+which on the platform is ArangoDB itself.
 
 The persistent schema cache (a user-land collection in the connected DB) lets
 containerized replicas share a warm cache and survive restarts. See
