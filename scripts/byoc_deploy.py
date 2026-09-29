@@ -153,6 +153,7 @@ class Platform:
         has_ui: bool = True,
         display_name: str | None = None,
         description: str | None = None,
+        root_path: str | None = None,
     ) -> dict:
         # Every value must be a string: the platform decodes `env` as a protobuf
         # string->string map and rejects a JSON boolean with
@@ -173,6 +174,12 @@ class Platform:
             env["display_name"] = display_name
         if description:
             env["description"] = description
+        # FastAPI needs the mount prefix to emit correct absolute URLs. Without
+        # it /docs renders but points Swagger at the cluster-root
+        # /openapi.json, which serves ArangoDB's own Core API spec rather than
+        # this service's — a page that looks fine and documents the wrong API.
+        if root_path:
+            env["ROOT_PATH"] = root_path
         return self._request(
             "POST",
             f"{ACP}/uds",
@@ -381,6 +388,7 @@ def cmd_release(args: argparse.Namespace) -> int:
         has_ui=not args.no_ui,
         display_name=args.display_name,
         description=args.description,
+        root_path=mount_path(args.instance, db_name),
     )
     service_id, status = _service_id_of(result)
     if not service_id:

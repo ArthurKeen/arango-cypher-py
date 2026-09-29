@@ -38,7 +38,8 @@ itself; everything below is what differs for this package.
 ## Quick start
 
 ```bash
-bash scripts/package-byoc.sh                       # build the tarball
+SERVICE_ROOT_PATH=/_service/uds/_db/AIM/arango-cypher-py \
+  bash scripts/package-byoc.sh                     # build the tarball
 python3 scripts/byoc_deploy.py list                # what already exists
 python3 scripts/byoc_deploy.py release --replace   # upload + deploy + wait
 python3 scripts/byoc_deploy.py verify              # probe the public URL
@@ -108,11 +109,24 @@ seconds before the first 200. `verify` is the real check; expect 404s before it.
 fails with a named error if the analyzer is still missing. Override only with
 `ARANGO_CYPHER_ALLOW_HEURISTIC=1`, accepting degraded mappings (PRD §7.1).
 
-**`ROOT_PATH` is not required.** The Workbench is built with Vite `base: "./"`,
-so its assets resolve relative to whatever prefix the platform mounts — verified
-live: both the JS and CSS bundles return 200 under
-`/_service/uds/_db/AIM/arango-cypher-py/`. Set `ROOT_PATH` only if something
-needs absolute generated URLs.
+**`ROOT_PATH` is required, and its absence is near-invisible.** Bake it at
+package time:
+
+```bash
+SERVICE_ROOT_PATH=/_service/uds/_db/<db>/<instance> bash scripts/package-byoc.sh
+```
+
+The platform's deploy `env` map carries platform metadata only — it does **not**
+forward arbitrary application environment to the container, so passing
+`ROOT_PATH` there is silently ignored (verified). The packager therefore writes
+it into a minimal bundled `.env`, which `load_dotenv()` picks up at
+`arango_cypher/service/app.py:30`.
+
+Skip it and the Workbench still works — Vite's `base: "./"` makes its assets
+prefix-relative — but `/docs` renders a Swagger page that requests
+`/openapi.json` at the **cluster root** and so documents *ArangoDB's Core API*
+instead of this service. A 200 on `/docs` is therefore not evidence that `/docs`
+is correct; check which spec Swagger actually fetches.
 
 **`/sample-queries` reads from `tests/`.** The handler
 (`arango_cypher/service/routes/schema.py:588`) resolves

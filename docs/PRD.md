@@ -652,14 +652,25 @@ files ≤ 1500 lines), and checkpoint-regularly.
 
 ## 13. Packaging & deployment
 
-The default Arango Platform deployment (via ServiceMaker → Container Manager) is
-**headless**: library, CLI, and the FastAPI HTTP endpoints. The Workbench UI is
-*not* in the default tarball and *not* exposed by the Container Manager; any
-UI-included variant must be opt-in, separately versioned, and carry the debug/demo
-scope disclaimer. The persistent schema cache (a user-land collection in the
-connected DB) lets containerized replicas share a warm cache and survive restarts.
-See [`arango_packaging_service/`](./arango_packaging_service/) for the platform API
-and deployment runbook.
+The Arango Platform deployment (via ServiceMaker → Container Manager) ships the
+FastAPI service together with the Cypher Workbench, matching every other BYOC
+service in the estate: advertising a UI (`has_ui`) is what makes the platform
+present a service as an app rather than a bare endpoint. A headless variant —
+library, CLI and HTTP endpoints only — remains available via
+`PACKAGE_INCLUDE_UI=0` when packaging and `--no-ui` when deploying. The Workbench
+keeps its debug/demo scope (§6.4); shipping it by default is a packaging
+decision, not a promotion to a supported production surface.
+
+The service MUST be packaged with its mount prefix baked in
+(`SERVICE_ROOT_PATH`): the platform's deploy metadata does not forward arbitrary
+environment to the container, and without `ROOT_PATH` the `/docs` page renders
+but points Swagger at the cluster-root spec — documenting ArangoDB's Core API
+instead of this service.
+
+The persistent schema cache (a user-land collection in the connected DB) lets
+containerized replicas share a warm cache and survive restarts. See
+[`byoc-deployment.md`](./byoc-deployment.md) for the Container Manager runbook and
+[`arango_packaging_service/`](./arango_packaging_service/) for the platform API.
 
 **Naming / repos.** Repo `arango-cypher-py`, import package `arango_cypher`,
 distribution `arango-cypher-py`, CLI `arango-cypher-py`. The in-database sibling is

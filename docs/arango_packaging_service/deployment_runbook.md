@@ -2,9 +2,25 @@
 
 Operator-facing checklist for packaging and deploying this service to the Arango Platform Container Manager. Pairs with [`arango_packaging.md`](./arango_packaging.md) (upstream ServiceMaker docs) and with [PRD §15](../python_prd.md#15-packaging-and-deployment-to-the-arango-platform), which explains the design rationale.
 
+> **Superseded for packaging and deployment.** The Container Manager path now
+> lives in [`../byoc-deployment.md`](../byoc-deployment.md), which PRD §13 cites:
+> flat-tarball layout, the entry-script token quirk, the baked `ROOT_PATH`, the
+> scripted upload/deploy/verify, and the per-cluster base images. Use that for
+> anything you are about to run.
+>
+> This file is retained for the material that has no home there yet — the
+> analyzer/PyPI prerequisite and its air-gapped escape hatch, the runtime
+> environment table, the `/health` probe contract, the packaging smoke test, and
+> snapshot versioning. Two corrections to what follows: the deployment is **no
+> longer headless** (PRD §13 — the Workbench ships by default, `--no-ui` opts
+> out), and the analyzer pin quoted below is stale; the band lives in
+> `pyproject.toml`. The "PRD §4.4 scope note" reference is also stale — the
+> Workbench scope note is now §6.4.
+
 ## Scope
 
-The default platform deployment is **headless**: library + CLI + FastAPI endpoints (`arango_cypher.service:app`). The Cypher Workbench UI (`ui/`) is not packaged and is not exposed by Container Manager — it is a developer / demo surface, not production (see PRD §4.4 scope note). All commands below target the headless tarball only.
+Operator material for packaging and deploying `arango_cypher.service:app` to the
+Arango Platform Container Manager.
 
 ## Prerequisites (read before packaging)
 

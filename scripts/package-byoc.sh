@@ -97,6 +97,28 @@ else
 	echo "==> Skipping the UI (PACKAGE_INCLUDE_UI=0): /frontend and /ui will 404." >&2
 fi
 
+# --- Mount prefix ---------------------------------------------------------
+# FastAPI needs its mount prefix to emit correct absolute URLs, and the
+# platform's deploy `env` map carries platform metadata only — it does not
+# forward arbitrary app env to the container (verified: ROOT_PATH passed there
+# never arrived). So it is baked at package time, the same way
+# arango-ontoextract bakes SERVICE_URL_PATH_PREFIX.
+#
+# Without it /docs still renders, but Swagger requests /openapi.json at the
+# CLUSTER ROOT, which serves ArangoDB's own Core API spec — a page that looks
+# healthy and documents the wrong API. The Workbench itself is unaffected
+# (Vite `base: "./"` makes its assets prefix-relative), which is exactly why
+# this is easy to miss.
+#
+#   SERVICE_ROOT_PATH=/_service/uds/_db/<db>/<instance> bash scripts/package-byoc.sh
+if [[ -n "${SERVICE_ROOT_PATH:-}" ]]; then
+	printf 'ROOT_PATH=%s\n' "${SERVICE_ROOT_PATH%/}" >> "${BUNDLE}/.env"
+	echo "==> Baked ROOT_PATH=${SERVICE_ROOT_PATH%/} into the bundle"
+else
+	echo "==> No SERVICE_ROOT_PATH set: /docs will point Swagger at the cluster-root spec." >&2
+	echo "    Pass SERVICE_ROOT_PATH=/_service/uds/_db/<db>/<instance> to fix it." >&2
+fi
+
 # --- Optional .env --------------------------------------------------------
 # Default OFF. The repo .env carries ARANGO_PASSWORD and LLM API keys, which
 # must not ride along in a tarball that gets uploaded, archived or shared.
