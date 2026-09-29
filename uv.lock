@@ -59,6 +59,14 @@ wheels = [
 ]
 
 [[package]]
+name = "arango-byoc-deploy"
+version = "0.1.0"
+source = { git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=6d2cfe6233796c2857b6a318d7e37a22bb0dbbac#6d2cfe6233796c2857b6a318d7e37a22bb0dbbac" }
+dependencies = [
+    { name = "requests" },
+]
+
+[[package]]
 name = "arango-cypher-py"
 version = "0.2.0"
 source = { editable = "." }
@@ -104,6 +112,11 @@ service = [
     { name = "typer" },
 ]
 
+[package.dev-dependencies]
+deploy = [
+    { name = "arango-byoc-deploy" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime" },
@@ -133,6 +146,9 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'dev'", specifier = ">=0.20.0" },
 ]
 provides-extras = ["analyzer", "service", "cli", "owl", "dev", "neo4j"]
+
+[package.metadata.requires-dev]
+deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/arango-byoc-deploy?rev=6d2cfe6233796c2857b6a318d7e37a22bb0dbbac" }]
 
 [[package]]
 name = "arango-query-core"

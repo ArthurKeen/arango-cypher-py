@@ -187,6 +187,16 @@ arango-cypher-py = "arango_cypher.cli:app"
 requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
 
+# Deploy tooling, kept out of the published package's metadata (a dependency
+# group is never part of the wheel), so a git pin here cannot break a PyPI
+# release. Pinned to an exact commit until arango-byoc-deploy is on PyPI; bump
+# the rev deliberately. Run: uv run --group deploy arango-byoc-deploy <command>
+[dependency-groups]
+deploy = ["arango-byoc-deploy"]
+
+[tool.uv.sources]
+arango-byoc-deploy = { git = "https://github.com/ArthurKeen/arango-byoc-deploy", rev = "6d2cfe6233796c2857b6a318d7e37a22bb0dbbac" }
+
 [tool.hatch.build.targets.wheel]
 packages = ["arango_cypher"]
 
