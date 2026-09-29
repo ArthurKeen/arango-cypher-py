@@ -837,3 +837,28 @@ class TestNonTenantSchemaShortCircuit:
         with pytest.raises(TenantScopeViolation) as exc_info:
             _call_validate(plan=plan, bind_vars={})
         assert exc_info.value.code == "UNCONSTRAINED_COLLECTION_SCAN"
+
+
+# ---------------------------------------------------------------------------
+# No manifest: fail closed
+# ---------------------------------------------------------------------------
+
+
+class TestNoManifestFailsClosed:
+    """``validate_plan`` accepts ``manifest=None`` in its signature; the walker
+    dereferenced it unconditionally, so a direct call crashed with
+    AttributeError mid-check instead of refusing. Found by mypy."""
+
+    def test_a_missing_manifest_is_a_refusal_not_a_crash(self) -> None:
+        with pytest.raises(TenantScopeViolation) as exc_info:
+            validate_plan(
+                db=None,
+                aql="FOR c IN Country RETURN c",
+                bind_vars={},
+                manifest=None,
+                sharding_profile=None,
+                session=_FakeSession(),
+                plan_override=_wrap_plan([_singleton_node(), _return_node(nid=2)]),
+            )
+
+        assert exc_info.value.code == "NO_TENANT_MANIFEST"

@@ -481,7 +481,22 @@ def validate_plan(
         _log_admin_bypass(session=session, reason=bypass_reason, **digests)
         return
 
-    nodes = plan.get("nodes") if isinstance(plan.get("nodes"), list) else []
+    if manifest is None:
+        # Every current caller refuses before reaching here without a
+        # manifest, but this is a public security entry point: without one
+        # there is nothing to enforce against, so fail closed with a
+        # violation — never an AttributeError from inside the walk.
+        digests = _digests(aql=aql, bind_vars=bind_vars, plan=plan)
+        violation = TenantScopeViolation(
+            code="NO_TENANT_MANIFEST",
+            message="no tenant-scope manifest to validate against; refusing",
+            **digests,
+        )
+        _log_violation(violation, session=session)
+        raise violation
+
+    raw_nodes = plan.get("nodes")
+    nodes: list[dict[str, Any]] = raw_nodes if isinstance(raw_nodes, list) else []
 
     walker = _PlanWalker(
         plan=plan,
@@ -517,7 +532,11 @@ def validate_plan(
             ),
         )
 
-    _log_pass(session=session, **digests)
+    _log_pass(
+        session=session,
+        aql_digest=digests["aql_digest"],
+        plan_digest=digests["plan_digest"],
+    )
 
 
 def _enforce_tenant_bindvars(
@@ -931,8 +950,7 @@ class _PlanWalker:
                 out.extend(c for c in v if isinstance(c, str))
         out.extend(self._traversal_vertex_collections(node))
         # Deduplicate while preserving order.
-        seen: set[str] = set()
-        return [c for c in out if not (c in seen or seen.add(c))]
+        return list(dict.fromkeys(out))
 
     def _traversal_vertex_collections(self, node: dict[str, Any]) -> list[str]:
         # The plan exposes the resolved vertex collections under
