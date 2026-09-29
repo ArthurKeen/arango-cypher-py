@@ -105,6 +105,31 @@ neo4j = [
   "neo4j>=5.0",
 ]
 
+# BYOC release configuration for arango-byoc-deploy (docs/byoc-deployment.md).
+# Only what differs from the shared deployer's defaults lives here.
+[tool.arango-byoc]
+app-name = "arango-cypher-py"
+instance = "arango-cypher-py"
+display-name = "Arango Cypher Workbench"
+description = "openCypher → AQL translation, NL → Cypher, and a query Workbench."
+# prod.demo offers node22base, py12base, py12cugraph, py12torch, test.
+base-image = "py12base"
+tarball = "arango-cypher-byoc.tar.gz"
+required-members = ["entrypoint", "pyproject.toml", "uv.lock", "ui/dist/index.html"]
+index-html = "ui/dist/index.html"
+# package-byoc.sh bakes ROOT_PATH from SERVICE_ROOT_PATH; the deploy env map
+# cannot carry it (the platform drops app env there).
+prefix-env-var = "ROOT_PATH"
+probes = [
+  { path = "/health", label = "health", expect-json-key = "status" },
+  { path = "/openapi.json", label = "API" },
+  { path = "/connections", label = "service" },
+  { path = "/frontend", label = "Workbench" },
+  # Floor, not exact: catches a bundle shipped without tests/fixtures/datasets,
+  # which answers 200 with an empty list.
+  { path = "/sample-queries", label = "sample queries", expect-json-key = "queries", min-items = 40 },
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
