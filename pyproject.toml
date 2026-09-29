@@ -17,6 +17,10 @@ dependencies = [
   # requirement is already satisfied.
   "arango-query-core>=0.2.0,<0.3.0",
   "python-arango>=8.1.1",
+  # Imported directly by service/platform_auth.py to classify the decode
+  # errors python-arango raises for a forwarded platform JWT; python-arango
+  # itself depends on it, so this adds no new package.
+  "PyJWT>=2.0",
   "antlr4-python3-runtime",
   "fastapi>=0.100.0",
   "uvicorn[standard]>=0.20.0",

@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .app import _PUBLIC_MODE, _svc_logger, app
-from .platform_auth import forwarded_token, open_platform_database
+from .platform_auth import PlatformTokenError, forwarded_token, open_platform_database
 
 # ---------------------------------------------------------------------------
 # Sessions (in-memory dict, TTL-based, LRU-evicted)
@@ -200,28 +200,31 @@ def _evict_lru() -> None:
 PLATFORM_TOKEN_MISSING = "This session uses your platform login, but the request did not carry it. Reload the page to sign in again."
 
 
-def _follow_platform_identity(session: _Session, request: Request, *, via_session_header: bool) -> bool:
+def _follow_platform_identity(session: _Session, request: Request, *, via_session_header: bool) -> str | None:
     """Keep a platform session authenticated as the caller's current JWT.
 
     The platform rotates the JWT it forwards, so the one the session opened
     with expires long before the session does. Each request re-binds the
-    ``db`` handle to the JWT that request carries. Returns ``False`` when a
-    platform session's request carries none — never fall back to the stored
-    token, which would let a request that bypassed the gateway act as the
-    user who opened the session.
+    ``db`` handle to the JWT that request carries. Returns why the request
+    is refused, or ``None``: a platform session's request without a JWT is
+    refused, never served on the stored token — that would let a request
+    that bypassed the gateway act as the user who opened the session.
 
     When the session token itself arrived as ``Authorization: Bearer`` there
     is no header left for a JWT, so such a request is refused too.
     """
     if session.platform_token is None:
-        return True
+        return None
     token = forwarded_token(request) if via_session_header else None
     if token is None:
-        return False
+        return PLATFORM_TOKEN_MISSING
     if token != session.platform_token:
-        session.db = open_platform_database(session.client, session.db.name, token)
+        try:
+            session.db = open_platform_database(session.client, session.db.name, token)
+        except PlatformTokenError as exc:
+            return f"{exc}. Reload the page to sign in again."
         session.platform_token = token
-    return True
+    return None
 
 
 def _get_session(request: Request) -> _Session:
@@ -243,8 +246,9 @@ def _get_session(request: Request) -> _Session:
             _sessions.pop(token, None)
             session.client.close()
         raise HTTPException(status_code=401, detail="Session expired or invalid")
-    if not _follow_platform_identity(session, request, via_session_header=via_session_header):
-        raise HTTPException(status_code=401, detail=PLATFORM_TOKEN_MISSING)
+    refusal = _follow_platform_identity(session, request, via_session_header=via_session_header)
+    if refusal is not None:
+        raise HTTPException(status_code=401, detail=refusal)
     session.touch()
     return session
 
@@ -276,7 +280,7 @@ def _optional_session(request: Request) -> _Session | None:
             _sessions.pop(token, None)
             session.client.close()
         return None
-    if not _follow_platform_identity(session, request, via_session_header=via_session_header):
+    if _follow_platform_identity(session, request, via_session_header=via_session_header) is not None:
         return None
     session.touch()
     return session

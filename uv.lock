@@ -66,6 +66,7 @@ dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "arango-query-core" },
     { name = "fastapi" },
+    { name = "pyjwt" },
     { name = "python-arango" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -117,6 +118,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = "==2.3.1" },
     { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=5.0" },
+    { name = "pyjwt", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
     { name = "python-arango", specifier = ">=8.1.1" },

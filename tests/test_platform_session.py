@@ -14,10 +14,13 @@ them against an imagined API.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
+import jwt
 import pytest
 import requests
+from arango import ArangoClient
 from arango.exceptions import ServerVersionError
 from arango.request import Request
 from arango.response import Response
@@ -28,8 +31,21 @@ from tests.helpers.service_reload import fresh_service, patched_arango_client
 
 ENDPOINT = "http://coordinator.cluster.svc:8529"
 MOUNT = "/_service/uds/_db/AIM/arango-cypher-py"
-JWT_A = "platform.jwt.alpha"
-JWT_B = "platform.jwt.bravo"
+
+
+def _platform_jwt(user: str, *, ttl: int = 3600, issuer: str = "arangodb") -> str:
+    """A token shaped like the ones ArangoDB issues (``iss``/``iat``/``exp``).
+
+    The signing secret is irrelevant: python-arango decodes without
+    verifying, and the coordinator — faked here — is what checks it.
+    """
+    now = int(time.time())
+    claims = {"iss": issuer, "iat": now - 10, "exp": now + ttl, "preferred_username": user}
+    return jwt.encode(claims, "test-only-secret-padded-to-32-bytes!", algorithm="HS256")
+
+
+JWT_A = _platform_jwt("alice")
+JWT_B = _platform_jwt("alice-rotated")
 
 
 def _server_error(status: int, error_num: int, message: str) -> ServerVersionError:
@@ -90,6 +106,13 @@ class _Recorder:
                 user_token: str | None = None,
                 superuser_token: str | None = None,
             ) -> _FakeDb:
+                if auth_method == "jwt":
+                    # The real client's local token check — decode only, no
+                    # request — so a malformed or expired token fails here
+                    # exactly as it does in production.
+                    ArangoClient(hosts="http://127.0.0.1:9").db(
+                        name, auth_method="jwt", user_token=user_token
+                    )
                 recorder.opened.append(
                     {
                         "name": name,
@@ -276,6 +299,44 @@ class TestPlatformConnect:
         assert set(_sessions()) == before
         assert rec.clients[0].closed is True
 
+    @pytest.mark.parametrize(
+        ("token", "reason"),
+        [
+            ("forged.token.value", "not a usable ArangoDB token"),
+            (_platform_jwt("alice", ttl=-60), "expired"),
+        ],
+        ids=["malformed", "expired"],
+    )
+    def test_unusable_token_is_a_401_not_a_crash(
+        self, client: TestClient, platform_env: None, token: str, reason: str
+    ) -> None:
+        # Found live: a forged bearer made python-arango's local decode raise
+        # outside the handler — an unhandled 500.
+        rec = _Recorder()
+        before = set(_sessions())
+        with patched_arango_client(rec.factory()):
+            resp = client.post("/connect/platform", json={}, headers=_bearer(token))
+        assert resp.status_code == 401, resp.text
+        detail = resp.json()["detail"]
+        assert detail["error"] == "platform_login_rejected"
+        assert reason in detail["message"]
+        assert token not in resp.text
+        assert set(_sessions()) == before
+        assert rec.clients[0].closed is True
+
+    def test_a_foreign_issuer_is_left_to_the_coordinator(
+        self, client: TestClient, platform_env: None
+    ) -> None:
+        # python-arango decodes without verifying the signature, and PyJWT
+        # then skips the issuer check too: whether the platform's token is
+        # acceptable is the coordinator's call (its version() here), not ours.
+        rec = _Recorder()
+        with patched_arango_client(rec.factory()):
+            resp = client.post(
+                "/connect/platform", json={}, headers=_bearer(_platform_jwt("alice", issuer="platform"))
+            )
+        assert resp.status_code == 200, resp.text
+
     def test_unknown_database_is_a_404(self, client: TestClient, platform_env: None) -> None:
         rec = _Recorder(fail=_server_error(404, 1228, "database not found"))
         with patched_arango_client(rec.factory()):
@@ -340,6 +401,18 @@ class TestPlatformIdentity:
             resp = client.get("/graphs", headers={"X-Arango-Session": token})
         assert resp.status_code == 401
         assert resp.json()["detail"] == fresh_service().security.PLATFORM_TOKEN_MISSING
+
+    def test_an_unusable_rotated_token_is_refused_and_not_adopted(
+        self, client: TestClient, platform_env: None
+    ) -> None:
+        rec = _Recorder()
+        expired = _platform_jwt("alice", ttl=-60)
+        with patched_arango_client(rec.factory()):
+            token = self._connect(client, rec)
+            resp = client.get("/graphs", headers={"X-Arango-Session": token, **_bearer(expired)})
+        assert resp.status_code == 401
+        assert "expired" in resp.json()["detail"]
+        assert _sessions()[token].platform_token == JWT_A
 
     def test_session_token_as_bearer_leaves_no_room_for_the_jwt(
         self, client: TestClient, platform_env: None

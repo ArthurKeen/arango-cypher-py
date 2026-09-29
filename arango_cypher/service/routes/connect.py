@@ -26,6 +26,7 @@ from ..observability import log_endpoint_timing
 from ..platform_auth import (
     DEPLOYMENT_ENDPOINT_ENV,
     PLATFORM_AUTH_ENV,
+    PlatformTokenError,
     default_database,
     forwarded_token,
     open_platform_database,
@@ -229,7 +230,17 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
         )
 
     client = _svc.ArangoClient(hosts=endpoint)
-    db = open_platform_database(client, database, token)
+    try:
+        db = open_platform_database(client, database, token)
+    except PlatformTokenError as e:
+        client.close()
+        _svc_logger.warning("platform connect refused for db=%r: %s", database, e)
+        raise _fail(
+            401,
+            "platform_login_rejected",
+            f"Cannot open a session with your platform login: {e}. Sign in to the platform again.",
+            error_type="unusable_token",
+        ) from e
     try:
         db.version()
     except Exception as e:

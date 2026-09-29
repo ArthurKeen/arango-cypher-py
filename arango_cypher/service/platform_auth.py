@@ -25,6 +25,8 @@ import re
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
+import jwt
+from arango.exceptions import JWTExpiredError
 from fastapi import Request
 
 if TYPE_CHECKING:
@@ -88,6 +90,22 @@ def default_database() -> str:
     return mount_database(os.getenv("ROOT_PATH", "")) or os.getenv("ARANGO_DB", "").strip() or "_system"
 
 
+class PlatformTokenError(Exception):
+    """The forwarded token is not a usable ArangoDB JWT (malformed, expired,
+    or not issued by ArangoDB). The message never contains the token."""
+
+
 def open_platform_database(client: ArangoClient, name: str, token: str) -> StandardDatabase:
-    """A database handle that authenticates every call with the user's JWT."""
-    return client.db(name, auth_method="jwt", user_token=token)
+    """A database handle that authenticates every call with the user's JWT.
+
+    python-arango decodes the token locally before any request — it needs
+    ``iss=arangodb`` and ``exp``/``iat`` claims — and raises PyJWT's errors
+    raw, so they are narrowed to :class:`PlatformTokenError` here. The
+    signature is still the coordinator's to check, on the first call.
+    """
+    try:
+        return client.db(name, auth_method="jwt", user_token=token)
+    except JWTExpiredError as exc:
+        raise PlatformTokenError("the platform login has expired") from exc
+    except jwt.PyJWTError as exc:
+        raise PlatformTokenError(f"the platform login is not a usable ArangoDB token ({exc})") from exc
