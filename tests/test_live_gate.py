@@ -52,3 +52,43 @@ def test_opt_in_without_a_url_still_skips(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(pytest.skip.Exception, match="ARANGO_URL"):
         live_db.require_live_db("anything")
+
+
+# -- the integration tier's target ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("env", "refused"),
+    [
+        ({"RUN_INTEGRATION": "1", "ARANGO_URL": "https://prod.example:8529"}, True),
+        ({"RUN_INTEGRATION": "1", "ARANGO_URL": "https://prod.example:8529", "RUN_LIVE": "1"}, False),
+        ({"RUN_INTEGRATION": "1", "ARANGO_URL": "http://localhost:28529"}, False),
+        ({"RUN_INTEGRATION": "1", "ARANGO_URL": "http://127.0.0.1:28529"}, False),
+        ({"RUN_INTEGRATION": "1"}, False),  # unset: tests default to localhost
+        ({"ARANGO_URL": "https://prod.example:8529"}, False),  # tier not running
+    ],
+)
+def test_integration_tier_refuses_a_remote_target_without_opt_in(env: dict[str, str], refused: bool) -> None:
+    """The repo .env names a real cluster; integration fixtures drop databases."""
+    from tests.integration.conftest import remote_target_refusal
+
+    assert (remote_target_refusal(env) is not None) is refused
+
+
+def test_dotenv_loader_never_imports_the_connection_target(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.integration.conftest import _CONNECTION_TARGET_KEYS, _load_dotenv_if_present
+
+    for key in _CONNECTION_TARGET_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("SOME_FLAG", raising=False)
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("ARANGO_URL=https://prod.example:8529\nARANGO_PASSWORD=secret\nSOME_FLAG=1\n")
+
+    _load_dotenv_if_present(dotenv)
+
+    import os
+
+    assert "ARANGO_URL" not in os.environ
+    assert "ARANGO_PASSWORD" not in os.environ
+    assert os.environ.get("SOME_FLAG") == "1"
+    monkeypatch.delenv("SOME_FLAG", raising=False)

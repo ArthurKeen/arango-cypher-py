@@ -4,6 +4,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,13 +14,38 @@ except ImportError:
     ArangoClient = None  # type: ignore[misc, assignment]
 
 
-def _load_dotenv_if_present() -> None:
+#: Keys that choose *which database* the tier talks to. Never taken from .env:
+#: the repo .env points at a real cluster (it is what the service and the BYOC
+#: deploy read), and integration fixtures create and drop databases. Following
+#: the documented ``RUN_INTEGRATION=1 pytest -m integration`` with those keys
+#: loaded aims the whole tier at that cluster — it failed safe only because
+#: the tests read ARANGO_PASS while .env spells it ARANGO_PASSWORD. Set the
+#: target explicitly in the environment to point the tier anywhere else.
+_CONNECTION_TARGET_KEYS = frozenset(
+    {
+        "ARANGO_URL",
+        "ARANGO_ENDPOINT",
+        "ARANGO_HOST",
+        "ARANGO_PORT",
+        "ARANGO_USER",
+        "ARANGO_USERNAME",
+        "ARANGO_PASS",
+        "ARANGO_PASSWORD",
+        "ARANGO_DB",
+        "ARANGO_DATABASE",
+    }
+)
+
+
+def _load_dotenv_if_present(path: Path | None = None) -> None:
     """
     Minimal .env loader for local integration runs.
     We intentionally avoid introducing dotenv dependencies this early.
+
+    Connection-target keys (:data:`_CONNECTION_TARGET_KEYS`) are skipped, so
+    a credential file for a real cluster never becomes the test target.
     """
-    root = Path(__file__).resolve().parents[2]
-    p = root / ".env"
+    p = path or Path(__file__).resolve().parents[2] / ".env"
     if not p.exists():
         return
     for raw in p.read_text(encoding="utf-8").splitlines():
@@ -29,8 +55,49 @@ def _load_dotenv_if_present() -> None:
         k, v = line.split("=", 1)
         k = k.strip()
         v = v.strip()
-        if k and k not in os.environ:
+        if k and k not in os.environ and k not in _CONNECTION_TARGET_KEYS:
             os.environ[k] = v
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def _is_loopback(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = urlparse(url if "://" in url else f"http://{url}").hostname or ""
+    return host in _LOOPBACK_HOSTS
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _integration_targets_a_local_database_only() -> None:
+    """Refuse a remote ARANGO_URL for the integration tier unless RUN_LIVE=1.
+
+    Skipping connection keys in the loader above is not enough on its own:
+    ``arango_cypher.service`` calls ``load_dotenv()`` at import, and test
+    collection imports it, so the repo .env's real-cluster ARANGO_URL can
+    reach os.environ anyway. This checks the *effective* target, wherever it
+    came from, before any fixture creates or drops a database. Session-scoped
+    and autouse, so it runs ahead of every module fixture.
+    """
+    refusal = remote_target_refusal(os.environ)
+    if refusal:
+        pytest.fail(refusal, pytrace=False)
+
+
+def remote_target_refusal(env: Any) -> str | None:
+    """Why the integration tier must not run against *env*'s target, or None."""
+    if env.get("RUN_INTEGRATION") != "1":
+        return None
+    url = env.get("ARANGO_URL", "")
+    if url and not _is_loopback(url) and env.get("RUN_LIVE") != "1":
+        return (
+            f"integration tests would run against {url}, which is not a local database; "
+            "these fixtures create and drop databases. Point ARANGO_URL at the docker "
+            "compose instance (http://localhost:28529), or set RUN_LIVE=1 to target a "
+            "remote cluster deliberately."
+        )
+    return None
 
 
 def pytest_collection_modifyitems(config, items):
