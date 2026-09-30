@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CATEGORICAL, graphPalette, tintedCard, type GraphPalette } from "../theme/graphPalette";
+import { useTheme } from "../theme/theme";
 
 interface Props {
   mapping: Record<string, unknown>;
@@ -78,21 +80,18 @@ function cardH(propCount: number): number {
   return CARD_HEADER + ROW_PAD + propCount * ROW_H + ROW_PAD;
 }
 
-const ONTO_COLORS = [
-  { fill: "#1a1a3e", stroke: "#818cf8", text: "#c7d2fe" },
-  { fill: "#1a2e1a", stroke: "#4ade80", text: "#bbf7d0" },
-  { fill: "#2e1f0e", stroke: "#fbbf24", text: "#fde68a" },
-  { fill: "#2e1515", stroke: "#f87171", text: "#fecaca" },
-  { fill: "#251540", stroke: "#a78bfa", text: "#ddd6fe" },
-  { fill: "#0e2a33", stroke: "#22d3ee", text: "#a5f3fc" },
-];
-const PHYS_COLORS: Record<string, { fill: string; stroke: string }> = {
-  COLLECTION: { fill: "#0f2942", stroke: "#3b82f6" },
-  LABEL: { fill: "#0f2942", stroke: "#3b82f6" },
-  GENERIC_WITH_TYPE: { fill: "#162316", stroke: "#22c55e" },
-  DEDICATED_COLLECTION: { fill: "#2a1a0a", stroke: "#f59e0b" },
+// Physical storage styles, as a base colour each; cards are tinted from it per
+// theme (tintedCard). Ontology cards cycle through CATEGORICAL.
+const PHYS_STYLE_COLOR: Record<string, string> = {
+  COLLECTION: "#2f6fb3",
+  LABEL: "#2f6fb3",
+  GENERIC_WITH_TYPE: "#007339",
+  DEDICATED_COLLECTION: "#b7791f",
 };
-const PROP_EDGE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4"];
+
+function physCardColors(p: GraphPalette, style: string) {
+  return tintedCard(p, PHYS_STYLE_COLOR[style] ?? PHYS_STYLE_COLOR.COLLECTION);
+}
 
 /* ── Layout computation ─────────────────────────────────────────────── */
 
@@ -167,23 +166,23 @@ function computeLayout(entities: EntityInfo[], relationships: RelInfo[]): Layout
 
 /* ── Rendering helpers ──────────────────────────────────────────────── */
 
-function Card({ pos, label, subtitle, props, fill, stroke, textColor, tag }: {
+function Card({ pos, label, subtitle, props, fill, stroke, textColor, tag, p }: {
   pos: CardPos; label: string; subtitle?: string; props: PropInfo[];
-  fill: string; stroke: string; textColor: string; tag?: string;
+  fill: string; stroke: string; textColor: string; tag?: string; p: GraphPalette;
 }) {
   const { x, y, w, h } = pos;
   return (
     <g>
-      <rect x={x + 2} y={y + 2} width={w} height={h} rx={8} fill="rgba(0,0,0,0.3)" />
+      <rect x={x + 2} y={y + 2} width={w} height={h} rx={8} fill="rgba(0,0,0,0.12)" />
       <rect x={x} y={y} width={w} height={h} rx={8} fill={fill} stroke={stroke} strokeWidth={2} />
       {props.length > 0 && <line x1={x + 8} y1={y + CARD_HEADER} x2={x + w - 8} y2={y + CARD_HEADER} stroke={stroke} strokeWidth={0.5} opacity={0.4} />}
       {tag && <text x={x + 10} y={y + 14} fill={stroke} fontSize={8} fontWeight="600" fontFamily="monospace">{tag}</text>}
       <text x={x + (tag ? 28 : w / 2)} y={y + (subtitle ? 16 : 22)} fill={textColor} fontSize={14} fontWeight="700" textAnchor={tag ? "start" : "middle"} fontFamily="system-ui, sans-serif">{label}</text>
-      {subtitle && <text x={x + (tag ? 28 : w / 2)} y={y + 30} fill="#64748b" fontSize={9} textAnchor={tag ? "start" : "middle"} fontFamily="monospace">{subtitle}</text>}
-      {props.map((p, j) => (
-        <g key={p.name + j}>
-          <text x={x + 12} y={y + CARD_HEADER + ROW_PAD + j * ROW_H + 14} fill="#d1d5db" fontSize={11} fontFamily="monospace">{tag ? p.field : p.name}</text>
-          <text x={x + w - 12} y={y + CARD_HEADER + ROW_PAD + j * ROW_H + 14} fill="#64748b" fontSize={10} textAnchor="end" fontFamily="monospace">{p.type}</text>
+      {subtitle && <text x={x + (tag ? 28 : w / 2)} y={y + 30} fill={p.muted} fontSize={9} textAnchor={tag ? "start" : "middle"} fontFamily="monospace">{subtitle}</text>}
+      {props.map((prop, j) => (
+        <g key={prop.name + j}>
+          <text x={x + 12} y={y + CARD_HEADER + ROW_PAD + j * ROW_H + 14} fill={p.textSecondary} fontSize={11} fontFamily="monospace">{tag ? prop.field : prop.name}</text>
+          <text x={x + w - 12} y={y + CARD_HEADER + ROW_PAD + j * ROW_H + 14} fill={p.muted} fontSize={10} textAnchor="end" fontFamily="monospace">{prop.type}</text>
         </g>
       ))}
     </g>
@@ -201,10 +200,10 @@ function PropEdge({ x1, y1, x2, y2, color }: { x1: number; y1: number; x2: numbe
   );
 }
 
-function OntologyRel({ type, fromPos, toPos, isSelf, weight = 1.5, selected = false, onSelect }: { type: string; fromPos: CardPos; toPos: CardPos; isSelf: boolean; weight?: number; selected?: boolean; onSelect?: () => void }) {
-  const stroke = selected ? "#818cf8" : "#94a3b8";
-  const pillStroke = selected ? "#818cf8" : "#475569";
-  const pillFill = selected ? "#1e1b4b" : "#0f172a";
+function OntologyRel({ type, fromPos, toPos, isSelf, weight = 1.5, selected = false, onSelect, p }: { type: string; fromPos: CardPos; toPos: CardPos; isSelf: boolean; weight?: number; selected?: boolean; onSelect?: () => void; p: GraphPalette }) {
+  const stroke = selected ? p.accent : p.edgeStrong;
+  const pillStroke = selected ? p.accent : p.border;
+  const pillFill = selected ? p.surfaceSelected : p.surface;
   const w = selected ? weight + 1.5 : weight;
   const click = onSelect
     ? (e: React.MouseEvent) => { e.stopPropagation(); onSelect(); }
@@ -223,7 +222,7 @@ function OntologyRel({ type, fromPos, toPos, isSelf, weight = 1.5, selected = fa
       <g {...groupProps}>
         <path d={path} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray="6 3" markerEnd="url(#onto-arrow)" />
         <rect x={lx} y={midY - 11} width={pillW} height={22} rx={11} fill={pillFill} stroke={pillStroke} strokeWidth={selected ? 1.5 : 1} />
-        <text x={lx + pillW / 2} y={midY + 1} fill="#e2e8f0" fontSize={10} fontWeight="600" textAnchor="middle" dominantBaseline="middle">{type}</text>
+        <text x={lx + pillW / 2} y={midY + 1} fill={p.text} fontSize={10} fontWeight="600" textAnchor="middle" dominantBaseline="middle">{type}</text>
       </g>
     );
   }
@@ -239,7 +238,7 @@ function OntologyRel({ type, fromPos, toPos, isSelf, weight = 1.5, selected = fa
     <g {...groupProps}>
       <path d={`M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`} fill="none" stroke={stroke} strokeWidth={w} markerEnd="url(#onto-arrow)" />
       <rect x={mx - pillW / 2} y={my - 10} width={pillW} height={20} rx={10} fill={pillFill} stroke={pillStroke} strokeWidth={selected ? 1.5 : 1} />
-      <text x={mx} y={my + 1} fill="#e2e8f0" fontSize={10} fontWeight="600" textAnchor="middle" dominantBaseline="middle">{type}</text>
+      <text x={mx} y={my + 1} fill={p.text} fontSize={10} fontWeight="600" textAnchor="middle" dominantBaseline="middle">{type}</text>
     </g>
   );
 }
@@ -247,6 +246,8 @@ function OntologyRel({ type, fromPos, toPos, isSelf, weight = 1.5, selected = fa
 /* ── Main component ─────────────────────────────────────────────────── */
 
 export default function SchemaGraph({ mapping }: Props) {
+  const [theme] = useTheme();
+  const pal = graphPalette(theme);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 500 });
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -341,7 +342,7 @@ export default function SchemaGraph({ mapping }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="h-full bg-gray-950 relative select-none" style={{ overflow: "hidden", cursor: drag.current ? "grabbing" : "grab", touchAction: "none" }}
+    <div ref={containerRef} className="h-full bg-gray-900 relative select-none" style={{ overflow: "hidden", cursor: drag.current ? "grabbing" : "grab", touchAction: "none" }}
       onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <div className="absolute top-2 right-2 z-10 flex gap-1">
         <button onClick={() => setZoom((z) => Math.min(5, z * 1.3))} className="w-7 h-7 rounded bg-gray-800/80 text-gray-300 hover:bg-gray-700 text-sm font-bold flex items-center justify-center backdrop-blur">+</button>
@@ -404,23 +405,23 @@ export default function SchemaGraph({ mapping }: Props) {
 
       {/* Legend */}
       <div className="absolute bottom-2 right-2 z-10 flex gap-3 text-[9px] text-gray-500">
-        <span className="flex items-center gap-1"><span className="w-6 h-0.5 inline-block" style={{ background: PROP_EDGE_COLORS[0] }} />property mapping</span>
+        <span className="flex items-center gap-1"><span className="w-6 h-0.5 inline-block" style={{ background: CATEGORICAL[0] }} />property mapping</span>
         <span className="flex items-center gap-1"><span className="w-6 h-0.5 inline-block border-t border-dashed border-gray-500" />type mapping</span>
         <span className="flex items-center gap-1"><span className="w-6 inline-block bg-slate-400" style={{ height: 3 }} />thicker = more edges</span>
       </div>
 
       <svg width={size.w} height={size.h} className="block">
         <defs>
-          <marker id="onto-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94a3b8" /></marker>
-          <marker id="prop-arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0, 6 2.5, 0 5" fill="#818cf8" /></marker>
-          <marker id="map-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#475569" /></marker>
+          <marker id="onto-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill={pal.edgeStrong} /></marker>
+          <marker id="prop-arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0, 6 2.5, 0 5" fill={pal.edgeStrong} /></marker>
+          <marker id="map-arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill={pal.edge} /></marker>
         </defs>
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           {/* Column headers */}
-          <text x={LEFT_MARGIN + CARD_W / 2} y={30} fill="#64748b" fontSize={12} fontWeight="700" textAnchor="middle" fontFamily="system-ui, sans-serif">CONCEPTUAL SCHEMA</text>
-          <text x={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2} y={30} fill="#64748b" fontSize={12} fontWeight="700" textAnchor="middle" fontFamily="system-ui, sans-serif">PHYSICAL MODEL</text>
-          <line x1={LEFT_MARGIN + CARD_W / 2 - 70} y1={38} x2={LEFT_MARGIN + CARD_W / 2 + 70} y2={38} stroke="#334155" strokeWidth={0.5} />
-          <line x1={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2 - 70} y1={38} x2={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2 + 70} y2={38} stroke="#334155" strokeWidth={0.5} />
+          <text x={LEFT_MARGIN + CARD_W / 2} y={30} fill={pal.muted} fontSize={12} fontWeight="700" textAnchor="middle" fontFamily="system-ui, sans-serif">CONCEPTUAL SCHEMA</text>
+          <text x={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2} y={30} fill={pal.muted} fontSize={12} fontWeight="700" textAnchor="middle" fontFamily="system-ui, sans-serif">PHYSICAL MODEL</text>
+          <line x1={LEFT_MARGIN + CARD_W / 2 - 70} y1={38} x2={LEFT_MARGIN + CARD_W / 2 + 70} y2={38} stroke={pal.border} strokeWidth={0.5} />
+          <line x1={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2 - 70} y1={38} x2={LEFT_MARGIN + CARD_W + MAPPING_GAP + CARD_W / 2 + 70} y2={38} stroke={pal.border} strokeWidth={0.5} />
 
           {/* Ontology relationship edges — one arc per entity-type-pair bundle */}
           {visibleBundles.map((b) => {
@@ -438,6 +439,7 @@ export default function SchemaGraph({ mapping }: Props) {
                 weight={arcWeight(b.volume)}
                 selected={selectedKey === key}
                 onSelect={() => setSelectedKey((cur) => (cur === key ? null : key))}
+                p={pal}
               />
             );
           })}
@@ -446,8 +448,8 @@ export default function SchemaGraph({ mapping }: Props) {
           {entities.map((e, i) => {
             const pos = layout.ontoCards.get(e.name);
             if (!pos) return null;
-            const c = ONTO_COLORS[i % ONTO_COLORS.length];
-            return <Card key={`onto-${e.name}`} pos={pos} label={e.name} props={e.properties} fill={c.fill} stroke={c.stroke} textColor={c.text} />;
+            const c = tintedCard(pal, CATEGORICAL[i % CATEGORICAL.length]);
+            return <Card key={`onto-${e.name}`} pos={pos} label={e.name} props={e.properties} fill={c.fill} stroke={c.stroke} textColor={c.text} p={pal} />;
           })}
 
           {/* Physical collection cards (deduplicated for shared LPG collections) */}
@@ -458,10 +460,10 @@ export default function SchemaGraph({ mapping }: Props) {
               seen.add(e.collection);
               const pos = layout.physCards.get(e.collection);
               if (!pos) return null;
-              const c = PHYS_COLORS[e.style] || PHYS_COLORS.COLLECTION;
+              const c = physCardColors(pal, e.style);
               const allPropsForColl = entities.filter((x) => x.collection === e.collection).flatMap((x) => x.properties);
               const uniqueProps = allPropsForColl.filter((p, i, a) => a.findIndex((q) => q.field === p.field) === i);
-              return <Card key={`phys-${e.collection}`} pos={pos} label={e.collection} subtitle={e.style.replace(/_/g, " ").toLowerCase()} props={uniqueProps} fill={c.fill} stroke={c.stroke} textColor="#e2e8f0" tag="D" />;
+              return <Card key={`phys-${e.collection}`} pos={pos} label={e.collection} subtitle={e.style.replace(/_/g, " ").toLowerCase()} props={uniqueProps} fill={c.fill} stroke={c.stroke} textColor={c.text} tag="D" p={pal} />;
             });
           })()}
 
@@ -473,7 +475,7 @@ export default function SchemaGraph({ mapping }: Props) {
               seen.add(r.edgeCollection);
               const pos = layout.relEdgeCards.get(r.edgeCollection);
               if (!pos) return null;
-              const c = PHYS_COLORS[r.style] || PHYS_COLORS.DEDICATED_COLLECTION;
+              const c = physCardColors(pal, PHYS_STYLE_COLOR[r.style] ? r.style : "DEDICATED_COLLECTION");
               const allProps = relationships
                 .filter((x) => x.edgeCollection === r.edgeCollection)
                 .flatMap((x) => x.properties);
@@ -484,7 +486,7 @@ export default function SchemaGraph({ mapping }: Props) {
                 r.style === "DEDICATED_COLLECTION"
                   ? "edge collection"
                   : r.style.replace(/_/g, " ").toLowerCase();
-              return <Card key={`phys-edge-${r.edgeCollection}`} pos={pos} label={r.edgeCollection} subtitle={subtitle} props={uniqueProps} fill={c.fill} stroke={c.stroke} textColor="#e2e8f0" tag="E" />;
+              return <Card key={`phys-edge-${r.edgeCollection}`} pos={pos} label={r.edgeCollection} subtitle={subtitle} props={uniqueProps} fill={c.fill} stroke={c.stroke} textColor={c.text} tag="E" p={pal} />;
             });
           })()}
 
@@ -496,9 +498,9 @@ export default function SchemaGraph({ mapping }: Props) {
             const y = onto.y + CARD_HEADER / 2;
             return (
               <g key={`tmap-${e.name}`}>
-                <line x1={onto.x + onto.w} y1={y} x2={phys.x} y2={y} stroke="#475569" strokeWidth={1.5} strokeDasharray="6 4" markerEnd="url(#map-arrow)" />
-                <rect x={(onto.x + onto.w + phys.x) / 2 - 28} y={y - 9} width={56} height={18} rx={9} fill="#0f172a" stroke="#334155" strokeWidth={1} />
-                <text x={(onto.x + onto.w + phys.x) / 2} y={y + 1} fill="#94a3b8" fontSize={8} fontWeight="500" textAnchor="middle" dominantBaseline="middle" fontFamily="monospace">{e.style}</text>
+                <line x1={onto.x + onto.w} y1={y} x2={phys.x} y2={y} stroke={pal.edge} strokeWidth={1.5} strokeDasharray="6 4" markerEnd="url(#map-arrow)" />
+                <rect x={(onto.x + onto.w + phys.x) / 2 - 28} y={y - 9} width={56} height={18} rx={9} fill={pal.surface} stroke={pal.border} strokeWidth={1} />
+                <text x={(onto.x + onto.w + phys.x) / 2} y={y + 1} fill={pal.textSecondary} fontSize={8} fontWeight="500" textAnchor="middle" dominantBaseline="middle" fontFamily="monospace">{e.style}</text>
               </g>
             );
           })}
@@ -536,7 +538,7 @@ export default function SchemaGraph({ mapping }: Props) {
                 key={`tmap-bundle-${b.from}->${b.to}`}
                 d={`M ${pillCX} ${pillCY + 11} L ${pillCX} ${dropY} Q ${pillCX} ${dstY} ${midX} ${dstY} L ${dstX} ${dstY}`}
                 fill="none"
-                stroke="#f59e0b"
+                stroke={pal.warning}
                 strokeWidth={1}
                 strokeDasharray="6 4"
                 markerEnd="url(#map-arrow)"
@@ -557,7 +559,7 @@ export default function SchemaGraph({ mapping }: Props) {
               const uniqColl = allColl.filter((q, i, a) => a.findIndex((r) => r.field === q.field) === i);
               const physIdx = uniqColl.findIndex((q) => q.field === p.field);
               const dstY = phys.y + CARD_HEADER + ROW_PAD + (physIdx >= 0 ? physIdx : j) * ROW_H + 10;
-              const color = PROP_EDGE_COLORS[(ei * 3 + j) % PROP_EDGE_COLORS.length];
+              const color = CATEGORICAL[(ei * 3 + j) % CATEGORICAL.length];
               return <PropEdge key={`prop-${e.name}-${p.name}`} x1={onto.x + onto.w} y1={srcY} x2={phys.x} y2={dstY} color={color} />;
             });
           })}
@@ -581,8 +583,8 @@ export default function SchemaGraph({ mapping }: Props) {
               segs.push(
                 <g key={`from-${r.type}`}>
                   <path d={`M ${ePos.x + ePos.w / 4} ${ePos.y} Q ${ePos.x + ePos.w / 4} ${(ePos.y + fromPhys.y + fromPhys.h) / 2} ${fromPhys.x + fromPhys.w / 2} ${fromPhys.y + fromPhys.h}`}
-                    fill="none" stroke="#475569" strokeWidth={1} strokeDasharray="3 2" markerEnd="url(#map-arrow)" />
-                  <text x={(ePos.x + ePos.w / 4 + fromPhys.x + fromPhys.w / 2) / 2 + 10} y={(ePos.y + fromPhys.y + fromPhys.h) / 2} fill="#475569" fontSize={8} fontFamily="monospace">_from</text>
+                    fill="none" stroke={pal.edge} strokeWidth={1} strokeDasharray="3 2" markerEnd="url(#map-arrow)" />
+                  <text x={(ePos.x + ePos.w / 4 + fromPhys.x + fromPhys.w / 2) / 2 + 10} y={(ePos.y + fromPhys.y + fromPhys.h) / 2} fill={pal.muted} fontSize={8} fontFamily="monospace">_from</text>
                 </g>,
               );
             }
@@ -590,8 +592,8 @@ export default function SchemaGraph({ mapping }: Props) {
               segs.push(
                 <g key={`to-${r.type}`}>
                   <path d={`M ${ePos.x + ePos.w * 3 / 4} ${ePos.y} Q ${ePos.x + ePos.w * 3 / 4} ${(ePos.y + toPhys.y + toPhys.h) / 2} ${toPhys.x + toPhys.w / 2} ${toPhys.y + toPhys.h}`}
-                    fill="none" stroke="#475569" strokeWidth={1} strokeDasharray="3 2" markerEnd="url(#map-arrow)" />
-                  <text x={(ePos.x + ePos.w * 3 / 4 + toPhys.x + toPhys.w / 2) / 2 + 10} y={(ePos.y + toPhys.y + toPhys.h) / 2} fill="#475569" fontSize={8} fontFamily="monospace">_to</text>
+                    fill="none" stroke={pal.edge} strokeWidth={1} strokeDasharray="3 2" markerEnd="url(#map-arrow)" />
+                  <text x={(ePos.x + ePos.w * 3 / 4 + toPhys.x + toPhys.w / 2) / 2 + 10} y={(ePos.y + toPhys.y + toPhys.h) / 2} fill={pal.muted} fontSize={8} fontFamily="monospace">_to</text>
                 </g>,
               );
             }

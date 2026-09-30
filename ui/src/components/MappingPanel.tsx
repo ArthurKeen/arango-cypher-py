@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { json } from "@codemirror/lang-json";
 import { bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { oneDark } from "./theme";
+import { editorTheme } from "./theme";
 import SchemaGraph from "./SchemaGraph";
 import { exportMappingOwl, importMappingOwl } from "../api/client";
 
@@ -306,7 +306,7 @@ export default function MappingPanel({ mapping, onChange, onClose }: Props) {
         bracketMatching(),
         closeBrackets(),
         json(),
-        oneDark,
+        editorTheme,
         keymap.of([
           ...closeBracketsKeymap,
           ...defaultKeymap,

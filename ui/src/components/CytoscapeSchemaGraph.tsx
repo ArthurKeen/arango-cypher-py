@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import cytoscape from "cytoscape";
 import type { Core, EventObject, NodeSingular } from "cytoscape";
+import { CATEGORICAL, graphPalette, type GraphPalette } from "../theme/graphPalette";
+import { useTheme } from "../theme/theme";
 
 interface PropInfo {
   name: string;
@@ -54,11 +56,8 @@ interface DialogState {
   relCollection?: string;
 }
 
-const CONCEPT_COLORS = [
-  "#818cf8", "#4ade80", "#fbbf24", "#f87171", "#a78bfa", "#22d3ee",
-];
-const PHYS_COLOR = "#64748b";
-const MAP_EDGE_COLOR = "#475569";
+// Neutral marker for physical collections (theme-independent, like CATEGORICAL).
+const PHYS_COLOR = "#9a9a9a";
 
 function extractMapping(mapping: Record<string, unknown>): {
   entities: EntityInfo[];
@@ -363,7 +362,7 @@ function EditDialog({
         className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-80 p-4 space-y-3"
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">{title}</h3>
+          <h3 className="text-sm font-semibold text-gray-50">{title}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -429,9 +428,102 @@ function EditDialog({
   );
 }
 
+// Category colour rides on each concept's border; labels use the theme's
+// text colour so they stay legible on either canvas. Selection is Arango Green.
+function schemaGraphStyle(p: GraphPalette): cytoscape.StylesheetJson {
+  return [
+    {
+      selector: "node[layer='concept']",
+      style: {
+        shape: "round-rectangle",
+        width: 130,
+        height: 36,
+        "background-color": p.surface,
+        "border-width": 2,
+        "border-color": "data(color)",
+        label: "data(label)",
+        "text-valign": "center",
+        "text-halign": "center",
+        "font-size": "12px",
+        "font-weight": "bold",
+        color: p.text,
+        "text-wrap": "wrap",
+      } as unknown as cytoscape.Css.Node,
+    },
+    {
+      selector: "node[layer='physical']",
+      style: {
+        shape: "rectangle",
+        width: 130,
+        height: 32,
+        "background-color": p.surface,
+        "border-width": 1.5,
+        "border-color": p.muted,
+        "border-style": "dashed" as cytoscape.Css.LineStyle,
+        label: "data(label)",
+        "text-valign": "center",
+        "text-halign": "center",
+        "font-size": "11px",
+        "font-weight": "normal",
+        "font-style": "italic" as cytoscape.Css.FontStyle,
+        color: p.textSecondary,
+        "text-wrap": "wrap",
+      } as unknown as cytoscape.Css.Node,
+    },
+    {
+      selector: "node.selected",
+      style: {
+        "border-width": 3,
+        "border-color": p.accent,
+      } as cytoscape.Css.Node,
+    },
+    {
+      selector: "edge[kind='relationship']",
+      style: {
+        width: 2,
+        "line-color": p.edgeStrong,
+        "target-arrow-color": p.edgeStrong,
+        "target-arrow-shape": "triangle",
+        "curve-style": "bezier",
+        label: "data(label)",
+        "font-size": "9px",
+        "font-weight": 600,
+        color: p.textSecondary,
+        "text-background-color": p.canvas,
+        "text-background-opacity": 0.9,
+        "text-background-padding": "3px",
+        "text-rotation": "autorotate",
+      } as cytoscape.Css.Edge,
+    },
+    {
+      selector: "edge[kind='mapping']",
+      style: {
+        width: 1,
+        "line-color": p.edge,
+        "line-style": "dashed" as cytoscape.Css.LineStyle,
+        "line-dash-pattern": [6, 4],
+        "target-arrow-shape": "none",
+        "curve-style": "bezier",
+        opacity: 0.6,
+      } as unknown as cytoscape.Css.Edge,
+    },
+    {
+      selector: "edge:active",
+      style: {
+        "overlay-opacity": 0.1,
+        "overlay-color": p.accent,
+      } as cytoscape.Css.Edge,
+    },
+  ];
+}
+
 export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [theme] = useTheme();
+  const palette = graphPalette(theme);
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
   const [selected, setSelected] = useState<SelectedItem | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [dialog, setDialog] = useState<DialogState>({ kind: null });
@@ -461,7 +553,7 @@ export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props
           id: `concept-${e.name}`,
           label: e.name,
           subtitle: "class",
-          color: CONCEPT_COLORS[i % CONCEPT_COLORS.length],
+          color: CATEGORICAL[i % CATEGORICAL.length],
           kind: "entity",
           layer: "concept",
           entityName: e.name,
@@ -581,90 +673,7 @@ export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props
       container: containerRef.current,
       elements,
       layout: { name: "preset" },
-      style: [
-        {
-          selector: "node[layer='concept']",
-          style: {
-            shape: "round-rectangle",
-            width: 130,
-            height: 36,
-            "background-color": "#1e1b4b",
-            "border-width": 2,
-            "border-color": "data(color)",
-            label: "data(label)",
-            "text-valign": "center",
-            "text-halign": "center",
-            "font-size": "12px",
-            "font-weight": "bold",
-            color: "data(color)",
-            "text-wrap": "wrap",
-          } as unknown as cytoscape.Css.Node,
-        },
-        {
-          selector: "node[layer='physical']",
-          style: {
-            shape: "rectangle",
-            width: 130,
-            height: 32,
-            "background-color": "#1e293b",
-            "border-width": 1.5,
-            "border-color": PHYS_COLOR,
-            "border-style": "dashed" as cytoscape.Css.LineStyle,
-            label: "data(label)",
-            "text-valign": "center",
-            "text-halign": "center",
-            "font-size": "11px",
-            "font-weight": "normal",
-            "font-style": "italic" as cytoscape.Css.FontStyle,
-            color: "#94a3b8",
-            "text-wrap": "wrap",
-          } as unknown as cytoscape.Css.Node,
-        },
-        {
-          selector: "node.selected",
-          style: {
-            "border-width": 3,
-            "border-color": "#e5e7eb",
-          } as cytoscape.Css.Node,
-        },
-        {
-          selector: "edge[kind='relationship']",
-          style: {
-            width: 2,
-            "line-color": "#818cf8",
-            "target-arrow-color": "#818cf8",
-            "target-arrow-shape": "triangle",
-            "curve-style": "bezier",
-            label: "data(label)",
-            "font-size": "9px",
-            "font-weight": 600,
-            color: "#c7d2fe",
-            "text-background-color": "#0f172a",
-            "text-background-opacity": 0.9,
-            "text-background-padding": "3px",
-            "text-rotation": "autorotate",
-          } as cytoscape.Css.Edge,
-        },
-        {
-          selector: "edge[kind='mapping']",
-          style: {
-            width: 1,
-            "line-color": MAP_EDGE_COLOR,
-            "line-style": "dashed" as cytoscape.Css.LineStyle,
-            "line-dash-pattern": [6, 4],
-            "target-arrow-shape": "none",
-            "curve-style": "bezier",
-            opacity: 0.6,
-          } as unknown as cytoscape.Css.Edge,
-        },
-        {
-          selector: "edge:active",
-          style: {
-            "overlay-opacity": 0.1,
-            "overlay-color": "#818cf8",
-          } as cytoscape.Css.Edge,
-        },
-      ],
+      style: schemaGraphStyle(paletteRef.current),
       minZoom: 0.1,
       maxZoom: 5,
       wheelSensitivity: 0.3,
@@ -814,6 +823,11 @@ export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A theme toggle restyles in place, keeping the preset layout.
+  useEffect(() => {
+    cyRef.current?.style(schemaGraphStyle(palette));
+  }, [palette]);
+
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || !containerRef.current) return;
@@ -944,7 +958,7 @@ export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props
                 setContextMenu(null);
                 item.action();
               }}
-              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-gray-50 transition-colors"
             >
               {item.label}
             </button>
@@ -974,7 +988,7 @@ export default function CytoscapeSchemaGraph({ mapping, onMappingChange }: Props
               Close
             </button>
           </div>
-          <div className="text-sm font-semibold text-white mb-1">
+          <div className="text-sm font-semibold text-gray-50 mb-1">
             {selected.name}
           </div>
           <div className="text-[10px] text-gray-500 font-mono mb-1">

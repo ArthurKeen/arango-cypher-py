@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { Action, ResultTab } from "../api/store";
 import CytoscapeGraph from "./CytoscapeGraph";
 import type { CyNode, CyEdge } from "./CytoscapeGraph";
+import { CATEGORICAL } from "../theme/graphPalette";
 
 interface Props {
   results: unknown[] | null;
@@ -336,7 +337,7 @@ function ProfileView({
                 className="p-2 rounded bg-gray-800 border border-gray-700"
               >
                 <div className="text-xs text-gray-400">{key}</div>
-                <div className="text-sm text-white font-mono">
+                <div className="text-sm text-gray-50 font-mono">
                   {typeof val === "number" ? val.toLocaleString() : String(val)}
                 </div>
               </div>
@@ -359,10 +360,6 @@ function ProfileView({
   );
 }
 
-const NODE_COLORS = [
-  "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#06b6d4", "#ec4899", "#84cc16",
-];
 
 function extractGraphData(data: unknown[]): {
   nodes: CyNode[];
@@ -379,7 +376,7 @@ function extractGraphData(data: unknown[]): {
     if (!id || nodeMap.has(id)) return;
     const coll = id.split("/")[0] || "unknown";
     if (!collColors.has(coll)) {
-      collColors.set(coll, NODE_COLORS[colorIdx++ % NODE_COLORS.length]);
+      collColors.set(coll, CATEGORICAL[colorIdx++ % CATEGORICAL.length]);
     }
     const label =
       (doc.name as string) ||
@@ -433,9 +430,9 @@ function NodeInspector({
         <div className="flex items-center gap-2 min-w-0">
           <span
             className="w-3 h-3 rounded-full shrink-0"
-            style={{ backgroundColor: node.color || "#6366f1" }}
+            style={{ backgroundColor: node.color || CATEGORICAL[0] }}
           />
-          <span className="text-sm font-semibold text-white truncate">
+          <span className="text-sm font-semibold text-gray-50 truncate">
             {node.label}
           </span>
         </div>
