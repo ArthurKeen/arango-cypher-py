@@ -13,6 +13,7 @@ import TenantSelector from "./components/TenantSelector";
 import GraphSelector from "./components/GraphSelector";
 import SchemaWarningBanner from "./components/SchemaWarningBanner";
 import SettingsMenu from "./components/SettingsMenu";
+import ThemeToggle from "./components/ThemeToggle";
 import ChatComposer from "./components/ChatComposer";
 import QueryInspector from "./components/QueryInspector";
 import { useAppState } from "./api/store";
@@ -1315,7 +1316,7 @@ export default function App() {
       {/* Connection bar */}
       <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-semibold text-white tracking-tight">
+          <h1 className="text-sm font-semibold text-gray-50 tracking-tight">
             Arango Cypher
           </h1>
           <span className="text-gray-600 text-xs">|</span>
@@ -1348,6 +1349,7 @@ export default function App() {
               error={tenantResolution.error}
             />
           )}
+          <ThemeToggle />
           <SettingsMenu
             showMapping={showMapping}
             onToggleMapping={() => setShowMapping((v) => !v)}
@@ -1446,7 +1448,7 @@ export default function App() {
               }}
               disabled={state.introspecting}
               title="Re-read the catalog (fast). Use this after the sidecar has synced."
-              className="px-2 py-1 text-xs font-medium rounded bg-amber-700 hover:bg-amber-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs font-medium rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Check again
             </button>
