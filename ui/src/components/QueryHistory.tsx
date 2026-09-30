@@ -114,7 +114,7 @@ export default function QueryHistory({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-md bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-white">Query History</h2>
+          <h2 className="text-sm font-semibold text-gray-50">Query History</h2>
           <div className="flex items-center gap-2">
             {history.length > 0 && (
               <button

@@ -252,7 +252,8 @@ extra).
 Endpoint families (all under `arango_cypher.service`):
 
 - **Connection & session** — `POST /connect`, `POST /disconnect`,
-  `GET /connections`, `GET /connect/defaults`.
+  `GET /connections`, `GET /connect/defaults`, `GET`/`POST /connect/platform`
+  (§13, platform sessions).
 - **Cypher → AQL** — `POST /translate`, `POST /execute`, `POST /validate`,
   `POST /explain`, `POST /aql-profile`, `GET /cypher-profile`.
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
@@ -281,6 +282,15 @@ profile), a schema-graph mapping view, a connection dialog with auto-introspect,
 query history with bounded result snapshots, and local-learning ("Learn")
 controls. UI architecture rules (object-centric canvas, left-click selects /
 right-click acts, overlays over routes) are enforced project-wide.
+
+The Workbench MUST use the Arango application colour scheme (the design rules in
+`AGENTS.md`): Arango Green `#006532` for primary actions, links and active
+states; Arango neutrals for surfaces, borders and text; `#da1a20` for errors
+only. It MUST offer a day/night toggle in the header, default to **day**, and
+remember the viewer's choice (browser storage; a blocked store just means the
+choice is not remembered). Every surface follows the toggle live — Tailwind
+utilities, the CodeMirror editors, and the Cytoscape/SVG graphs, whose canvas is
+light gray by day with Arango Green selection.
 
 > `ui/dist/` is gitignored; rerun `cd ui && npm run build` after pulling UI
 > changes. The service logs a `UI bundle is stale` warning on drift.
@@ -686,6 +696,38 @@ every other endpoint reports healthy. Only the exact root is bound — never a
 catch-all — so unknown paths still return a genuine 404 rather than the SPA shell
 with status 200. Deployment verification MUST probe the mount root, not only the
 endpoints the service defines.
+
+On the platform the Workbench MUST NOT ask a signed-in user for cluster
+credentials. The platform gateway forwards the caller's platform JWT as
+`Authorization: Bearer`, and the operator injects the coordinator as
+`ARANGO_DEPLOYMENT_ENDPOINT`; `GET /connect/platform` reports whether a request
+carries both, and `POST /connect/platform` opens a session authenticated with
+that JWT — listing the databases that user may open and, when the caller names
+none, opening the instance's mount database if the user can open it (else
+`_system`, else their first database: a mount database need not exist) — so the
+user only picks a database and a graph (or all collections). Platform sessions
+MUST:
+
+- store and bake no credential; the coordinator validates the JWT, so the session
+  sees exactly what the user's platform permissions allow;
+- take the endpoint from server configuration only, never from the request;
+- follow the JWT each request carries (the platform rotates it), and refuse — not
+  fall back to the stored token — a request that carries none or one that does
+  not decode;
+- answer an unusable token with 401 and an unknown database with 404, never 500;
+- reach the operator endpoint over its TLS: it presents a certificate from the
+  cluster's own CA, which the container does not trust, so by default that
+  endpoint is not verified (as the platform's first-party services connect to
+  it) while an explicit `ARANGO_URL` is; `ARANGO_CYPHER_PLATFORM_CA_BUNDLE`
+  verifies against the cluster CA, `ARANGO_CYPHER_PLATFORM_VERIFY_TLS=on|off`
+  overrides;
+- name the cause when the endpoint cannot be reached (TLS, refused, timeout) and
+  the endpoint's `scheme://host:port` — never the token.
+
+`ARANGO_CYPHER_PLATFORM_AUTH=off` disables the path; off the platform the
+credentials dialog is unchanged. Every UI request MUST resolve against the
+service mount (the directory the SPA was served from), never the origin root,
+which on the platform is ArangoDB itself.
 
 The persistent schema cache (a user-land collection in the connected DB) lets
 containerized replicas share a warm cache and survive restarts. See

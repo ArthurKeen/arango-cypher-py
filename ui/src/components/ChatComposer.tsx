@@ -131,7 +131,7 @@ export default function ChatComposer({
               <button
                 key={i}
                 type="button"
-                className="w-full text-left px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white truncate transition-colors"
+                className="w-full text-left px-2.5 py-1.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-gray-50 truncate transition-colors"
                 title={q}
                 onClick={() => {
                   onPickSuggestion?.(q);

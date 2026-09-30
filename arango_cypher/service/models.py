@@ -72,12 +72,35 @@ class ConnectRequest(BaseModel):
 class ConnectResponse(BaseModel):
     token: str
     databases: list[str]
+    # The database the session opened. ``/connect/platform`` may choose it
+    # (the caller can name none); ``/connect`` echoes the requested one.
+    database: str | None = None
     # Echoed for UI transparency: which tenant the session is bound to,
     # if any. UI surfaces this in the connect status badge so the user
     # always sees the active tenant alongside the active database.
     tenant_id: str | None = None
     tenant_key: str | None = None
     is_admin: bool = False
+
+
+class PlatformConnectRequest(BaseModel):
+    """Body for ``POST /connect/platform``.
+
+    No credentials: the session authenticates as the platform JWT the
+    gateway forwards. ``database`` of ``None`` opens the instance's mount
+    database (see :func:`arango_cypher.service.platform_auth.default_database`).
+    """
+
+    database: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+
+
+class PlatformStatus(BaseModel):
+    """``GET /connect/platform`` — can this request open a platform session?"""
+
+    available: bool
+    database: str
+    #: Why ``available`` is false; ``None`` when it is true.
+    reason: str | None = None
 
 
 class TenantDiscoverRequest(BaseModel):

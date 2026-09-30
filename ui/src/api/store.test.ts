@@ -547,3 +547,53 @@ describe("reducer: schema catalog pending/analyzing state", () => {
     expect(s.schemaPending).toBe(false);
   });
 });
+
+describe("reducer: platform sessions", () => {
+  const platformSuccess: Action = {
+    type: "CONNECT_SUCCESS",
+    token: "platform-token",
+    databases: ["AIM", "_system"],
+    url: "https://prod.demo.pilot.arango.ai",
+    database: "AIM",
+    username: "",
+    password: "",
+    platform: true,
+  };
+
+  it("starts as a password connection", () => {
+    expect(initialState.connection.platform).toBe(false);
+  });
+
+  it("CONNECT_SUCCESS records a platform session", () => {
+    const s = apply(initialState, platformSuccess);
+    expect(s.connection.platform).toBe(true);
+    expect(s.connection.password).toBe("");
+    expect(s.connection.databases).toEqual(["AIM", "_system"]);
+  });
+
+  it("a password CONNECT_SUCCESS clears the platform flag", () => {
+    const s = apply(initialState, platformSuccess, {
+      type: "CONNECT_SUCCESS",
+      token: "pw-token",
+      databases: ["a"],
+      url: "https://other.cluster",
+      database: "a",
+      username: "root",
+      password: "pw",
+    });
+    expect(s.connection.platform).toBe(false);
+  });
+
+  it("a database switch keeps the platform flag until the new session lands", () => {
+    // handleSwitchDb reconnects via /connect/platform while connection.platform
+    // is still true; CONNECT_START must not reset it mid-switch.
+    const s = apply(initialState, platformSuccess, {
+      type: "CONNECT_START",
+      url: "https://prod.demo.pilot.arango.ai",
+      database: "_system",
+      username: "",
+    });
+    expect(s.connection.platform).toBe(true);
+    expect(s.connection.token).toBeNull();
+  });
+});

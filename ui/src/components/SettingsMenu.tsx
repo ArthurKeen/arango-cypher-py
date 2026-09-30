@@ -67,7 +67,7 @@ function ToggleRow({
       </span>
       <span
         className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-          active ? "bg-indigo-600" : "bg-gray-700"
+          active ? "bg-indigo-600" : "bg-gray-500"
         }`}
       >
         <span

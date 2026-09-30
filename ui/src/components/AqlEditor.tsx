@@ -20,7 +20,7 @@ import {
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { oneDark } from "./theme";
+import { editorTheme } from "./theme";
 import { aql, setAqlSchemaContext, type AqlSchemaContext } from "../lang/aql";
 
 const setAqlHighlightEffect = StateEffect.define<number[]>();
@@ -202,7 +202,7 @@ export default function AqlEditor({ value, bindVars, error, onModified, mapping,
           indentWithTab,
           ...defaultKeymap,
         ]),
-        oneDark,
+        editorTheme,
         updateListener,
         aqlHighlightField,
         EditorView.theme({

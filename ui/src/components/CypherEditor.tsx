@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
 import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { oneDark } from "./theme";
+import { editorTheme } from "./theme";
 import { cypher } from "../lang/cypher";
 import { extractSchema, cypherCompletion, type MappingSchema } from "../lang/cypher-completion";
 import { cypherHoverTooltip } from "../lang/cypher-hover";
@@ -128,7 +128,7 @@ export default function CypherEditor({
           activateOnTyping: true,
         }),
         cypherHoverTooltip,
-        oneDark,
+        editorTheme,
         keymap.of([
           ...closeBracketsKeymap,
           ...defaultKeymap,

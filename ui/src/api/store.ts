@@ -10,6 +10,10 @@ export interface ConnectionState {
   password: string;
   databases: string[];
   error: string | null;
+  // True when the session authenticates with the platform login the
+  // gateway forwards (POST /connect/platform) rather than a password: the
+  // database switcher then reconnects the same way, and `password` is empty.
+  platform: boolean;
 }
 
 export type ResultTab = "table" | "json" | "graph" | "explain" | "profile";
@@ -220,6 +224,7 @@ export const initialState: AppState = {
     password: "",
     databases: [],
     error: null,
+    platform: false,
   },
   cypher: "MATCH (p1:Person)-[:KNOWS]->(p2:Person)\nRETURN p1, p2",
   mapping: {},
@@ -279,6 +284,7 @@ export type Action =
       database: string;
       username: string;
       password: string;
+      platform?: boolean;
     }
   | { type: "CONNECT_ERROR"; error: string }
   | { type: "DISCONNECT" }
@@ -391,6 +397,7 @@ function reducer(state: AppState, action: Action): AppState {
           password: action.password,
           databases: action.databases,
           error: null,
+          platform: action.platform ?? false,
         },
       };
     case "CONNECT_ERROR":

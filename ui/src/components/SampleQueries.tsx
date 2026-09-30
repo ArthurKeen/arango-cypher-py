@@ -89,7 +89,7 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[640px] max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-white">Sample Queries</h2>
+          <h2 className="text-sm font-semibold text-gray-50">Sample Queries</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-200 text-lg leading-none"
@@ -150,7 +150,7 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
                       onClick={() => handleSelect(q.cypher)}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-gray-300 group-hover:text-white">
+                        <span className="text-xs font-medium text-gray-300 group-hover:text-gray-50">
                           {q.name}
                         </span>
                       </div>

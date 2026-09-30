@@ -17,6 +17,19 @@ export interface ConnectRequest {
 export interface ConnectResponse {
   token: string;
   databases: string[];
+  // The database the session opened. /connect/platform chooses it when the
+  // request names none (the mount database may not be one the user can open).
+  database?: string | null;
+}
+
+// GET /connect/platform — whether this page came through the platform
+// gateway with the user's platform login, so the Workbench can open a
+// session without asking for credentials.
+export interface PlatformStatus {
+  available: boolean;
+  // The database a platform session opens by default: the instance's mount.
+  database: string;
+  reason: string | null;
 }
 
 export interface ConnectDefaults {
@@ -71,20 +84,29 @@ function authHeaders(token: string): Record<string, string> {
   return { "X-Arango-Session": token };
 }
 
-// The SPA is served at …/frontend/ (AMP) or …/ui/ (legacy / local-dev). API
-// endpoints live one level up. Root-relative fetch("/connect") would hit the
-// domain root (ArangoDB itself) instead of the service. Strip whichever prefix
-// the SPA is currently mounted under to get the right API base:
-//   /_service/uds_db/<db>/<instance>/frontend/ → /_service/uds_db/<db>/<instance>
-//   /frontend/ (AMP localhost)                 → ""
-//   /ui/ (legacy / local-dev)                  → ""
-// We check /frontend first because AMP is the production deploy target.
+// The API base for a page served at `pathname`. Root-relative
+// fetch("/connect") would hit the domain root — on the platform that is
+// ArangoDB itself, which answers `unknown path '/connect'` — so every call is
+// prefixed with the directory the SPA was served from. The SPA is mounted at
+// the service root (the platform app launcher's target), or one level down at
+// …/frontend/ (AMP) or …/ui/ (legacy / local-dev), where the API is the parent:
+//   /_service/uds/_db/<db>/<instance>/          → /_service/uds/_db/<db>/<instance>
+//   /_service/uds/_db/<db>/<instance>/frontend/ → /_service/uds/_db/<db>/<instance>
+//   /frontend/ , /ui/ , / (local dev)           → ""
+// Only a trailing `…html` segment is treated as a file: the launcher may open
+// the mount without its trailing slash, and an instance name is a directory.
+// Whole segments are compared, so an instance named `ui-demo` is not a mount.
+export function apiBaseFor(pathname: string): string {
+  const segments = pathname.split("/");
+  if (/\.html?$/i.test(segments[segments.length - 1] ?? "")) segments.pop();
+  while (segments.length > 0 && segments[segments.length - 1] === "") segments.pop();
+  const last = segments[segments.length - 1];
+  if (last === "frontend" || last === "ui") segments.pop();
+  return segments.join("/");
+}
+
 function apiBase(): string {
-  for (const prefix of ["/frontend", "/ui"]) {
-    const idx = window.location.pathname.indexOf(prefix);
-    if (idx >= 0) return window.location.pathname.slice(0, idx);
-  }
-  return "";
+  return apiBaseFor(window.location.pathname);
 }
 
 // Shown in the UI whenever the backend returns 401. The raw
@@ -181,6 +203,28 @@ export function isAuthError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401;
 }
 
+export async function exportMappingOwl(
+  mapping: unknown,
+): Promise<{ turtle: string }> {
+  return request("/mapping/export-owl", {
+    method: "POST",
+    body: JSON.stringify({ mapping }),
+  });
+}
+
+export interface ImportedOwlMapping {
+  conceptualSchema: unknown;
+  physicalMapping: unknown;
+  metadata: unknown;
+}
+
+export async function importMappingOwl(turtle: string): Promise<ImportedOwlMapping> {
+  return request("/mapping/import-owl", {
+    method: "POST",
+    body: JSON.stringify({ turtle }),
+  });
+}
+
 export async function getConnectDefaults(): Promise<ConnectDefaults> {
   return request("/connect/defaults");
 }
@@ -189,6 +233,19 @@ export async function connect(req: ConnectRequest): Promise<ConnectResponse> {
   return request("/connect", {
     method: "POST",
     body: JSON.stringify(req),
+  });
+}
+
+export async function getPlatformStatus(): Promise<PlatformStatus> {
+  return request("/connect/platform");
+}
+
+// Open a session as the signed-in platform user. No credentials: the
+// gateway forwards the platform login with the request.
+export async function connectPlatform(database?: string): Promise<ConnectResponse> {
+  return request("/connect/platform", {
+    method: "POST",
+    body: JSON.stringify(database ? { database } : {}),
   });
 }
 

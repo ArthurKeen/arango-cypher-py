@@ -264,17 +264,17 @@ export const cypherHoverTooltip = hoverTooltip((view, pos): Tooltip | null => {
       dom.style.cssText = "max-width:380px;font-size:12px;line-height:1.4;padding:8px 10px;";
 
       const title = document.createElement("div");
-      title.style.cssText = "font-weight:700;color:#c084fc;margin-bottom:4px;font-family:monospace;";
+      title.style.cssText = "font-weight:700;color:var(--cm-keyword);margin-bottom:4px;font-family:monospace;";
       title.textContent = FUNCTION_DOCS[lower] ? `${hit.word}()` : upper;
       dom.appendChild(title);
 
       const desc = document.createElement("div");
-      desc.style.cssText = "color:#d1d5db;margin-bottom:6px;";
+      desc.style.cssText = "color:var(--cm-fg);margin-bottom:6px;";
       desc.textContent = entry!.summary;
       dom.appendChild(desc);
 
       const code = document.createElement("pre");
-      code.style.cssText = "background:#1e293b;padding:6px 8px;border-radius:4px;font-size:11px;color:#94a3b8;white-space:pre-wrap;margin:0;font-family:monospace;";
+      code.style.cssText = "background:var(--cm-bg);padding:6px 8px;border-radius:4px;font-size:11px;color:var(--cm-operator);white-space:pre-wrap;margin:0;font-family:monospace;";
       code.textContent = entry!.example;
       dom.appendChild(code);
 

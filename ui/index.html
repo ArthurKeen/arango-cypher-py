@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arango Cypher</title>
+    <script>
+      // Apply the stored day/night choice before first paint (src/theme/theme.ts
+      // owns the key). Day is the default.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("arango-cypher.theme") === "dark" ? "dark" : "light";
+      } catch {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
   </head>
   <body class="bg-gray-950 text-gray-100">
     <div id="root"></div>
