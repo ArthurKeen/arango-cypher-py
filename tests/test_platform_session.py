@@ -14,6 +14,7 @@ them against an imagined API.
 
 from __future__ import annotations
 
+import sys
 import time
 from typing import Any
 
@@ -91,8 +92,16 @@ class _Recorder:
         recorder = self
 
         class _FakeClient:
-            def __init__(self, hosts: str | list[str] = "http://127.0.0.1:8529", **_kwargs: Any):
+            # Mirrors ArangoClient.__init__: hosts first, verify_override among
+            # the keyword options (True, False, or a CA bundle path).
+            def __init__(
+                self,
+                hosts: str | list[str] = "http://127.0.0.1:8529",
+                verify_override: bool | str | None = None,
+                **_kwargs: Any,
+            ):
                 self.hosts = hosts
+                self.verify_override = verify_override
                 self.closed = False
                 recorder.clients.append(self)
 
@@ -176,6 +185,88 @@ class TestPlatformEndpoint:
         monkeypatch.setenv("ARANGO_DEPLOYMENT_ENDPOINT", ENDPOINT)
         monkeypatch.setenv("ARANGO_CYPHER_PLATFORM_AUTH", value)
         assert platform_auth.platform_endpoint() is None
+
+
+class TestPlatformTls:
+    @pytest.fixture(autouse=True)
+    def _clean(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for name in ("ARANGO_CYPHER_PLATFORM_CA_BUNDLE", "ARANGO_CYPHER_PLATFORM_VERIFY_TLS"):
+            monkeypatch.delenv(name, raising=False)
+
+    def test_operator_endpoint_is_not_verified_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ARANGO_DEPLOYMENT_ENDPOINT", ENDPOINT)
+        assert platform_auth.platform_tls_verify() is False
+
+    def test_an_explicit_arango_url_is_verified_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ARANGO_DEPLOYMENT_ENDPOINT", raising=False)
+        monkeypatch.setenv("ARANGO_URL", "https://public.example:8529")
+        assert platform_auth.platform_tls_verify() is True
+
+    def test_a_ca_bundle_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ARANGO_DEPLOYMENT_ENDPOINT", ENDPOINT)
+        monkeypatch.setenv("ARANGO_CYPHER_PLATFORM_VERIFY_TLS", "off")
+        monkeypatch.setenv("ARANGO_CYPHER_PLATFORM_CA_BUNDLE", "/etc/arango/ca.pem")
+        assert platform_auth.platform_tls_verify() == "/etc/arango/ca.pem"
+
+    @pytest.mark.parametrize(
+        ("mode", "expected"), [("on", True), ("TRUE", True), ("off", False), ("0", False)]
+    )
+    def test_the_switch_overrides_auto(
+        self, monkeypatch: pytest.MonkeyPatch, mode: str, expected: bool
+    ) -> None:
+        monkeypatch.setenv("ARANGO_DEPLOYMENT_ENDPOINT", ENDPOINT)
+        monkeypatch.setenv("ARANGO_CYPHER_PLATFORM_VERIFY_TLS", mode)
+        assert platform_auth.platform_tls_verify() is expected
+
+    def test_describe_endpoint_keeps_scheme_host_and_port(self) -> None:
+        assert (
+            platform_auth.describe_endpoint("https://arangodb.ns.svc:8529/") == "https://arangodb.ns.svc:8529"
+        )
+        assert platform_auth.describe_endpoint("arangodb:8529") == "http://arangodb:8529"
+
+
+class TestProbeEndpoint:
+    def test_names_a_refused_connection(self) -> None:
+        # A real closed port: nothing listens on 127.0.0.1:1.
+        found = platform_auth.probe_endpoint("http://127.0.0.1:1", JWT_A, True)
+        assert found.startswith("connection failed")
+        assert JWT_A not in found
+
+    def test_names_a_tls_failure_and_the_fix(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _get(url: str, **kwargs: Any) -> requests.Response:
+            raise requests.exceptions.SSLError("certificate verify failed: self-signed certificate in chain")
+
+        monkeypatch.setattr(platform_auth.requests, "get", _get)
+        found = platform_auth.probe_endpoint("https://arangodb:8529", JWT_A, True)
+        assert "TLS verification failed" in found
+        assert "ARANGO_CYPHER_PLATFORM_CA_BUNDLE" in found
+
+    def test_names_a_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _get(url: str, **kwargs: Any) -> requests.Response:
+            raise requests.exceptions.ConnectTimeout("timed out")
+
+        monkeypatch.setattr(platform_auth.requests, "get", _get)
+        assert "no answer within" in platform_auth.probe_endpoint("https://arangodb:8529", JWT_A, False)
+
+    def test_never_echoes_the_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _get(url: str, **kwargs: Any) -> requests.Response:
+            raise requests.exceptions.ConnectionError(
+                f"refused while sending bearer {kwargs['headers']['Authorization']}"
+            )
+
+        monkeypatch.setattr(platform_auth.requests, "get", _get)
+        found = platform_auth.probe_endpoint("https://arangodb:8529", JWT_A, False)
+        assert JWT_A not in found
+        assert "<token>" in found
+
+    def test_reports_when_a_direct_request_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _get(url: str, **kwargs: Any) -> requests.Response:
+            resp = requests.Response()
+            resp.status_code = 401
+            return resp
+
+        monkeypatch.setattr(platform_auth.requests, "get", _get)
+        assert "HTTP 401" in platform_auth.probe_endpoint("https://arangodb:8529", JWT_A, False)
 
 
 class TestMountDatabase:
@@ -402,19 +493,49 @@ class TestPlatformConnect:
         assert "Nope" in resp.json()["detail"]["message"]
 
     def test_unreachable_cluster_is_a_502_that_names_the_cause(
-        self, client: TestClient, platform_env: None
+        self, client: TestClient, platform_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         cause = requests.exceptions.ConnectionError("Name or service not known")
         failure = ConnectionAbortedError("Can't connect to host(s) within limit (3)")
         failure.__cause__ = cause
         rec = _Recorder(fail=failure)
+        probed: list[tuple[str, bool | str]] = []
+
+        def _probe(endpoint: str, token: str, verify: bool | str) -> str:
+            probed.append((endpoint, verify))
+            return (
+                "TLS verification failed (SSLError); set ARANGO_CYPHER_PLATFORM_CA_BUNDLE to the cluster CA"
+            )
+
+        monkeypatch.setattr(sys.modules["arango_cypher.service.routes.connect"], "probe_endpoint", _probe)
         with patched_arango_client(rec.factory()):
             resp = client.post("/connect/platform", json={}, headers=_bearer(JWT_A))
         assert resp.status_code == 502
         detail = resp.json()["detail"]
         assert detail["error"] == "cluster_unreachable"
         assert "Name or service not known" in detail["message"]
+        # The probe's finding and the endpoint (never the token) reach the user.
+        assert "TLS verification failed" in detail["message"]
+        assert "http://coordinator.cluster.svc:8529" in detail["message"]
+        assert probed == [(ENDPOINT, False)]
         assert JWT_A not in resp.text
+
+    def test_the_operator_endpoint_is_opened_without_tls_verification(
+        self, client: TestClient, platform_env: None
+    ) -> None:
+        rec = _Recorder()
+        with patched_arango_client(rec.factory()):
+            client.post("/connect/platform", json={}, headers=_bearer(JWT_A))
+        assert rec.clients[0].verify_override is False
+
+    def test_a_ca_bundle_is_used_when_configured(
+        self, client: TestClient, platform_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ARANGO_CYPHER_PLATFORM_CA_BUNDLE", "/etc/arango/ca.pem")
+        rec = _Recorder()
+        with patched_arango_client(rec.factory()):
+            client.post("/connect/platform", json={}, headers=_bearer(JWT_A))
+        assert rec.clients[0].verify_override == "/etc/arango/ca.pem"
 
 
 # ---------------------------------------------------------------------------

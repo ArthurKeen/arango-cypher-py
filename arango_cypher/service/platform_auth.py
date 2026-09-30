@@ -16,6 +16,11 @@ permissions allow.
 
 ``ARANGO_CYPHER_PLATFORM_AUTH=off`` disables the path entirely (the manual
 connect dialog still works).
+
+TLS to the operator endpoint: it serves a certificate from the cluster's own
+CA, which the container does not trust by default, so a verifying client fails
+with a bare "Can't connect to host(s)" (seen on prod.demo). See
+:func:`platform_tls_verify` for the policy and its overrides.
 """
 
 from __future__ import annotations
@@ -23,9 +28,10 @@ from __future__ import annotations
 import os
 import re
 from typing import TYPE_CHECKING
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import jwt
+import requests
 from arango.exceptions import JWTExpiredError
 from fastapi import Request
 
@@ -38,7 +44,16 @@ PLATFORM_AUTH_ENV = "ARANGO_CYPHER_PLATFORM_AUTH"
 #: The coordinator address the platform operator injects into the container.
 DEPLOYMENT_ENDPOINT_ENV = "ARANGO_DEPLOYMENT_ENDPOINT"
 
+#: A CA bundle (PEM path) that signs the platform endpoint's certificate.
+PLATFORM_CA_BUNDLE_ENV = "ARANGO_CYPHER_PLATFORM_CA_BUNDLE"
+#: ``on`` / ``off`` override the ``auto`` TLS policy.
+PLATFORM_VERIFY_TLS_ENV = "ARANGO_CYPHER_PLATFORM_VERIFY_TLS"
+
 _DISABLED_VALUES = frozenset({"off", "0", "false", "no"})
+_ENABLED_VALUES = frozenset({"on", "1", "true", "yes"})
+
+#: Seconds for the diagnostic probe that runs only after a connect failed.
+_PROBE_TIMEOUT_S = 5.0
 
 #: ``/_service/uds/_db/<db>/<instance>`` — the database a BYOC instance is
 #: scoped to. ``/_service/uds/_global/<instance>`` has none.
@@ -64,6 +79,61 @@ def platform_endpoint() -> str | None:
         if value:
             return value.rstrip("/")
     return None
+
+
+def platform_tls_verify() -> bool | str:
+    """TLS verification for the platform endpoint, as python-arango's
+    ``verify_override`` takes it: a CA bundle path, ``True`` or ``False``.
+
+    A configured CA bundle always wins. Otherwise ``auto`` verifies an
+    explicitly configured ``ARANGO_URL`` but not the operator-injected
+    in-cluster endpoint, whose certificate comes from the cluster's own CA —
+    the same choice the platform's first-party services make (autograph
+    connects to ``ARANGO_DEPLOYMENT_ENDPOINT`` with ``verify_override=False``).
+    ``ARANGO_CYPHER_PLATFORM_VERIFY_TLS=on`` insists on verification.
+    """
+    bundle = os.getenv(PLATFORM_CA_BUNDLE_ENV, "").strip()
+    if bundle:
+        return bundle
+    mode = os.getenv(PLATFORM_VERIFY_TLS_ENV, "auto").strip().lower()
+    if mode in _ENABLED_VALUES:
+        return True
+    if mode in _DISABLED_VALUES:
+        return False
+    return not os.getenv(DEPLOYMENT_ENDPOINT_ENV, "").strip()
+
+
+def describe_endpoint(endpoint: str) -> str:
+    """``scheme://host:port`` of *endpoint*, for error messages."""
+    parsed = urlparse(endpoint if "://" in endpoint else f"http://{endpoint}")
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{parsed.hostname}{port}"
+
+
+def probe_endpoint(endpoint: str, token: str, verify: bool | str) -> str:
+    """Why the endpoint cannot be reached, after python-arango failed to.
+
+    python-arango reports every transport failure as "Can't connect to
+    host(s) within limit (N)" with the cause discarded, which does not say
+    whether DNS, the port, TLS or a timeout is at fault. One direct request
+    names it. Never includes the token.
+    """
+    try:
+        resp = requests.get(
+            f"{endpoint.rstrip('/')}/_api/version",
+            headers={"Authorization": f"bearer {token}"},
+            timeout=_PROBE_TIMEOUT_S,
+            verify=verify,
+        )
+    except requests.exceptions.SSLError as exc:
+        return f"TLS verification failed ({exc.__class__.__name__}); set {PLATFORM_CA_BUNDLE_ENV} to the cluster CA"
+    except requests.exceptions.Timeout:
+        return f"no answer within {_PROBE_TIMEOUT_S:g}s"
+    except requests.exceptions.ConnectionError as exc:
+        return f"connection failed ({str(exc).replace(token, '<token>')[:200]})"
+    except requests.exceptions.RequestException as exc:
+        return f"request failed ({exc.__class__.__name__})"
+    return f"a direct request answers HTTP {resp.status_code}, so the failure is inside the driver"
 
 
 def forwarded_token(request: Request) -> str | None:

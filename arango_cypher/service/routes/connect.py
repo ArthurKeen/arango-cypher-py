@@ -30,10 +30,13 @@ from ..platform_auth import (
     PlatformTokenError,
     choose_database,
     default_database,
+    describe_endpoint,
     forwarded_token,
     open_platform_database,
     platform_auth_enabled,
     platform_endpoint,
+    platform_tls_verify,
+    probe_endpoint,
 )
 from ..security import (
     _check_connect_target,
@@ -232,7 +235,8 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
             error_type="unavailable",
         )
 
-    client = _svc.ArangoClient(hosts=endpoint)
+    verify = platform_tls_verify()
+    client = _svc.ArangoClient(hosts=endpoint, verify_override=verify)
 
     def _open(name: str) -> StandardDatabase:
         try:
@@ -286,10 +290,18 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
                 f"Database {database!r} does not exist on this cluster.",
                 error_type="unknown_database",
             ) from e
+        cause = probe_endpoint(endpoint, token, verify)
+        _svc_logger.warning(
+            "platform endpoint %s unreachable (tls_verify=%s): %s",
+            describe_endpoint(endpoint),
+            "bundle" if isinstance(verify, str) else verify,
+            cause,
+        )
         raise _fail(
             502,
             "cluster_unreachable",
-            f"Could not reach the cluster for database {database!r}: {detail}",
+            f"Could not reach the cluster at {describe_endpoint(endpoint)} for database "
+            f"{database!r}: {detail} — {cause}",
             error_type=type(e).__name__,
         ) from e
 

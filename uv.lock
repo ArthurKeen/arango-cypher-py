@@ -76,6 +76,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "pyjwt" },
     { name = "python-arango" },
+    { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -138,6 +139,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "rank-bm25", marker = "extra == 'dev'", specifier = ">=0.2.2" },
     { name = "rdflib", marker = "extra == 'owl'", specifier = ">=7.0" },
+    { name = "requests", specifier = ">=2.28" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.0.0" },
     { name = "rich", marker = "extra == 'service'", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.4" },
