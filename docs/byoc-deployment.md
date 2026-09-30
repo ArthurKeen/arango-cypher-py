@@ -46,10 +46,16 @@ itself; everything below is what differs for this package.
 # SERVICE_ROOT_PATH must name the database ARANGO_DB (in .env) deploys into.
 SERVICE_ROOT_PATH=/_service/uds/_db/IAM/arango-cypher-py \
   bash scripts/package-byoc.sh                     # build the tarball
-python3 scripts/byoc_deploy.py list                # what already exists
-python3 scripts/byoc_deploy.py release --replace   # upload + deploy + wait
-python3 scripts/byoc_deploy.py verify              # probe the public URL
+uv run --group deploy arango-byoc-deploy list       # what already exists
+uv run --group deploy arango-byoc-deploy release    # pre-flight, upload, swap, verify
+uv run --group deploy arango-byoc-deploy verify     # probe the public URL
 ```
+
+Deployment uses the shared [`arango-byoc-deploy`](https://github.com/ArthurKeen/arango-byoc-deploy)
+tool, pinned in the `deploy` dependency group; this repo's settings live in
+`[tool.arango-byoc]` in `pyproject.toml`. `release` replaces a running service
+without asking (upload first, then delete and recreate): there is no
+`--replace` flag any more.
 
 Credentials come from repo-root `.env` (`ARANGO_URL`, `ARANGO_USER`,
 `ARANGO_PASSWORD`, `ARANGO_DB`). Nothing is written to disk and no credential is
@@ -76,7 +82,7 @@ existing `ui/dist` without rebuilding), `PACKAGE_INCLUDE_SAMPLES=0`,
 whitespace-separated word of the file named entrypoint>`. Line 1 must therefore
 begin with the literal token `entrypoint` — a shebang, docstring, comment or
 import there makes it try to execute `python /project/"""` and fail with a bare
-"No entrypoint found". Both the packager and `byoc_deploy.py preflight` assert
+"No entrypoint found". Both the packager and `arango-byoc-deploy preflight` assert
 this, because discovering it costs a full upload/deploy cycle.
 
 **Flat archive.** `entrypoint` at the tar root, not nested under a directory.
@@ -169,8 +175,8 @@ Packages are immutable per `(name, version)` and every upload keeps its build
 number, so rolling back is redeploying an earlier one:
 
 ```bash
-python3 scripts/byoc_deploy.py list                 # see the build numbers
-python3 scripts/byoc_deploy.py release --version 0.2.0-1 --exact --replace
+uv run --group deploy arango-byoc-deploy list              # see the build numbers
+uv run --group deploy arango-byoc-deploy rollback --to 0.2.0-1
 ```
 
 `delete` removes the running service and leaves the uploaded packages alone.

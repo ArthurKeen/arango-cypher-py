@@ -83,10 +83,33 @@ def _require_analyzer_unless_opted_out() -> None:
 
 _require_analyzer_unless_opted_out()
 
+
+def _service_version() -> str:
+    """The package's own version — never a second literal beside pyproject.
+
+    It was hardcoded "0.1.0" while pyproject said 0.2.0, so /openapi.json and
+    /health misreported every deployed build; the BYOC deploy's version check
+    compares that value with the release and could not pass. Installed
+    metadata is authoritative; an uninstalled source tree falls back to
+    reading pyproject.toml directly.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("arango-cypher-py")
+    except PackageNotFoundError:
+        import re
+        from pathlib import Path
+
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(encoding="utf-8"), re.M)
+        return match.group(1) if match else "0+unknown"
+
+
 app = FastAPI(
     title="Arango Cypher Transpiler",
     description="Cypher → AQL translation service for ArangoDB",
-    version="0.1.0",
+    version=_service_version(),
     root_path=os.getenv("ROOT_PATH", ""),
 )
 
