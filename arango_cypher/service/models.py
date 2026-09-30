@@ -72,6 +72,9 @@ class ConnectRequest(BaseModel):
 class ConnectResponse(BaseModel):
     token: str
     databases: list[str]
+    # The database the session opened. ``/connect/platform`` may choose it
+    # (the caller can name none); ``/connect`` echoes the requested one.
+    database: str | None = None
     # Echoed for UI transparency: which tenant the session is bound to,
     # if any. UI surfaces this in the connect status badge so the user
     # always sees the active tenant alongside the active database.

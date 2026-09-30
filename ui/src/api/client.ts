@@ -17,6 +17,9 @@ export interface ConnectRequest {
 export interface ConnectResponse {
   token: string;
   databases: string[];
+  // The database the session opened. /connect/platform chooses it when the
+  // request names none (the mount database may not be one the user can open).
+  database?: string | null;
 }
 
 // GET /connect/platform — whether this page came through the platform

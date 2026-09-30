@@ -8,6 +8,7 @@ import os
 import secrets
 import time
 
+from arango.database import StandardDatabase
 from fastapi import Depends, HTTPException, Request
 
 from ..._arango_sync import sync
@@ -27,6 +28,7 @@ from ..platform_auth import (
     DEPLOYMENT_ENDPOINT_ENV,
     PLATFORM_AUTH_ENV,
     PlatformTokenError,
+    choose_database,
     default_database,
     forwarded_token,
     open_platform_database,
@@ -160,6 +162,7 @@ def connect(req: ConnectRequest):
     return ConnectResponse(
         token=token,
         databases=databases,
+        database=req.database,
         tenant_id=tenant_id,
         tenant_key=tenant_key,
         is_admin=bool(req.isAdmin),
@@ -230,17 +233,37 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
         )
 
     client = _svc.ArangoClient(hosts=endpoint)
-    try:
-        db = open_platform_database(client, database, token)
-    except PlatformTokenError as e:
-        client.close()
-        _svc_logger.warning("platform connect refused for db=%r: %s", database, e)
-        raise _fail(
-            401,
-            "platform_login_rejected",
-            f"Cannot open a session with your platform login: {e}. Sign in to the platform again.",
-            error_type="unusable_token",
-        ) from e
+
+    def _open(name: str) -> StandardDatabase:
+        try:
+            return open_platform_database(client, name, token)
+        except PlatformTokenError as e:
+            client.close()
+            _svc_logger.warning("platform connect refused for db=%r: %s", name, e)
+            raise _fail(
+                401,
+                "platform_login_rejected",
+                f"Cannot open a session with your platform login: {e}. Sign in to the platform again.",
+                error_type="unusable_token",
+            ) from e
+
+    # The databases *this user* may open — ``/_api/database/user``, not
+    # ``_system.databases()``, which needs _system access a platform user
+    # usually lacks. ``None`` when the listing itself fails.
+    def _accessible(db: StandardDatabase) -> list[str] | None:
+        try:
+            names: list[str] = sync(db.databases_accessible_to_user())
+        except Exception as exc:
+            _svc_logger.warning("listing accessible databases failed: %s", exc)
+            return None
+        return sorted(names)
+
+    accessible: list[str] | None = None
+    if req.database is None:
+        accessible = _accessible(_open("_system"))
+        database = choose_database(accessible)
+
+    db = _open(database)
     try:
         db.version()
     except Exception as e:
@@ -270,14 +293,9 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
             error_type=type(e).__name__,
         ) from e
 
-    # The databases *this user* may open — not ``_system.databases()``, which
-    # needs _system access a platform user usually lacks.
-    try:
-        accessible: list[str] = sync(db.databases_accessible_to_user())
-        databases = sorted(accessible)
-    except Exception as exc:
-        _svc_logger.warning("listing accessible databases failed for db=%r: %s", database, exc)
-        databases = []
+    if accessible is None:
+        accessible = _accessible(db)
+    databases = list(accessible or [])
     if database not in databases:
         databases.append(database)
 
@@ -289,9 +307,10 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
         "/connect/platform",
         round((time.perf_counter() - t0) * 1000, 1),
         database=database,
+        requested=req.database is not None,
         databases_visible=len(databases),
     )
-    return ConnectResponse(token=session_token, databases=databases)
+    return ConnectResponse(token=session_token, databases=databases, database=database)
 
 
 @app.post("/session/tenant")

@@ -57,7 +57,9 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
         if (status.available) {
           if (!autoConnectAttempted.current && connection.status === "disconnected") {
             autoConnectAttempted.current = true;
-            doPlatformConnect(status.database);
+            // No database named: the server opens one this user can open
+            // (the mount database when possible) and says which.
+            doPlatformConnect();
           }
           return;
         }
@@ -110,9 +112,15 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
 
   // The platform session's cluster is the one serving this page; its origin
   // labels the connection and keys the per-connection saved state.
-  async function doPlatformConnect(database: string) {
+  async function doPlatformConnect(database?: string) {
     await openSession(
-      { url: window.location.origin, database, username: "", password: "", platform: true },
+      {
+        url: window.location.origin,
+        database: database ?? platform?.database ?? "",
+        username: "",
+        password: "",
+        platform: true,
+      },
       () => connectPlatform(database),
     );
   }
@@ -134,7 +142,7 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
         token: resp.token,
         databases: resp.databases,
         url: target.url,
-        database: target.database,
+        database: resp.database || target.database,
         username: target.username,
         password: target.password,
         platform: target.platform,
@@ -320,7 +328,7 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
           </span>
         )}
         <button
-          onClick={() => doPlatformConnect(connection.database || platform.database)}
+          onClick={() => doPlatformConnect()}
           className="px-3 py-1.5 text-sm rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
         >
           Connect

@@ -203,6 +203,24 @@ class TestMountDatabase:
         assert platform_auth.default_database() == "_system"
 
 
+class TestChooseDatabase:
+    @pytest.mark.parametrize(
+        ("accessible", "expected"),
+        [
+            (None, "AIM"),  # listing failed: nothing better is known
+            (["AIM", "_system"], "AIM"),
+            (["IAM", "_system"], "_system"),
+            (["IAM", "JLR"], "IAM"),
+            ([], "AIM"),
+        ],
+    )
+    def test_prefers_the_mount_database_the_user_can_open(
+        self, monkeypatch: pytest.MonkeyPatch, accessible: list[str] | None, expected: str
+    ) -> None:
+        monkeypatch.setenv("ROOT_PATH", MOUNT)
+        assert platform_auth.choose_database(accessible) == expected
+
+
 # ---------------------------------------------------------------------------
 # GET /connect/platform
 # ---------------------------------------------------------------------------
@@ -256,14 +274,52 @@ class TestPlatformConnect:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert rec.clients[0].hosts == ENDPOINT
+        # The user's databases are listed from _system first, then the chosen
+        # one is opened — every handle authenticated with the forwarded JWT.
         assert rec.opened == [
-            {"name": "AIM", "username": "root", "password": "", "auth_method": "jwt", "user_token": JWT_A}
+            {
+                "name": "_system",
+                "username": "root",
+                "password": "",
+                "auth_method": "jwt",
+                "user_token": JWT_A,
+            },
+            {"name": "AIM", "username": "root", "password": "", "auth_method": "jwt", "user_token": JWT_A},
         ]
         # The user's own database list, sorted — not _system.databases().
         assert body["databases"] == ["AIM", "FinReflectKG", "_system"]
+        assert body["database"] == "AIM"
         session = _sessions()[body["token"]]
         assert session.platform_token == JWT_A
         assert session.db.name == "AIM"
+
+    def test_a_mount_database_the_user_cannot_open_falls_back_to_system(
+        self, client: TestClient, platform_env: None
+    ) -> None:
+        # Seen on prod.demo: the instance is mounted in a database that does
+        # not exist, so opening it would fail the session outright.
+        rec = _Recorder(accessible=["IAM", "_system"])
+        with patched_arango_client(rec.factory()):
+            resp = client.post("/connect/platform", json={}, headers=_bearer(JWT_A))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["database"] == "_system"
+        assert rec.opened[-1]["name"] == "_system"
+
+    def test_without_system_access_the_first_database_is_opened(
+        self, client: TestClient, platform_env: None
+    ) -> None:
+        rec = _Recorder(accessible=["IAM", "JLR"])
+        with patched_arango_client(rec.factory()):
+            resp = client.post("/connect/platform", json={}, headers=_bearer(JWT_A))
+        assert resp.json()["database"] == "IAM"
+
+    def test_a_named_database_is_opened_as_is(self, client: TestClient, platform_env: None) -> None:
+        # No fallback for an explicit choice: the user asked for that one.
+        rec = _Recorder(accessible=["IAM"])
+        with patched_arango_client(rec.factory()):
+            resp = client.post("/connect/platform", json={"database": "JLR"}, headers=_bearer(JWT_A))
+        assert resp.json()["database"] == "JLR"
+        assert [o["name"] for o in rec.opened] == ["JLR"]
 
     def test_opens_the_requested_database(self, client: TestClient, platform_env: None) -> None:
         rec = _Recorder()
@@ -391,8 +447,9 @@ class TestPlatformIdentity:
         rec = _Recorder()
         with patched_arango_client(rec.factory()):
             token = self._connect(client, rec)
+            opened_at_connect = len(rec.opened)
             client.get("/graphs", headers={"X-Arango-Session": token, **_bearer(JWT_A)})
-        assert len(rec.opened) == 1
+        assert len(rec.opened) == opened_at_connect
 
     def test_request_without_the_jwt_is_refused(self, client: TestClient, platform_env: None) -> None:
         rec = _Recorder()

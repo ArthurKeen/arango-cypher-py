@@ -90,6 +90,23 @@ def default_database() -> str:
     return mount_database(os.getenv("ROOT_PATH", "")) or os.getenv("ARANGO_DB", "").strip() or "_system"
 
 
+def choose_database(accessible: list[str] | None) -> str:
+    """The database to open when the caller named none.
+
+    :func:`default_database` when the user can open it — or when their list
+    is unknown. Otherwise ``_system``, then their first database: a mount
+    database need not exist (an instance can be scoped to a database that
+    was since dropped, or that this user cannot see), and opening it would
+    fail the session before the user ever gets to the database picker.
+    """
+    preferred = default_database()
+    if accessible is None or preferred in accessible:
+        return preferred
+    if "_system" in accessible:
+        return "_system"
+    return accessible[0] if accessible else preferred
+
+
 class PlatformTokenError(Exception):
     """The forwarded token is not a usable ArangoDB JWT (malformed, expired,
     or not issued by ArangoDB). The message never contains the token."""
