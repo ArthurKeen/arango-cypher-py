@@ -10,6 +10,11 @@ flat tarball onto a platform-provided Python base image. No OCI registry, no
 at `/_service/uds/_db/AIM/arango-cypher-py/` — 38 routes, Workbench serving with
 both assets, 44 sample queries.
 
+> `AIM` was a typo for `IAM` in the operator's `.env`; that database does not
+> exist on the cluster (the platform mounted the instance there anyway).
+> Deploys now target `IAM`. `release --replace` resolves the running instance
+> by name, so it removes the `AIM`-mounted one before deploying into `IAM`.
+
 This path is ported from `arango-ontoextract`, whose
 `docs/container-manager-deployment.md` is the fuller reference for the platform
 itself; everything below is what differs for this package.
@@ -38,7 +43,8 @@ itself; everything below is what differs for this package.
 ## Quick start
 
 ```bash
-SERVICE_ROOT_PATH=/_service/uds/_db/AIM/arango-cypher-py \
+# SERVICE_ROOT_PATH must name the database ARANGO_DB (in .env) deploys into.
+SERVICE_ROOT_PATH=/_service/uds/_db/IAM/arango-cypher-py \
   bash scripts/package-byoc.sh                     # build the tarball
 python3 scripts/byoc_deploy.py list                # what already exists
 python3 scripts/byoc_deploy.py release --replace   # upload + deploy + wait
