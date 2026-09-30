@@ -122,6 +122,8 @@ index-html = "ui/dist/index.html"
 # package-byoc.sh bakes ROOT_PATH from SERVICE_ROOT_PATH; the deploy env map
 # cannot carry it (the platform drops app env there).
 prefix-env-var = "ROOT_PATH"
+# After `release`, the live service must report the release it was given.
+version-probe = { path = "/openapi.json", json-key = "info.version" }
 probes = [
   { path = "/health", label = "health", expect-json-key = "status" },
   { path = "/openapi.json", label = "API" },
@@ -186,6 +188,16 @@ arango-cypher-py = "arango_cypher.cli:app"
 [build-system]
 requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
+
+# Deploy tooling, kept out of the published package's metadata (a dependency
+# group is never part of the wheel), so a git pin here cannot break a PyPI
+# release. Pinned to an exact commit until arango-byoc-deploy is on PyPI; bump
+# the rev deliberately. Run: uv run --group deploy arango-byoc-deploy <command>
+[dependency-groups]
+deploy = ["arango-byoc-deploy"]
+
+[tool.uv.sources]
+arango-byoc-deploy = { git = "https://github.com/ArthurKeen/arango-byoc-deploy", rev = "0006881506ce079af15170ee6c81e211596bca81" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["arango_cypher"]
