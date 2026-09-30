@@ -283,6 +283,15 @@ query history with bounded result snapshots, and local-learning ("Learn")
 controls. UI architecture rules (object-centric canvas, left-click selects /
 right-click acts, overlays over routes) are enforced project-wide.
 
+The Workbench MUST use the Arango application colour scheme (the design rules in
+`AGENTS.md`): Arango Green `#006532` for primary actions, links and active
+states; Arango neutrals for surfaces, borders and text; `#da1a20` for errors
+only. It MUST offer a day/night toggle in the header, default to **day**, and
+remember the viewer's choice (browser storage; a blocked store just means the
+choice is not remembered). Every surface follows the toggle live — Tailwind
+utilities, the CodeMirror editors, and the Cytoscape/SVG graphs, whose canvas is
+light gray by day with Arango Green selection.
+
 > `ui/dist/` is gitignored; rerun `cd ui && npm run build` after pulling UI
 > changes. The service logs a `UI bundle is stale` warning on drift.
 
