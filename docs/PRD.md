@@ -702,9 +702,11 @@ credentials. The platform gateway forwards the caller's platform JWT as
 `Authorization: Bearer`, and the operator injects the coordinator as
 `ARANGO_DEPLOYMENT_ENDPOINT`; `GET /connect/platform` reports whether a request
 carries both, and `POST /connect/platform` opens a session authenticated with
-that JWT — defaulting to the instance's mount database and listing the databases
-that user may open — so the user only picks a database and a graph (or all
-collections). Platform sessions MUST:
+that JWT — listing the databases that user may open and, when the caller names
+none, opening the instance's mount database if the user can open it (else
+`_system`, else their first database: a mount database need not exist) — so the
+user only picks a database and a graph (or all collections). Platform sessions
+MUST:
 
 - store and bake no credential; the coordinator validates the JWT, so the session
   sees exactly what the user's platform permissions allow;
@@ -712,7 +714,15 @@ collections). Platform sessions MUST:
 - follow the JWT each request carries (the platform rotates it), and refuse — not
   fall back to the stored token — a request that carries none or one that does
   not decode;
-- answer an unusable token with 401 and an unknown database with 404, never 500.
+- answer an unusable token with 401 and an unknown database with 404, never 500;
+- reach the operator endpoint over its TLS: it presents a certificate from the
+  cluster's own CA, which the container does not trust, so by default that
+  endpoint is not verified (as the platform's first-party services connect to
+  it) while an explicit `ARANGO_URL` is; `ARANGO_CYPHER_PLATFORM_CA_BUNDLE`
+  verifies against the cluster CA, `ARANGO_CYPHER_PLATFORM_VERIFY_TLS=on|off`
+  overrides;
+- name the cause when the endpoint cannot be reached (TLS, refused, timeout) and
+  the endpoint's `scheme://host:port` — never the token.
 
 `ARANGO_CYPHER_PLATFORM_AUTH=off` disables the path; off the platform the
 credentials dialog is unchanged. Every UI request MUST resolve against the
