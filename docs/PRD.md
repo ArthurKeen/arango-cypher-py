@@ -398,7 +398,11 @@ comprehensions; named paths + `length`/`nodes`/`relationships`; `EXISTS { }` and
 `COUNT { }` subqueries; label predicates on untyped vars
 (`WHERE risk:RISK_FACTOR`); scalar/builtin functions and `arango.*` extensions
 (§9); inline pattern properties; named parameters `$param`; dot-path property
-access (`n.address.zip`).
+access (`n.address.zip`). A parameter that shares its name with a bind
+variable the translation generates (`typeValue`, `@collection`, …) and would
+have its value replaced is refused (`UNSUPPORTED`) rather than silently rebound.
+In a `UNION`, internal names that repeat across branches with different values
+are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
 ### 8.3 Supported subset (write)
 
