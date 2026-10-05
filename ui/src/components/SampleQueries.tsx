@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getSampleQueries, type SampleQuery } from "../api/client";
+import { getSampleQueries, type MinedExample, type SampleQuery } from "../api/client";
 
 interface Props {
-  onSelect: (cypher: string) => void;
+  onSelect: (cypher: string, params?: Record<string, unknown>) => void;
   onClose: () => void;
+  // Verified examples mined from the connected database; listed first.
+  minedExamples?: MinedExample[];
 }
+
+// Category heading for mined examples; sorted ahead of the built-in datasets.
+export const MINED_CATEGORY = "From this database";
 
 interface StaticSample {
   name: string;
@@ -23,7 +28,7 @@ const STATIC_SAMPLES: StaticSample[] = [
   { name: "Aggregation with grouping", cypher: "MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN m.title, count(p) AS actorCount ORDER BY actorCount DESC LIMIT 5", category: "Aggregation" },
 ];
 
-export default function SampleQueries({ onSelect, onClose }: Props) {
+export default function SampleQueries({ onSelect, onClose, minedExamples = [] }: Props) {
   const [apiQueries, setApiQueries] = useState<SampleQuery[]>([]);
   const [filter, setFilter] = useState("");
   const [dataset, setDataset] = useState<string>("");
@@ -38,7 +43,22 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
   }, [dataset]);
 
   const allItems = useMemo(() => {
-    const items: { name: string; cypher: string; category: string }[] = [];
+    const items: {
+      name: string;
+      cypher: string;
+      category: string;
+      params?: Record<string, unknown>;
+      detail?: string;
+    }[] = [];
+    for (const e of minedExamples) {
+      items.push({
+        name: e.question,
+        cypher: e.cypher,
+        category: MINED_CATEGORY,
+        params: e.params,
+        detail: e.source.name,
+      });
+    }
     for (const s of STATIC_SAMPLES) {
       items.push(s);
     }
@@ -50,7 +70,7 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
       });
     }
     return items;
-  }, [apiQueries]);
+  }, [apiQueries, minedExamples]);
 
   const filtered = useMemo(() => {
     const term = filter.toLowerCase();
@@ -69,7 +89,9 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
       list.push(q);
       map.set(q.category, list);
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return Array.from(map.entries()).sort(([a], [b]) =>
+      a === MINED_CATEGORY ? -1 : b === MINED_CATEGORY ? 1 : a.localeCompare(b),
+    );
   }, [filtered]);
 
   const datasets = useMemo(
@@ -78,8 +100,8 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
   );
 
   const handleSelect = useCallback(
-    (cypher: string) => {
-      onSelect(cypher);
+    (cypher: string, params?: Record<string, unknown>) => {
+      onSelect(cypher, params);
       onClose();
     },
     [onSelect, onClose],
@@ -147,13 +169,24 @@ export default function SampleQueries({ onSelect, onClose }: Props) {
                     <li
                       key={`${category}-${i}`}
                       className="px-4 py-2.5 hover:bg-gray-800/60 cursor-pointer transition-colors group"
-                      onClick={() => handleSelect(q.cypher)}
+                      onClick={() => handleSelect(q.cypher, q.params)}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-medium text-gray-300 group-hover:text-gray-50">
                           {q.name}
                         </span>
+                        {q.category === MINED_CATEGORY && (
+                          <span
+                            className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-400"
+                            title="Returns the same documents as the saved query it was mined from"
+                          >
+                            verified
+                          </span>
+                        )}
                       </div>
+                      {q.detail && (
+                        <div className="text-[10px] text-gray-500 mb-1 truncate">from saved query: {q.detail}</div>
+                      )}
                       <code className="text-[11px] text-indigo-400/80 block truncate">
                         {q.cypher}
                       </code>

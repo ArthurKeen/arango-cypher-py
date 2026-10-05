@@ -21,6 +21,7 @@ from . import (
     connect,  # noqa: F401
     corrections,  # noqa: F401
     cypher,  # noqa: F401
+    examples,  # noqa: F401
     health,  # noqa: F401
     nl,  # noqa: F401
     owl,  # noqa: F401

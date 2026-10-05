@@ -126,7 +126,7 @@ requires-dist = [
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'service'" },
     { name = "arango-query-core", specifier = ">=0.2.0,<0.3.0" },
-    { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.12.1,<0.15.0" },
+    { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.14.1,<0.15.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
@@ -165,16 +165,16 @@ wheels = [
 
 [[package]]
 name = "arangodb-schema-analyzer"
-version = "0.12.1"
+version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "python-arango" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/8b/449e7f7d1933112b1ed8805659839beb9e70b402b8955f5ab865a60ca606/arangodb_schema_analyzer-0.12.1.tar.gz", hash = "sha256:f4613c9a50889e6c62f0397b104f5766687d429ebbfe5cbed672b05fcc6e6655", size = 199876, upload-time = "2026-08-22T02:01:21.03Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/41/0b003fc96f7b5b854a330e298ec1fff656fd1fb5490a674cf2023c335c69/arangodb_schema_analyzer-0.14.1.tar.gz", hash = "sha256:dae335b51350a718b5f0c58578969eeb47604eabcc1dfdbe93c30d89a48daff7", size = 209604, upload-time = "2026-10-05T18:43:00.264Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/3f/23378780105e99e61c1fdac8c76d2140bd8a8c29de7422c865c1fee0446a/arangodb_schema_analyzer-0.12.1-py3-none-any.whl", hash = "sha256:bfadeac657f241a599c8351218309f6ce50135ff0dcb7783dbb52dadf855fa6b", size = 202583, upload-time = "2026-08-22T02:01:19.683Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/9a/f915d661416bb85388a9aecc9bb227a235bf169b26596c89b557f5a566ad/arangodb_schema_analyzer-0.14.1-py3-none-any.whl", hash = "sha256:96861235e4c9f2c1453dfe73da533ed639045326c92749fb74c2d754209da229", size = 209428, upload-time = "2026-10-05T18:42:58.727Z" },
 ]
 
 [[package]]
