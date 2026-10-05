@@ -49,3 +49,57 @@ cases:
       q: alice
       '@collection': users
       '@collection_u1': persons
+- id: C809
+  name: UNION over LPG labels renames the second branch's type value, not the shared collection
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User) RETURN n.name AS name UNION MATCH (n:Doc) RETURN n.name AS name
+
+    '
+  expected:
+    aql: "FOR _u IN UNION_DISTINCT(\n  (FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  RETURN {name: n.name}),\n  (FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue_u1\n  RETURN {name: n.name})\n  )\n  RETURN _u"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+      typeValue_u1: Doc
+- id: C810
+  name: UNION with a different relationship type in each branch renames the conflicting edge collection
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN m.title AS title UNION MATCH (p:Person)-[:DIRECTED]->(m:Movie) RETURN m.title AS title
+
+    '
+  expected:
+    aql: "WITH movies, persons\nFOR _u IN UNION_DISTINCT(\n  (FOR p IN @@uCollection\n  FOR m, r IN 1..1 OUTBOUND p @@edgeCollection\n    RETURN {title: m.title}),\n    (FOR p IN @@uCollection\n    FOR m, r IN 1..1 OUTBOUND p @@edgeCollection_u1\n      RETURN {title: m.title})\n      )\n      RETURN _u"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': acted_in
+      '@edgeCollection_u1': directed
+- id: C811
+  name: UNION rename leaves string literals and quoted attribute names untouched
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User) RETURN n.name AS x UNION MATCH (n:Person) WHERE n.name = ''a @@collection b'' RETURN n.`@@collection` AS x
+
+    '
+  expected:
+    aql: "FOR _u IN UNION_DISTINCT(\n  (FOR n IN @@collection\n  RETURN {x: n.name}),\n  (FOR n IN @@collection_u1\n  FILTER (n.name == 'a @@collection b')\n  RETURN {x: n.`@@collection`})\n  )\n  RETURN _u"
+    bind_vars:
+      '@collection': users
+      '@collection_u1': persons
+- id: C812
+  name: UNION ALL across three branches reuses a renamed slot that holds the same value
+  mapping_fixture: hybrid
+  extensions_enabled: false
+  cypher: 'MATCH (n:User) RETURN n.name AS x UNION ALL MATCH (n:Doc) RETURN n.name AS x UNION ALL MATCH (n:Note) RETURN n.name AS x
+
+    '
+  expected:
+    aql: "FOR _u IN UNION(\n  (FOR n IN @@collection\n  RETURN {x: n.name}),\n  (FOR n IN @@collection_u1\n  FILTER n[@typeField] == @typeValue\n  RETURN {x: n.name}),\n  (FOR n IN @@collection_u1\n  FILTER n[@typeField] == @typeValue_u2\n  RETURN {x: n.name})\n  )\n  RETURN _u"
+    bind_vars:
+      '@collection': users
+      '@collection_u1': vertices
+      typeField: type
+      typeValue: Doc
+      typeValue_u2: Note

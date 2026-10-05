@@ -1296,6 +1296,9 @@ def _translate_union(
         if uc.ALL() is None:
             is_all = False
 
+    # The caller seeds bind_vars with the user's parameters before any branch
+    # is translated; those names must never be renamed (see _merge_bind_vars).
+    user_params = frozenset(bind_vars)
     subqueries: list[str] = []
     for index, branch in enumerate(branches):
         branch_bv: dict[str, Any] = {}
@@ -1304,7 +1307,7 @@ def _translate_union(
             resolver=resolver,
             bind_vars=branch_bv,
         )
-        text = _merge_bind_vars(bind_vars, branch_bv, bq.text, branch_index=index)
+        text = _merge_bind_vars(bind_vars, branch_bv, bq.text, branch_index=index, user_params=user_params)
         subqueries.append(f"({text})")
 
     fn = "UNION" if is_all else "UNION_DISTINCT"
@@ -1313,10 +1316,21 @@ def _translate_union(
     return AqlQuery(text=aql, bind_vars=bind_vars)
 
 
-def _bind_reference(key: str) -> re.Pattern[str]:
-    """Where bind variable *key* is referenced in AQL text: ``@key`` (``@@name``
-    for a collection parameter, whose key is ``@name``), as a whole token."""
-    return re.compile(r"(?<![\w@])@" + re.escape(key) + r"(?!\w)")
+#: AQL text a bind-name rename must leave alone: string literals (single or
+#: double quoted, backslash escapes) and quoted identifiers (backticks or
+#: forward ticks). Cypher string literals are copied into AQL verbatim, so a
+#: value such as 'a @@collection b' must not be rewritten.
+_AQL_QUOTED = r"""'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`[^`]*`|´[^´]*´"""
+
+
+def _rename_bind_references(text: str, key: str, renamed: str) -> str:
+    """Rewrite references to bind variable *key* in AQL *text* to *renamed*.
+
+    A reference is ``@key`` (``@@name`` for a collection parameter, whose key
+    is ``@name``) as a whole token, outside quoted text.
+    """
+    pattern = re.compile(f"({_AQL_QUOTED})" + r"|(?<![\w@])@" + re.escape(key) + r"(?!\w)")
+    return pattern.sub(lambda m: m.group(1) if m.group(1) is not None else "@" + renamed, text)
 
 
 def _merge_bind_vars(
@@ -1325,16 +1339,27 @@ def _merge_bind_vars(
     text: str,
     *,
     branch_index: int,
+    user_params: frozenset[str],
 ) -> str:
     """Merge one UNION branch's bind vars into *target*; return its AQL text.
 
     Every branch is translated on its own, so the translator's internal names
     (``@@collection``, ``@uTypeValue``, ...) repeat across branches. Equal
     values merge — that is also how a user ``$param`` shared by branches stays
-    one bind variable. A name already bound to a *different* value (two
-    branches over different collections) is renamed in this branch, in both
-    its bind vars and its text, to ``<name>_u<branch>``; before, it was refused,
-    so a UNION over two labels could not translate at all.
+    one bind variable. An internal name already bound to a *different* value
+    (two branches over different collections) is renamed in this branch — in
+    its bind vars and, outside quoted text, its AQL — to ``<name>_u<branch>``,
+    reusing an earlier renamed slot that holds the same value.
+
+    A user parameter is never renamed: when one shares its name with an
+    internal bind variable of a different value, renaming would rebind the
+    user's own reference to the internal value, so this refuses instead.
+
+    Why rename afterwards rather than allocate unique names while emitting:
+    the core emitters assign fixed names (``bind_vars["@collection"] = ...``
+    alongside a literal ``@@collection`` in the text) at some twenty sites;
+    routing them all through :func:`naming._pick_bind_key` is a larger change
+    than this UNION-only merge, and this rename is quote-aware.
     """
     for k, v in source.items():
         if k not in target:
@@ -1342,13 +1367,25 @@ def _merge_bind_vars(
             continue
         if target[k] == v:
             continue
-        renamed = f"{k}_u{branch_index}"
-        suffix = 1
-        while renamed in target or renamed in source:
-            renamed = f"{k}_u{branch_index}_{suffix}"
-            suffix += 1
-        text = _bind_reference(k).sub("@" + renamed, text)
-        target[renamed] = v
+        if k in user_params:
+            raise CoreError(
+                f"Parameter ${k} has the same name as a bind variable this UNION generates internally; "
+                "rename the parameter",
+                code="UNSUPPORTED",
+            )
+        slot = re.compile(re.escape(k) + r"_u\d+(?:_\d+)?")
+        renamed = next(
+            (key for key, val in target.items() if val == v and slot.fullmatch(key) and key not in source),
+            None,
+        )
+        if renamed is None:
+            renamed = f"{k}_u{branch_index}"
+            suffix = 1
+            while renamed in target or renamed in source:
+                renamed = f"{k}_u{branch_index}_{suffix}"
+                suffix += 1
+            target[renamed] = v
+        text = _rename_bind_references(text, k, renamed)
     return text
 
 
