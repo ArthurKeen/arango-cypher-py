@@ -44,11 +44,54 @@ class FakeCursor:
 
 
 class FakeCollection:
+    """The slice of ``StandardCollection`` the mining code uses, backed by a dict."""
+
     def __init__(self, docs: list[dict[str, Any]]):
         self._docs = docs
 
     def all(self, skip: int | None = None, limit: int | None = None) -> list[dict[str, Any]]:
         return list(self._docs)
+
+    def insert(
+        self,
+        document: dict[str, Any],
+        return_new: bool = False,
+        sync: bool | None = None,
+        silent: bool = False,
+        overwrite: bool = False,
+        **_more: Any,
+    ) -> dict[str, Any]:
+        key = document.get("_key")
+        existing = [d for d in self._docs if d.get("_key") == key]
+        if existing and not overwrite:
+            raise KeyError(f"unique constraint violated: {key}")
+        self._docs[:] = [d for d in self._docs if d.get("_key") != key] + [dict(document)]
+        return {"_key": key}
+
+    def has(
+        self, document: str | dict[str, Any], rev: str | None = None, check_rev: bool = True, **_more: Any
+    ) -> bool:
+        key = document if isinstance(document, str) else document.get("_key")
+        return any(d.get("_key") == key for d in self._docs)
+
+    def delete(
+        self,
+        document: str | dict[str, Any],
+        rev: str | None = None,
+        check_rev: bool = True,
+        ignore_missing: bool = False,
+        **_more: Any,
+    ) -> bool:
+        key = document if isinstance(document, str) else document.get("_key")
+        before = len(self._docs)
+        self._docs[:] = [d for d in self._docs if d.get("_key") != key]
+        if len(self._docs) == before and not ignore_missing:
+            raise KeyError(f"document not found: {key}")
+        return len(self._docs) != before
+
+    def get(self, document: str | dict[str, Any], **_more: Any) -> dict[str, Any] | None:
+        key = document if isinstance(document, str) else document.get("_key")
+        return next((dict(d) for d in self._docs if d.get("_key") == key), None)
 
 
 Handler = Callable[[str, dict[str, Any]], list[Any]]
@@ -106,7 +149,11 @@ class FakeGraph:
         self._edge_definitions = edge_definitions
 
     def properties(self) -> dict[str, Any]:
-        return {"name": self._name, "edge_definitions": list(self._edge_definitions), "orphan_collections": []}
+        return {
+            "name": self._name,
+            "edge_definitions": list(self._edge_definitions),
+            "orphan_collections": [],
+        }
 
 
 class FakeDb:
@@ -122,6 +169,7 @@ class FakeDb:
         self._collections = collections or {}
         self._name = name
         self._graphs = graphs or {}
+        self.created: list[str] = []
         self.aql = FakeAQL(
             handler or (lambda q, b: []), plan_nodes or (lambda q: ["SingletonNode", "ReturnNode"])
         )
@@ -134,6 +182,15 @@ class FakeDb:
         return name in self._collections
 
     def collection(self, name: str) -> FakeCollection:
+        return FakeCollection(self._collections[name])
+
+    def create_collection(
+        self, name: str, sync: bool = False, system: bool = False, **_more: Any
+    ) -> FakeCollection:
+        if name in self._collections:
+            raise KeyError(f"duplicate name: {name}")
+        self._collections[name] = []
+        self.created.append(name)
         return FakeCollection(self._collections[name])
 
     def graph(self, name: str) -> FakeGraph:

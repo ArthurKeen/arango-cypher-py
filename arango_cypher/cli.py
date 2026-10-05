@@ -75,6 +75,28 @@ def _read_cypher(cypher: str | None) -> str:
     return cypher
 
 
+def _connection_target(host: str | None, port: int | None) -> tuple[str, str]:
+    """``(url, auth_method)`` from flags, then ``ARANGO_URL``, then host/port env.
+
+    Explicit ``--host`` / ``--port`` win, as they always have. Otherwise
+    ``ARANGO_URL`` — the variable the service and the deploy tooling read —
+    names the coordinator, so an HTTPS cluster is reachable at all (the old
+    ``http://host:port`` form never was). Auth is JWT for HTTPS (platform
+    clusters such as prod.demo refuse HTTP Basic) and Basic for HTTP;
+    ``ARANGO_AUTH_METHOD=basic|jwt`` overrides.
+    """
+    if host or port:
+        url = f"http://{host or os.getenv('ARANGO_HOST', 'localhost')}:{port or int(os.getenv('ARANGO_PORT', '8529'))}"
+    else:
+        url = os.getenv("ARANGO_URL", "").strip() or (
+            f"http://{os.getenv('ARANGO_HOST', 'localhost')}:{os.getenv('ARANGO_PORT', '8529')}"
+        )
+    method = os.getenv("ARANGO_AUTH_METHOD", "").strip().lower()
+    if method not in ("basic", "jwt"):
+        method = "jwt" if url.lower().startswith("https://") else "basic"
+    return url.rstrip("/"), method
+
+
 def _connect(
     host: str | None,
     port: int | None,
@@ -85,13 +107,12 @@ def _connect(
     """Create a python-arango StandardDatabase from flags / env vars / defaults."""
     from arango import ArangoClient
 
-    h = host or os.getenv("ARANGO_HOST", "localhost")
-    p = port or int(os.getenv("ARANGO_PORT", "8529"))
+    url, auth_method = _connection_target(host, port)
     d: str = db or os.getenv("ARANGO_DB") or "_system"
     u: str = user or os.getenv("ARANGO_USER") or "root"
     pw = password if password is not None else read_arango_password(caller="arango_cypher.cli")
-    client = ArangoClient(hosts=f"http://{h}:{p}")
-    return client.db(d, username=u, password=pw)
+    client = ArangoClient(hosts=url)
+    return client.db(d, username=u, password=pw, auth_method=auth_method)
 
 
 def _parse_params(params_json: str | None) -> dict[str, Any] | None:
@@ -313,6 +334,139 @@ def synthbank(
     console.print(table)
     console.print(
         f"[green]{len(bank['examples'])} examples ({written} entries with paraphrases) written to {output}[/green]"
+    )
+
+
+#: LLM backends ``mine-examples`` can be pointed at, by name.
+_MINING_PROVIDERS = ("openai", "anthropic", "openrouter")
+
+
+def _mining_provider(name: str, model: str | None) -> Any:
+    """The named provider, or exit: mining spends on an LLM only when told which."""
+    from arango_query_core.nl import providers as llm
+
+    factories = {
+        "openai": lambda: llm.OpenAIProvider(model=model, temperature=0.0, timeout=120),
+        "anthropic": lambda: llm.AnthropicProvider(model=model, temperature=0.0, timeout=120),
+        "openrouter": lambda: llm.OpenRouterProvider(model=model, temperature=0.0, timeout=120),
+    }
+    if name not in factories:
+        console.print(f"[red]--provider must be one of {', '.join(_MINING_PROVIDERS)}[/red]")
+        raise typer.Exit(1)
+    provider = factories[name]()
+    if not getattr(provider, "api_key", None):
+        console.print(f"[red]No API key for {name}: set its *_API_KEY variable.[/red]")
+        raise typer.Exit(1)
+    return provider
+
+
+@app.command("mine-examples")
+def mine_examples(
+    provider_name: str = typer.Option(
+        ..., "--provider", help=f"LLM that drafts question + Cypher: {', '.join(_MINING_PROVIDERS)}"
+    ),
+    model: str = typer.Option(None, "--model", help="Model id (default: the provider's default)"),
+    graph: str = typer.Option(None, "--graph", "-g", help="Only saved queries of this named graph"),
+    host: str = typer.Option(None, "--host", help="ArangoDB host (default: ARANGO_URL)"),
+    port: int = typer.Option(None, "--port", help="ArangoDB port"),
+    db: str = typer.Option(None, "--db", help="Database name"),
+    user: str = typer.Option(None, "--user", help="Username"),
+    password: str = typer.Option(None, "--password", help="Password"),
+    mapping_file: Path = typer.Option(
+        None, "--mapping-file", "-m", help="Mapping JSON (default: acquire live)"
+    ),
+    include_builtins: bool = typer.Option(
+        False, "--include-builtins", help="Also mine the visualizer's defaults"
+    ),
+    max_attempts: int = typer.Option(3, "--max-attempts", min=1, max=6, help="Drafts per saved query"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Verify but write nothing to the database"),
+    report_file: Path = typer.Option(
+        None, "--report", help="Write every outcome (incl. failed drafts) as JSON"
+    ),
+) -> None:
+    """Mine the database's saved AQL queries for verified NL -> Cypher examples.
+
+    Reads the graph visualizer's saved queries and canvas actions and the query
+    editor's saves, runs each read-only as the reference, has the LLM draft a
+    question and Cypher, and keeps a draft only if its translated AQL returns the
+    same documents. Verified examples are written to the arango_cypher_examples
+    collection in the same database, where the Workbench shows them.
+    """
+    from arango_query_core import mapping_hash
+
+    from arango_cypher.nl2cypher._core import _build_schema_summary
+    from arango_cypher.query_mining.miner import mine_database
+    from arango_cypher.query_mining.store import collection_name, save_outcomes
+    from arango_cypher.schema_acquire import get_mapping
+
+    provider = _mining_provider(provider_name, model)
+    try:
+        database = _connect(host, port, db, user, password)
+    except Exception as exc:
+        console.print(f"[red]Connection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    bundle = _load_mapping(mapping_file, None)
+    if bundle is None:
+        try:
+            bundle = get_mapping(database, graph_name=graph)
+        except Exception as exc:
+            console.print(f"[red]Failed to acquire mapping:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+    try:
+        outcomes, skipped = mine_database(
+            database,
+            bundle,
+            provider,
+            schema_summary=_build_schema_summary(bundle),
+            graph=graph,
+            include_builtins=include_builtins,
+            max_attempts=max_attempts,
+        )
+    except Exception as exc:
+        console.print(f"[red]Mining failed:[/red] {type(exc).__name__}: {exc}")
+        raise typer.Exit(1) from exc
+
+    table = Table(title=f"Saved queries mined from {database.name!r}" + (f" ({graph})" if graph else ""))
+    table.add_column("Saved query")
+    table.add_column("Result")
+    table.add_column("Question / reason")
+    for o in outcomes:
+        if o.example is not None:
+            table.add_row(
+                o.query.name, f"[green]verified[/green] ({o.example.verdict.kind})", o.example.question
+            )
+        else:
+            table.add_row(o.query.name, "[yellow]rejected[/yellow]", o.reason)
+    console.print(table)
+    for where, why in skipped:
+        console.print(f"[dim]skipped {where}: {why}[/dim]")
+
+    if report_file is not None:
+        report = [
+            {
+                "source": f"{o.query.source}/{o.query.key}",
+                "name": o.query.name,
+                "verified": o.verified,
+                "question": o.example.question if o.example else None,
+                "cypher": o.example.cypher if o.example else None,
+                "reason": o.reason,
+                "failed_attempts": [a.__dict__ for a in o.failed_attempts],
+            }
+            for o in outcomes
+        ]
+        report_file.write_text(json.dumps({"outcomes": report, "skipped": skipped}, indent=2, default=str))
+
+    verified = sum(o.verified for o in outcomes)
+    if dry_run:
+        console.print(f"[green]{verified} of {len(outcomes)} verified[/green] (dry run: nothing written)")
+        return
+    model_id = f"{provider_name}:{getattr(provider, 'model', '') or 'default'}"
+    counts = save_outcomes(database, outcomes, mapping_hash=mapping_hash(bundle), model=model_id)
+    console.print(
+        f"[green]{verified} of {len(outcomes)} verified[/green]; {counts['saved']} saved, "
+        f"{counts['removed']} stale removed, {counts['kept']} kept (provider failed) in {collection_name()}"
     )
 
 
