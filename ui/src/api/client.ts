@@ -302,6 +302,33 @@ export async function getCypherProfile(): Promise<Record<string, unknown>> {
   return request("/cypher-profile");
 }
 
+// An example mined from the connected database's own saved AQL queries
+// (`arango-cypher-py mine-examples`): the question and Cypher were checked to
+// return the same documents as the saved query.
+export interface MinedExample {
+  question: string;
+  cypher: string;
+  params: Record<string, unknown>;
+  aql: string;
+  graph: string | null;
+  source: { collection: string; key: string; name: string; description: string };
+  verification: { verdict: string; verified_at: string; model?: string };
+}
+
+export async function getMinedExamples(
+  token: string,
+  limit: number = 50,
+): Promise<{ examples: MinedExample[] }> {
+  return request(`/examples?limit=${limit}`, { headers: authHeaders(token) });
+}
+
+// Mined examples that belong to the selected named graph (and those tied to
+// no graph); every example when no graph is selected.
+export function examplesForGraph(examples: MinedExample[], graph: string | null): MinedExample[] {
+  if (!graph) return examples;
+  return examples.filter((e) => !e.graph || e.graph === graph);
+}
+
 export interface SampleQuery {
   id: string;
   description: string;

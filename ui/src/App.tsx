@@ -33,6 +33,9 @@ import {
   listCorrections,
   deleteCorrection,
   suggestNlQueries,
+  getMinedExamples,
+  examplesForGraph,
+  type MinedExample,
   discoverTenants,
   bindTenant,
   listGraphs,
@@ -300,6 +303,10 @@ export default function App() {
   // replace, never accumulate) whenever the connected DB or named-graph scope
   // changes, instead of going stale against a previously-connected database.
   const [nlSamples, setNlSamples] = useState<string[]>([]);
+  // Verified examples mined from this database's own saved queries; fetched
+  // once per database and filtered by the selected graph on the client, so a
+  // graph switch never races the server-side graph binding.
+  const [minedExamples, setMinedExamples] = useState<MinedExample[]>([]);
   const lastSampleKeyRef = useRef<string | null>(null);
   const [autoTranslate, setAutoTranslate] = useState<boolean>(() => {
     try { return localStorage.getItem("auto_translate") === "1"; } catch { return false; }
@@ -573,21 +580,6 @@ export default function App() {
     });
   }, []);
 
-  // Combined Ask-input suggestions: the user's own typed history first, then
-  // the freshly-generated samples for the current (database, graph) scope,
-  // de-duplicated. Samples live in their own state so a DB/graph switch
-  // replaces them rather than leaving stale entries behind.
-  const nlSuggestions = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const q of nlHistory) {
-      if (q && !seen.has(q)) { seen.add(q); out.push(q); }
-    }
-    for (const q of nlSamples) {
-      if (q && !seen.has(q)) { seen.add(q); out.push(q); }
-    }
-    return out;
-  }, [nlHistory, nlSamples]);
 
   // Seed the Ask-history with a representative set of NL queries the first
   // time we connect to a given database and finish schema introspection.
@@ -629,6 +621,28 @@ export default function App() {
   const [graphCatalog, setGraphCatalog] = useState<NamedGraph[]>([]);
   const [graphsLoading, setGraphsLoading] = useState(false);
   const [graphScope, setGraphScope] = useState<string | null>(null);
+
+  // Combined Ask-input suggestions, de-duplicated: the user's own typed
+  // history first, then the database's verified (mined) examples for the
+  // current graph, then the freshly-generated schema samples. Samples and
+  // examples live in their own state so a DB/graph switch replaces them
+  // rather than leaving stale entries behind.
+  const scopedExamples = useMemo(
+    () => examplesForGraph(minedExamples, graphScope ?? null),
+    [minedExamples, graphScope],
+  );
+
+  const nlSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    // The user's own questions, then the database's verified examples, then
+    // the schema-derived suggestions.
+    for (const q of [...nlHistory, ...scopedExamples.map((e) => e.question), ...nlSamples]) {
+      if (q && !seen.has(q)) { seen.add(q); out.push(q); }
+    }
+    return out;
+  }, [nlHistory, scopedExamples, nlSamples]);
+
   const [graphError, setGraphError] = useState<string | null>(null);
 
   // Discover selectable tenants once we're connected and schema
@@ -968,8 +982,28 @@ export default function App() {
     if (state.connection.status !== "connected") {
       lastSampleKeyRef.current = null;
       setNlSamples([]);
+      setMinedExamples([]);
     }
   }, [state.connection.status]);
+
+  useEffect(() => {
+    const token = state.connection.token;
+    if (state.connection.status !== "connected" || !token) return;
+    let cancelled = false;
+    getMinedExamples(token)
+      .then((resp) => {
+        if (!cancelled) setMinedExamples(resp.examples ?? []);
+      })
+      .catch((err) => {
+        // A deployment that was never mined, or a user who cannot read the
+        // collection, simply has no examples; the rest of the UI is unaffected.
+        console.warn("Loading mined examples failed:", err);
+        if (!cancelled) setMinedExamples([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.connection.status, state.connection.token, state.connection.database]);
 
   const handleNL = useCallback(async () => {
     if (!nlInput.trim()) return;
@@ -1850,7 +1884,11 @@ export default function App() {
 
       {showSamples && (
         <SampleQueries
-          onSelect={(cypher) => dispatch({ type: "SET_CYPHER", cypher })}
+          minedExamples={scopedExamples}
+          onSelect={(cypher, params) => {
+            dispatch({ type: "SET_CYPHER", cypher });
+            if (params) dispatch({ type: "SET_PARAMS", params });
+          }}
           onClose={() => setShowSamples(false)}
         />
       )}

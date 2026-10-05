@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiBaseFor } from "./client";
+import { apiBaseFor, examplesForGraph, type MinedExample } from "./client";
 
 describe("apiBaseFor", () => {
   it("uses the platform mount when the SPA is served at the service root", () => {
@@ -39,5 +39,26 @@ describe("apiBaseFor", () => {
     // mount in half.
     expect(apiBaseFor("/_service/uds/_db/d/ui-demo/")).toBe("/_service/uds/_db/d/ui-demo");
     expect(apiBaseFor("/_service/uds/_db/frontend-db/app/")).toBe("/_service/uds/_db/frontend-db/app");
+  });
+});
+
+describe("examplesForGraph", () => {
+  const ex = (question: string, graph: string | null): MinedExample => ({
+    question,
+    cypher: "MATCH (n:A) RETURN n",
+    params: {},
+    aql: "FOR n IN a RETURN n",
+    graph,
+    source: { collection: "_queries", key: question, name: question, description: "" },
+    verification: { verdict: "identical", verified_at: "2026-10-05T00:00:00+00:00" },
+  });
+  const all = [ex("iam", "IAM_DEMO"), ex("docs", "AWS_Security_Docs_CorpusGraph"), ex("editor", null)];
+
+  it("keeps every example when no graph is selected", () => {
+    expect(examplesForGraph(all, null).map((e) => e.question)).toEqual(["iam", "docs", "editor"]);
+  });
+
+  it("keeps the selected graph's examples and graph-less ones", () => {
+    expect(examplesForGraph(all, "IAM_DEMO").map((e) => e.question)).toEqual(["iam", "editor"]);
   });
 });
