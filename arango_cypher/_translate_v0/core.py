@@ -1297,15 +1297,15 @@ def _translate_union(
             is_all = False
 
     subqueries: list[str] = []
-    for branch in branches:
+    for index, branch in enumerate(branches):
         branch_bv: dict[str, Any] = {}
         bq = _translate_single_query(
             branch,
             resolver=resolver,
             bind_vars=branch_bv,
         )
-        _merge_bind_vars(bind_vars, branch_bv)
-        subqueries.append(f"({bq.text})")
+        text = _merge_bind_vars(bind_vars, branch_bv, bq.text, branch_index=index)
+        subqueries.append(f"({text})")
 
     fn = "UNION" if is_all else "UNION_DISTINCT"
     joined = ",\n  ".join(subqueries)
@@ -1313,23 +1313,43 @@ def _translate_union(
     return AqlQuery(text=aql, bind_vars=bind_vars)
 
 
+def _bind_reference(key: str) -> re.Pattern[str]:
+    """Where bind variable *key* is referenced in AQL text: ``@key`` (``@@name``
+    for a collection parameter, whose key is ``@name``), as a whole token."""
+    return re.compile(r"(?<![\w@])@" + re.escape(key) + r"(?!\w)")
+
+
 def _merge_bind_vars(
     target: dict[str, Any],
     source: dict[str, Any],
-) -> None:
-    """
-    Merge *source* bind vars into *target*.  Raise on key collision with
-    different values (bind var names must be unique across UNION branches).
+    text: str,
+    *,
+    branch_index: int,
+) -> str:
+    """Merge one UNION branch's bind vars into *target*; return its AQL text.
+
+    Every branch is translated on its own, so the translator's internal names
+    (``@@collection``, ``@uTypeValue``, ...) repeat across branches. Equal
+    values merge — that is also how a user ``$param`` shared by branches stays
+    one bind variable. A name already bound to a *different* value (two
+    branches over different collections) is renamed in this branch, in both
+    its bind vars and its text, to ``<name>_u<branch>``; before, it was refused,
+    so a UNION over two labels could not translate at all.
     """
     for k, v in source.items():
-        if k in target:
-            if target[k] != v:
-                raise CoreError(
-                    f"Bind variable collision across UNION branches: @{k} has conflicting values",
-                    code="UNSUPPORTED",
-                )
-        else:
+        if k not in target:
             target[k] = v
+            continue
+        if target[k] == v:
+            continue
+        renamed = f"{k}_u{branch_index}"
+        suffix = 1
+        while renamed in target or renamed in source:
+            renamed = f"{k}_u{branch_index}_{suffix}"
+            suffix += 1
+        text = _bind_reference(k).sub("@" + renamed, text)
+        target[renamed] = v
+    return text
 
 
 def _translate_computational_multi_part(
