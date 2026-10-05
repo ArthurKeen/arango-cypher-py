@@ -719,6 +719,8 @@ export interface IntrospectRelationship {
 export interface SchemaWarning {
   code: string;
   message: string;
+  // "info" describes normal operation and stays out of the warning banner.
+  severity?: "info" | "warning" | "error";
   install_hint?: string;
 }
 
@@ -732,22 +734,51 @@ export interface IntrospectResult {
   status?: "ready" | "pending";
 }
 
-// The service passes some analyzer warnings through as plain strings
-// ("LLM provider not configured; ..."), others as {code, message}. The banner
-// renders `message` and keys dismissals on `code`, so a bare string showed as
-// an empty banner that could not be dismissed. Strings get a stable code
-// derived from their text.
+// The service normalizes schema warnings to {code, message, severity}; this
+// is the defence for older servers and bundles cached before that, which
+// pass analyzer warnings through as plain strings ("LLM provider not
+// configured; ..."). The banner renders `message`, keys dismissals on `code`
+// and hides `info`, so every entry needs a real message and a code that is
+// unique to it.
+const BASELINE_NOTE_PREFIX = "LLM provider not configured";
+const SEVERITIES = new Set(["info", "warning", "error"]);
+
+// A stable code for a message: a readable slug plus a short hash of the whole
+// text, so messages sharing a prefix, or in non-Latin scripts, never collide.
+export function noteCode(message: string): string {
+  let hash = 0x811c9dc5;
+  for (const ch of message) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  const slug = message
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `note:${slug ? `${slug}-` : ""}${hash.toString(16).padStart(8, "0")}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function normalizeSchemaWarnings(raw: unknown): SchemaWarning[] {
   if (!Array.isArray(raw)) return [];
   const out: SchemaWarning[] = [];
   for (const w of raw) {
-    if (typeof w === "string") {
-      const message = w.trim();
-      if (message) out.push({ code: `note:${message.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`, message });
-    } else if (w && typeof w === "object" && typeof (w as SchemaWarning).message === "string") {
-      const sw = w as SchemaWarning;
-      out.push({ ...sw, code: sw.code || `note:${sw.message.slice(0, 60)}` });
+    const text = typeof w === "string" ? w : isRecord(w) && typeof w.message === "string" ? w.message : null;
+    const message = text?.trim();
+    if (!message) {
+      if (isRecord(w) && typeof w.code === "string") console.warn("Schema warning without a message dropped:", w.code);
+      continue;
     }
+    const code = isRecord(w) && typeof w.code === "string" && w.code ? w.code : noteCode(message);
+    const given = isRecord(w) && typeof w.severity === "string" && SEVERITIES.has(w.severity) ? w.severity : null;
+    const severity = (given ?? (message.startsWith(BASELINE_NOTE_PREFIX) ? "info" : "warning")) as SchemaWarning["severity"];
+    const entry: SchemaWarning = { code, message, severity };
+    if (isRecord(w) && typeof w.install_hint === "string" && w.install_hint) entry.install_hint = w.install_hint;
+    out.push(entry);
   }
   return out;
 }

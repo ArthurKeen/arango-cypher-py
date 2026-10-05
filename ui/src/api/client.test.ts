@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { apiBaseFor, examplesForGraph, normalizeSchemaWarnings, type MinedExample } from "./client";
+import { afterEach, vi } from "vitest";
+import {
+  apiBaseFor,
+  examplesForGraph,
+  introspectSchema,
+  normalizeSchemaWarnings,
+  noteCode,
+  type MinedExample,
+} from "./client";
 
 describe("apiBaseFor", () => {
   it("uses the platform mount when the SPA is served at the service root", () => {
@@ -64,25 +72,80 @@ describe("examplesForGraph", () => {
 });
 
 describe("normalizeSchemaWarnings", () => {
-  it("turns a bare string into a renderable, dismissable warning", () => {
-    expect(normalizeSchemaWarnings(["LLM provider not configured; returning deterministic baseline inference"])).toEqual([
-      {
-        code: "note:llm-provider-not-configured-returning-deterministic-baseline",
-        message: "LLM provider not configured; returning deterministic baseline inference",
-      },
+  it("makes a bare string renderable, dismissable and — for the baseline note — info", () => {
+    const [w] = normalizeSchemaWarnings(["LLM provider not configured; returning deterministic baseline inference"]);
+    expect(w.message).toBe("LLM provider not configured; returning deterministic baseline inference");
+    expect(w.severity).toBe("info");
+    expect(w.code).toMatch(/^note:llm-provider-not-configured-returning-de-[0-9a-f]{8}$/);
+  });
+
+  it("treats other strings as warnings", () => {
+    expect(normalizeSchemaWarnings(["edge collection x has no endpoints"])[0].severity).toBe("warning");
+  });
+
+  it("keeps a server's structured warning and its install hint", () => {
+    const w = {
+      code: "ANALYZER_NOT_INSTALLED",
+      message: "Install it",
+      severity: "warning",
+      install_hint: "pip install x",
+    };
+    expect(normalizeSchemaWarnings([w])).toEqual([w]);
+  });
+
+  it("drops entries with no usable message and never keeps non-string fields", () => {
+    const out = normalizeSchemaWarnings([
+      "",
+      "  ",
+      42,
+      null,
+      { code: "Z" },
+      { code: "X", message: "  " },
+      { code: 42, message: "m", severity: "loud", install_hint: { bad: true } },
     ]);
-  });
-
-  it("keeps structured warnings and drops unusable entries", () => {
-    const w = { code: "ANALYZER_NOT_INSTALLED", message: "Install it", install_hint: "pip install x" };
-    expect(normalizeSchemaWarnings([w, "", "  ", 42, null, { code: "x" }])).toEqual([w]);
-  });
-
-  it("gives a structured warning without a code one derived from its message", () => {
-    expect(normalizeSchemaWarnings([{ code: "", message: "Heads up" }])).toEqual([{ code: "note:Heads up", message: "Heads up" }]);
+    expect(out).toHaveLength(1);
+    expect(out[0].message).toBe("m");
+    expect(out[0].code).toMatch(/^note:m-[0-9a-f]{8}$/);
+    expect(out[0].severity).toBe("warning");
+    expect(out[0].install_hint).toBeUndefined();
   });
 
   it("treats a missing list as no warnings", () => {
     expect(normalizeSchemaWarnings(undefined)).toEqual([]);
+  });
+});
+
+describe("noteCode", () => {
+  it("never collides for non-Latin messages or a shared prefix", () => {
+    const codes = new Set([
+      noteCode("スキーマ警告"),
+      noteCode("Неизвестная коллекция"),
+      noteCode("x".repeat(60) + " first"),
+      noteCode("x".repeat(60) + " second"),
+    ]);
+    expect(codes.size).toBe(4);
+  });
+
+  it("is stable for the same message", () => {
+    expect(noteCode("same text")).toBe(noteCode("same text"));
+  });
+});
+
+describe("introspectSchema", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("normalizes the warnings it returns", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ entities: [], relationships: [], warnings: ["LLM provider not configured; x"] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const result = await introspectSchema("token");
+    expect(result.warnings?.[0]).toMatchObject({ message: "LLM provider not configured; x", severity: "info" });
   });
 });

@@ -102,6 +102,57 @@ _mapping_cache: dict[str, tuple[MappingBundle, float, str, str]] = {}
 _heuristic_fallback_counter: int = 0
 
 
+#: Analyzer notes, matched by message prefix, with the code and severity the
+#: service reports them under. ``info`` describes normal operation — the
+#: service always runs the analyzer without an LLM (``AgenticSchemaAnalyzer()``
+#: below), so this note is on every analyzer mapping — and the Workbench keeps
+#: info notes out of its warning banner.
+_ANALYZER_NOTES: tuple[tuple[str, str, str], ...] = (
+    ("LLM provider not configured", "ANALYZER_BASELINE_NO_LLM", "info"),
+)
+WARNING_SEVERITIES = frozenset({"info", "warning", "error"})
+
+
+def normalize_warnings(warnings: Any) -> list[dict[str, Any]]:
+    """Schema warnings as ``{code, message, severity[, install_hint]}`` dicts.
+
+    The analyzer reports warnings (and errors) as plain strings, while this
+    module attaches structured ones (:func:`_attach_warning`), so a bundle's
+    ``metadata["warnings"]`` is mixed. Every HTTP response normalizes it here,
+    so clients see one shape. Strings are matched against
+    :data:`_ANALYZER_NOTES`; anything unrecognized is an ``ANALYZER_NOTE``
+    with severity ``warning``. Entries with no message are dropped.
+    """
+    out: list[dict[str, Any]] = []
+    for w in warnings or []:
+        if isinstance(w, str):
+            message = w.strip()
+            if not message:
+                continue
+            code, severity = "ANALYZER_NOTE", "warning"
+            for prefix, known_code, known_severity in _ANALYZER_NOTES:
+                if message.startswith(prefix):
+                    code, severity = known_code, known_severity
+                    break
+            out.append({"code": code, "message": message, "severity": severity})
+        elif isinstance(w, dict):
+            raw_message = w.get("message")
+            if not isinstance(raw_message, str) or not raw_message.strip():
+                continue
+            raw_code = w.get("code")
+            raw_severity = w.get("severity")
+            entry: dict[str, Any] = {
+                "code": raw_code if isinstance(raw_code, str) and raw_code else "ANALYZER_NOTE",
+                "message": raw_message.strip(),
+                "severity": raw_severity if raw_severity in WARNING_SEVERITIES else "warning",
+            }
+            hint = w.get("install_hint")
+            if isinstance(hint, str) and hint:
+                entry["install_hint"] = hint
+            out.append(entry)
+    return out
+
+
 def _attach_warning(
     bundle: MappingBundle,
     *,
@@ -111,15 +162,17 @@ def _attach_warning(
 ) -> MappingBundle:
     """Return a copy of ``bundle`` with an additional structured warning.
 
-    Warnings live at ``bundle.metadata["warnings"]`` as a list of dicts with
-    keys ``code``, ``message`` and (optionally) ``install_hint``. Each call
-    appends; existing warnings are preserved. Deliberately copies the
+    Warnings live at ``bundle.metadata["warnings"]``. Entries this function
+    adds are dicts (``code``, ``message``, ``severity`` and optionally
+    ``install_hint``), but the analyzer's own entries are plain strings, so
+    readers must go through :func:`normalize_warnings`. Each call appends;
+    existing warnings are preserved. Deliberately copies the
     metadata dict so the original bundle (and any cached reference to it)
     is not mutated under the caller's feet.
     """
     meta = dict(bundle.metadata or {})
     warnings = list(meta.get("warnings") or [])
-    warning: dict[str, Any] = {"code": code, "message": message}
+    warning: dict[str, Any] = {"code": code, "message": message, "severity": "warning"}
     if install_hint:
         warning["install_hint"] = install_hint
     warnings.append(warning)
@@ -1828,6 +1881,8 @@ def acquire_mapping_bundle(
     )
     if graph_membership:
         metadata = {**metadata, "graphMembership": graph_membership}
+    if metadata.get("warnings"):
+        metadata = {**metadata, "warnings": normalize_warnings(metadata["warnings"])}
 
     bundle = MappingBundle(
         conceptual_schema=export.get("conceptualSchema", {}),

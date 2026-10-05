@@ -137,6 +137,7 @@ class TestAttachWarning:
         assert warnings[0] == {
             "code": "ANALYZER_NOT_INSTALLED",
             "message": "analyzer missing",
+            "severity": "warning",
             "install_hint": "pip install arangodb-schema-analyzer",
         }
         assert augmented.metadata.get("statistics") == {}
@@ -149,6 +150,7 @@ class TestAttachWarning:
         assert twice.metadata["warnings"][1] == {
             "code": "OTHER",
             "message": "second warning",
+            "severity": "warning",
         }
 
 
@@ -287,3 +289,48 @@ class TestGetMappingReacquires:
         assert fresh.source.kind == "schema_analyzer_export"
         fresh_warnings = (fresh.metadata or {}).get("warnings") or []
         assert not any(w.get("code") == "ANALYZER_NOT_INSTALLED" for w in fresh_warnings)
+
+
+class TestNormalizeWarnings:
+    """The analyzer reports plain strings, _attach_warning dicts; responses get one shape."""
+
+    def test_the_baseline_note_is_info_not_a_warning(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert normalize_warnings(
+            ["LLM provider not configured; returning deterministic baseline inference"]
+        ) == [
+            {
+                "code": "ANALYZER_BASELINE_NO_LLM",
+                "message": "LLM provider not configured; returning deterministic baseline inference",
+                "severity": "info",
+            }
+        ]
+
+    def test_unknown_strings_are_warnings_and_blanks_are_dropped(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert normalize_warnings(["  something odd  ", "", "   "]) == [
+            {"code": "ANALYZER_NOTE", "message": "something odd", "severity": "warning"}
+        ]
+
+    def test_dicts_are_sanitized(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        raw = [
+            {"code": "X", "message": "  m  ", "severity": "error", "install_hint": "pip install y"},
+            {"code": 42, "message": "n", "severity": "loud", "install_hint": {"bad": True}},
+            {"code": "Z"},
+            {"code": "W", "message": "   "},
+            7,
+            None,
+        ]
+        assert normalize_warnings(raw) == [
+            {"code": "X", "message": "m", "severity": "error", "install_hint": "pip install y"},
+            {"code": "ANALYZER_NOTE", "message": "n", "severity": "warning"},
+        ]
+
+    def test_none_is_empty(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert normalize_warnings(None) == []
