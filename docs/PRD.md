@@ -300,15 +300,21 @@ choice is not remembered). Every surface follows the toggle live — Tailwind
 utilities, the CodeMirror editors, and the Cytoscape/SVG graphs, whose canvas is
 light gray by day with Arango Green selection.
 
-The Workbench MUST offer "Report a problem" (settings menu, and beside every
-error banner). It builds a GitHub issue for `arango-solutions/arango-cypher` —
-a public repository — and opens GitHub's pre-filled new-issue page in the user's
-own browser: no token in the service, nothing filed until the user submits it
-there, and Copy for users without a GitHub account. The user sees and can edit
-the full text first. By default a report carries only the app and analyzer
+The Workbench MUST offer "Report a problem" (settings menu, and beside the
+query error banner and the NL → Cypher error banner). It builds a GitHub issue
+for `arango-solutions/arango-cypher` — a public repository — and opens GitHub's
+pre-filled new-issue page in the user's own browser: no token in the service,
+nothing filed until the user submits it there, and Copy for users without a
+GitHub account. The user sees and can edit the full text first; their own
+"What happened" text is kept apart from the generated details, so changing an
+option never discards it. By default a report carries only the app and analyzer
 versions (`GET /health` reports `version` and `analyzer_version`), the error and
-the browser; the Cypher and AQL are added only when the user ticks "include my
-query", because they may contain names or values from the user's data.
+the browser, under a fixed title; because errors can quote the query, quoted
+text in the error is masked by default. The Cypher, the AQL and the unmasked
+error are included only when the user ticks "include my query", since they may
+contain names or values from the user's data. A report too long for GitHub's
+link limit is shortened from the end — the versions come first so they always
+survive — and Copy keeps the full text.
 
 > `ui/dist/` is gitignored; rerun `cd ui && npm run build` after pulling UI
 > changes. The service logs a `UI bundle is stale` warning on drift.

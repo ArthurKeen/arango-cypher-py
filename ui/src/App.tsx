@@ -1615,6 +1615,13 @@ export default function App() {
               <span className="font-semibold shrink-0">NL → Cypher failed:</span>
               <span className="flex-1 break-words">{nlError}</span>
               <button
+                onClick={() => setShowReport(true)}
+                className="text-red-300 hover:text-red-100 text-[10px] uppercase tracking-wide shrink-0"
+                title="File this as a GitHub issue (you review it first)"
+              >
+                report
+              </button>
+              <button
                 onClick={() => setNlError("")}
                 className="text-red-300 hover:text-red-100 text-[10px] uppercase tracking-wide shrink-0"
                 title="Dismiss"
@@ -1894,7 +1901,7 @@ export default function App() {
 
       {showReport && (
         <ReportProblem
-          error={state.error}
+          error={state.error ?? (nlError || null)}
           cypher={state.cypher}
           aql={state.aql}
           onClose={() => setShowReport(false)}
