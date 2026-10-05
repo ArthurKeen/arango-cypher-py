@@ -200,6 +200,9 @@ metadata lives in the mapping**, never in queries.
 Context: the *conceptual* schema only (entity labels, relationship types,
 properties, domain/range). Output: Cypher in conceptual terms. The LLM never sees
 collection names, type discriminator fields, AQL, or the physical model style.
+(One scoped exception, outside this path: the offline `mine-examples` tool must
+show the model the saved AQL it is translating, with a physical → conceptual name
+table, and still demands conceptual Cypher back — see "Mined examples".)
 
 **Stage 2 — Cypher → AQL (deterministic, algorithmic).** Input: Cypher (from
 Stage 1 or hand-written). Context: conceptual schema + physical mapping. Output:
@@ -244,8 +247,12 @@ Also exposed: `nl_to_cypher` / `nl_to_aql`, `get_mapping` / `describe_schema_cha
 
 ### 6.2 CLI
 
-`translate`, `run`, `mapping`, `doctor` subcommands (Typer + Rich, via the `[cli]`
-extra).
+`translate`, `run`, `mapping`, `doctor`, `synthbank` and `mine-examples` subcommands
+(Typer + Rich, via the `[cli]` extra). Commands that connect take explicit
+`--host`/`--port` first, else `ARANGO_URL` (so HTTPS clusters are reachable), else
+`ARANGO_HOST`/`ARANGO_PORT`; they authenticate with JWT over HTTPS (platform
+clusters refuse HTTP Basic) and Basic over HTTP, overridable with
+`ARANGO_AUTH_METHOD`.
 
 ### 6.3 HTTP service (FastAPI)
 
@@ -267,6 +274,7 @@ Endpoint families (all under `arango_cypher.service`):
 - **Multi-tenant** — `GET /tenants[?collection=…]`; `tenant_context` field on the
   NL routes; `safe_execute`/EXPLAIN validation on every execute path.
 - **Agentic tools** — `GET /tools/schemas`, `POST /tools/call`.
+- **Mined examples** — `GET /examples` (session-scoped; §10, "Mined examples").
 
 > **Operational note.** Agent/IDE shells inject `HTTP_PROXY`/`HTTPS_PROXY`/
 > `ALL_PROXY` pointing at a loopback proxy that blocks DB traffic. Start the
@@ -496,6 +504,30 @@ The pipeline implements the SOTA Text2Cypher reference architecture
   pass the offline slot-preserving guard. Generated banks load through
   `FewShotIndex` only when listed in `NL2CYPHER_FEWSHOT_BANKS`: off by default,
   because the prompt change must be justified by an eval run first.
+- **Mined examples (saved-query mining, build-time)** — `arango-cypher-py
+  mine-examples` turns a database's own saved AQL — the graph visualizer's saved
+  queries (`_queries`) and canvas actions (`_canvasActions`), and the query
+  editor's saves (`_editor_saved_queries`), with their names and descriptions —
+  into verified examples:
+  - a saved query whose EXPLAIN plan writes MUST NOT be executed; every source and
+    candidate run is read-only, bounded server-side (30 s) and read to at most
+    2 000 rows — more is *too large to compare*, never compared on a prefix;
+  - canvas actions run on selected nodes, so start vertices are sampled from
+    vertices that have edges in the graph, from collections the action's own
+    text names first;
+  - the LLM drafts a question and conceptual Cypher; a draft is kept only if its
+    transpiled AQL returns **the same documents** as the saved query (same vertex
+    and edge ids, edge endpoints counting as vertices; or the same scalar rows) —
+    not merely non-empty. A failed draft is fed back with its reason, up to three
+    times; the provider is passed explicitly, never inferred from a configured key;
+  - verified examples are stored in the mined database (`arango_cypher_examples`,
+    configurable via `ARANGO_CYPHER_EXAMPLES_COLLECTION`) with provenance — source
+    query and fingerprint, verdict, the mapping hash and model — one per saved
+    query: re-mining replaces it, a query that no longer verifies loses it;
+  - the service serves them without an LLM (`GET /examples`), and the Workbench
+    shows them first among the Ask suggestions and in Sample Queries. They are
+    **not** few-shot examples until an eval run justifies the prompt change, as
+    for generated banks.
 - **Pre-flight entity resolution (WP-25.2)** — `EntityResolver` rewrites user
   string literals against the live DB before generation, combining exact /
   contains / reverse-contains / `LEVENSHTEIN_DISTANCE` scoring with a configurable
