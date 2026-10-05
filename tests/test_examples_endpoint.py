@@ -32,7 +32,12 @@ def client() -> TestClient:
     return TestClient(fresh_service().app)
 
 
-EXAMPLE = {"_key": "mined-1", "kind": "mined", "question": "Which roles trust each other?", "graph": "IAM_DEMO"}
+EXAMPLE = {
+    "_key": "mined-1",
+    "kind": "mined",
+    "question": "Which roles trust each other?",
+    "graph": "IAM_DEMO",
+}
 
 
 def test_lists_the_sessions_examples_scoped_to_its_graph(client: TestClient) -> None:

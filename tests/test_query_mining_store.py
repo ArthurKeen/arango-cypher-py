@@ -3,6 +3,7 @@ CLI's connection target / provider gate."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -145,7 +146,9 @@ class TestMineExamplesCommand:
     def test_requires_an_explicit_provider(self) -> None:
         result = CliRunner().invoke(cli.app, ["mine-examples"])
         assert result.exit_code != 0
-        assert "--provider" in result.output
+        # Typer renders the error in a Rich box; CI terminals add ANSI colour
+        # codes that would split the option name.
+        assert "--provider" in re.sub(r"\x1b\[[0-9;]*m", "", result.output)
 
     def test_refuses_an_unknown_provider(self) -> None:
         result = CliRunner().invoke(cli.app, ["mine-examples", "--provider", "gemini"])
