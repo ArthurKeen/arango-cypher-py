@@ -85,6 +85,7 @@ def translate_v0(
             mapping=mapping,
             params=params,
         )
+        _refuse_overwritten_params(params, result.bind_vars)
         result = _prepend_with_collections(result, resolver)
         result = AqlQuery(
             text=_reindent_aql(result.text),
@@ -99,6 +100,30 @@ def translate_v0(
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
         _active_registry.reset(reg_token)
+
+
+_BIND_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _param_clash(name: str) -> CoreError:
+    shown = f"${name}" if _BIND_NAME_RE.fullmatch(name) else repr(name)
+    return CoreError(
+        f"Parameter {shown} has the same name as a bind variable the translation generates "
+        "internally; rename the parameter",
+        code="UNSUPPORTED",
+    )
+
+
+def _refuse_overwritten_params(params: dict[str, Any] | None, bind_vars: dict[str, Any]) -> None:
+    """Refuse a user parameter whose value the translation replaced.
+
+    The emitters bind some internal values under fixed names (``typeValue``,
+    ``@collection``, ...). A user parameter of the same name was overwritten in
+    place, so the user's ``$typeValue`` silently read the label instead.
+    """
+    for name, value in (params or {}).items():
+        if name in bind_vars and bind_vars[name] is not value and bind_vars[name] != value:
+            raise _param_clash(name)
 
 
 def _translate_v0_inner(
@@ -1301,7 +1326,9 @@ def _translate_union(
     user_params = frozenset(bind_vars)
     subqueries: list[str] = []
     for index, branch in enumerate(branches):
-        branch_bv: dict[str, Any] = {}
+        # Seeded with the user's parameters, as a single query's bind vars are,
+        # so names the branch picks for itself (_pick_bind_key) avoid them.
+        branch_bv: dict[str, Any] = {k: bind_vars[k] for k in user_params}
         bq = _translate_single_query(
             branch,
             resolver=resolver,
@@ -1317,10 +1344,12 @@ def _translate_union(
 
 
 #: AQL text a bind-name rename must leave alone: string literals (single or
-#: double quoted, backslash escapes) and quoted identifiers (backticks or
-#: forward ticks). Cypher string literals are copied into AQL verbatim, so a
-#: value such as 'a @@collection b' must not be rewritten.
-_AQL_QUOTED = r"""'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`[^`]*`|´[^´]*´"""
+#: double quoted) and quoted identifiers (backticks or forward ticks), each
+#: with AQL's backslash escapes. Cypher string literals are copied into AQL
+#: verbatim, so a value such as 'a @@collection b' must not be rewritten. An
+#: unterminated quote runs to the end of the text rather than being retried
+#: from every later position, which kept the scan linear.
+_AQL_QUOTED = r"""'(?:\\.|[^'\\])*'?|"(?:\\.|[^"\\])*"?|`(?:\\.|[^`\\])*`?|´(?:\\.|[^´\\])*´?"""
 
 
 def _rename_bind_references(text: str, key: str, renamed: str) -> str:
@@ -1368,11 +1397,7 @@ def _merge_bind_vars(
         if target[k] == v:
             continue
         if k in user_params:
-            raise CoreError(
-                f"Parameter ${k} has the same name as a bind variable this UNION generates internally; "
-                "rename the parameter",
-                code="UNSUPPORTED",
-            )
+            raise _param_clash(k)
         slot = re.compile(re.escape(k) + r"_u\d+(?:_\d+)?")
         renamed = next(
             (key for key, val in target.items() if val == v and slot.fullmatch(key) and key not in source),

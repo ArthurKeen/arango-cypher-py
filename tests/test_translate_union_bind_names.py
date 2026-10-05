@@ -59,3 +59,56 @@ def test_a_plain_key_does_not_match_inside_a_collection_reference() -> None:
     assert _rename_bind_references(
         "FOR n IN @@collection FILTER n.c == @collection", "collection", "c_u1"
     ) == ("FOR n IN @@collection FILTER n.c == @c_u1")
+
+
+def test_an_escaped_backtick_does_not_end_a_quoted_name() -> None:
+    # AQL reads `a\` @@collection` as one name; only the reference after it is real.
+    text = "RETURN n.`a\\` @@collection`, @@collection"
+    assert _rename_bind_references(text, "@collection", "@collection_u1") == (
+        "RETURN n.`a\\` @@collection`, @@collection_u1"
+    )
+
+
+def test_an_unterminated_quote_runs_to_the_end_in_one_pass() -> None:
+    # Every quote below starts a string that never closes. Before the closing
+    # quote was optional, each one restarted a scan to the end of the text:
+    # quadratic in its length, about 10^8 steps here.
+    tail = "\\' @@collection" * 10_000
+    assert _rename_bind_references("@@collection " + tail, "@collection", "@collection_u1") == (
+        "@@collection_u1 " + tail
+    )
+
+
+def test_a_branch_picks_its_own_names_around_a_user_parameter() -> None:
+    q = (
+        "MATCH (n:User)-[r]->(m) RETURN n.name AS x "
+        "UNION MATCH (n:Doc) WHERE n.name = $vCollection RETURN n.name AS x"
+    )
+    t = translate(q, mapping=mapping_bundle_for("lpg"), params={"vCollection": "alice"})
+    assert t.bind_vars["vCollection"] == "alice"
+    assert "IS_SAME_COLLECTION(@vCollection2, m)" in t.aql
+    assert t.bind_vars["vCollection2"] == "vertices"
+
+
+class TestSingleQueryParameterClash:
+    """The emitters bind some values under fixed names; outside a UNION a user
+    parameter of the same name used to be overwritten in place."""
+
+    Q = "MATCH (n:User) WHERE n.name = $typeValue RETURN n.name AS x"
+
+    def test_an_overwritten_parameter_is_refused(self) -> None:
+        with pytest.raises(CoreError, match=r"Parameter \$typeValue has the same name") as exc:
+            translate(self.Q, mapping=mapping_bundle_for("lpg"), params={"typeValue": "alice"})
+        assert exc.value.code == "UNSUPPORTED"
+
+    def test_a_parameter_holding_the_same_value_is_harmless(self) -> None:
+        t = translate(self.Q, mapping=mapping_bundle_for("lpg"), params={"typeValue": "User"})
+        assert t.bind_vars["typeValue"] == "User"
+
+    def test_a_collection_parameter_is_named_without_a_dollar(self) -> None:
+        with pytest.raises(CoreError, match=r"Parameter '@collection' has the same name"):
+            translate(
+                "MATCH (n:User) RETURN n.name AS x",
+                mapping=mapping_bundle_for("pg"),
+                params={"@collection": "docs"},
+            )
