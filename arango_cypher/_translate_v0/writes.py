@@ -17,14 +17,20 @@ from .._antlr.CypherParser import CypherParser
 from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
 
+_DROP_NULLS = "OPTIONS {keepNull: false}"
 
-def _unset_key(lookup: CypherParser.OC_PropertyLookupContext) -> str:
-    """The attribute a ``REMOVE n.prop`` drops, as an AQL string for ``UNSET``.
 
-    The name sits inside a string here, not after a dot, so a backtick-quoted
-    key loses its backticks and any ``"`` in it is escaped.
+def _removed_attribute(lookup: CypherParser.OC_PropertyLookupContext) -> str:
+    """The AQL object that drops the attribute a ``REMOVE n.prop`` names.
+
+    Used as ``UPDATE n WITH <this> IN … OPTIONS {keepNull: false}``: ``UPDATE``
+    merges, so a document without the attribute (``UNSET(n, …)``) left it in
+    place; a ``null`` under ``keepNull: false`` deletes it. The key is an AQL
+    string, so a backtick-quoted name loses its backticks and any ``"`` in it is
+    escaped.
     """
-    return _aql_string_literal(_strip_label_backticks(lookup.oC_PropertyKeyName().getText().strip()))
+    key = _aql_string_literal(_strip_label_backticks(lookup.oC_PropertyKeyName().getText().strip()))
+    return f"{{{key}: null}}"
 
 
 # Pipeline scanners used by WITH … SET/DELETE/REMOVE tails.  ``FOR x IN @@coll``
@@ -184,10 +190,8 @@ def _append_multipart_mutate_tail(
             lookups = prop_expr.oC_PropertyLookup() or []
             if not lookups:
                 raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            prop_name = _unset_key(lookups[-1])
-            lines.append(
-                f"  UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN {_coll_ref_for(target_var)}"
-            )
+            removed = _removed_attribute(lookups[-1])
+            lines.append(f"  UPDATE {target_var} WITH {removed} IN {_coll_ref_for(target_var)} {_DROP_NULLS}")
 
     ret = tail.oC_Return()
     if ret is not None:
@@ -522,7 +526,7 @@ def _translate_mutating_query(
     SET n.prop = val  →  UPDATE n WITH {prop: val} IN @@collection
     DELETE n          →  REMOVE n IN @@collection
     DETACH DELETE n   →  (remove edges first, then REMOVE node)
-    REMOVE n.prop     →  UPDATE n WITH {} IN @@collection ... (UNSET)
+    REMOVE n.prop     →  UPDATE n WITH {"prop": null} IN @@collection OPTIONS {keepNull: false}
     """
     reading_clauses = spq.oC_ReadingClause() or []
     match_ctxs: list[CypherParser.OC_MatchContext] = []
@@ -690,12 +694,8 @@ def _translate_mutating_query(
                 target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
                 lookups = prop_expr.oC_PropertyLookup() or []
                 if lookups:
-                    prop_name = _unset_key(lookups[-1])
-                    lines.append(
-                        f"  UPDATE {target_var} WITH {{}} IN @@collection OPTIONS {{keepNull: false}}"
-                    )
-                    # Use UNSET approach
-                    lines[-1] = f"  UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN @@collection"
+                    removed = _removed_attribute(lookups[-1])
+                    lines.append(f"  UPDATE {target_var} WITH {removed} IN @@collection {_DROP_NULLS}")
 
     # Optional RETURN
     ret = spq.oC_Return()
@@ -776,7 +776,7 @@ def _apply_create_writes(
     lines: list[str],
     indent: str,
 ) -> None:
-    """Emit UPDATE/REPLACE/UNSET for SET/REMOVE that follow CREATE.
+    """Emit UPDATE/REPLACE for SET/REMOVE that follow CREATE.
 
     Each modification is wrapped in a ``LET _w<n> = ( … )`` subquery — the same
     pattern the mutating translator uses for DETACH edge removal — so it
@@ -833,8 +833,8 @@ def _apply_create_writes(
             lookups = prop_expr.oC_PropertyLookup() or []
             if target_var is None or not lookups:
                 raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            prop_name = _unset_key(lookups[-1])
-            _emit(f"UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN {_coll_ref_for(target_var)}")
+            removed = _removed_attribute(lookups[-1])
+            _emit(f"UPDATE {target_var} WITH {removed} IN {_coll_ref_for(target_var)} {_DROP_NULLS}")
 
 
 def _compile_create(

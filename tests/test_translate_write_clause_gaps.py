@@ -142,7 +142,7 @@ class TestWithMutateTail:
 
     def test_with_remove(self, pg):
         out = translate("MATCH (p:Person) WITH p REMOVE p.born", mapping=pg)
-        assert 'UPDATE p WITH UNSET(p, "born") IN' in out.aql
+        assert 'UPDATE p WITH {"born": null} IN' in out.aql
 
     def test_with_delete(self, pg):
         out = translate("MATCH (p:Person) WITH p DELETE p", mapping=pg)
@@ -262,7 +262,7 @@ class TestCreateThenWrite:
 
     def test_create_then_remove(self, pg):
         out = translate("CREATE (n:Person {name: 'A', tmp: 1}) REMOVE n.tmp", mapping=pg)
-        assert 'UNSET(n, "tmp")' in out.aql
+        assert '{"tmp": null}' in out.aql
 
     def test_create_then_set_label_keeps_discriminator(self, lpg):
         out = translate("CREATE (o:ORG {name: 'x'}) SET o.score = 5", mapping=lpg)
@@ -302,7 +302,7 @@ class TestUnlabeledMutations:
 
     def test_unlabeled_remove_property(self, naked):
         out = translate("MATCH (n) REMOVE n.tmp", mapping=naked)
-        assert 'UNSET(n, "tmp")' in out.aql
+        assert '{"tmp": null}' in out.aql
 
     def test_unlabeled_multi_collection_fails_closed(self, pg):
         # movies_pg has many distinct collections; an unlabeled mutation cannot

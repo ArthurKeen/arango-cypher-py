@@ -65,17 +65,28 @@ def test_names_without_backslash_or_backtick_still_translate(cypher: str, expect
 
 
 class TestRemove:
-    """``REMOVE n.prop`` names the attribute inside a string, not after a dot."""
+    """``REMOVE n.prop`` names the attribute as a string key, not after a dot."""
 
     def test_a_quoted_key_loses_its_backticks(self) -> None:
-        assert 'UNSET(n, "first name")' in _aql("MATCH (n:User) REMOVE n.`first name`")
+        assert '{"first name": null}' in _aql("MATCH (n:User) REMOVE n.`first name`")
 
     def test_a_double_quote_in_the_key_cannot_end_the_string(self) -> None:
         aql = _aql('MATCH (n:User) REMOVE n.`a") OR true //`')
-        assert 'UNSET(n, "a\\") OR true //")' in aql
+        assert '{"a\\") OR true //": null}' in aql
 
-    def test_a_plain_key_is_unchanged(self) -> None:
-        assert 'UNSET(n, "age")' in _aql("MATCH (n:User) REMOVE n.age")
+    def test_the_attribute_is_dropped_not_merged(self) -> None:
+        aql = _aql("MATCH (n:User) REMOVE n.age")
+        assert 'UPDATE n WITH {"age": null} IN @@collection OPTIONS {keepNull: false}' in aql
+
+    @pytest.mark.parametrize(
+        "cypher",
+        [
+            pytest.param("MATCH (n:User) WITH n REMOVE n.age", id="after-with"),
+            pytest.param("CREATE (n:User {name: 'a', age: 1}) REMOVE n.age", id="after-create"),
+        ],
+    )
+    def test_every_remove_path_drops_the_attribute(self, cypher: str) -> None:
+        assert '{"age": null}' in _aql(cypher) and "keepNull: false" in _aql(cypher)
 
 
 class TestParameters:

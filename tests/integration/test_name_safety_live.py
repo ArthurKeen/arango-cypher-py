@@ -69,6 +69,24 @@ def test_a_backslash_in_a_string_literal_stays_inside_it(db: Any) -> None:
     assert _run(db, 'MATCH (n:User) WHERE n.name = "a\\\\" RETURN n.name AS x') == [{"x": "a\\"}]
 
 
+def test_remove_drops_exactly_the_quoted_attribute(db: Any) -> None:
+    _run(db, "MATCH (n:User) WHERE n.name = 'alice' REMOVE n.`a\"b`")
+    alice = db.collection("users").get("alice")
+    assert 'a"b' not in alice
+    assert alice["first name"] == "Alice"
+    assert db.collection("users").get("bob")['a"b'] == 2
+
+
+def test_remove_drops_a_plain_attribute_with_or_without_with(db: Any) -> None:
+    users = db.collection("users")
+    users.insert({"_key": "carol", "name": "carol", "age": 1, "keep": 1})
+    _run(db, "MATCH (n:User) WHERE n.name = 'carol' REMOVE n.age")
+    assert "age" not in users.get("carol") and users.get("carol")["keep"] == 1
+    users.update({"_key": "carol", "age": 2})
+    _run(db, "MATCH (n:User) WHERE n.name = 'carol' WITH n REMOVE n.age")
+    assert "age" not in users.get("carol")
+
+
 def test_a_backtick_quoted_parameter_binds(db: Any) -> None:
     assert _run(db, "MATCH (n:User) WHERE n.name = $`who` RETURN n.name AS x", {"who": "bob"}) == [
         {"x": "bob"}

@@ -454,7 +454,9 @@ are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`,
 `CREATE → SET/REMOVE`); `SET` (`=`, `+=`, property and whole-document forms);
-`DELETE` / `DETACH DELETE`; `REMOVE` (property unset); `MERGE` (node and
+`DELETE` / `DETACH DELETE`; `REMOVE` (property removal, emitted as
+`UPDATE n WITH {"prop": null} … OPTIONS {keepNull: false}`; `UPDATE` merges, so
+the earlier `UNSET(n, "prop")` form left the attribute in place); `MERGE` (node and
 single-hop relationship, with `ON CREATE` / `ON MATCH SET`); `FOREACH` (with
 `SET`, and — newly — `CREATE` / `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE`
 on MATCH-bound document variables (including identity aliases such as
@@ -463,6 +465,11 @@ on MATCH-bound document variables (including identity aliases such as
 **Recently closed write-clause gaps (2026-06):** unlabeled `SET`/`DELETE`/`REMOVE`
 on `MATCH (n)`; **multiple `MERGE` clauses** in one statement; **multi-hop
 relationship `MERGE`**; **`CREATE`/`DELETE` inside `FOREACH`**.
+
+**Known gap:** `CREATE → SET/REMOVE` on the created variable translates but
+does not execute: without a `RETURN` the trailing `LET` is an AQL syntax error
+(ERR 1501), and with one the second write to the collection is refused
+(ERR 1579). The fix is to fold the changes into the inserted document.
 
 **Recently closed write-clause gaps (2026-08):** `MATCH … WITH … SET`/`DELETE`/
 `REMOVE` tails (`_append_multipart_mutate_tail`); computed WITH projections
