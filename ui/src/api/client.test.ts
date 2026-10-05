@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiBaseFor, examplesForGraph, type MinedExample } from "./client";
+import { apiBaseFor, examplesForGraph, normalizeSchemaWarnings, type MinedExample } from "./client";
 
 describe("apiBaseFor", () => {
   it("uses the platform mount when the SPA is served at the service root", () => {
@@ -60,5 +60,29 @@ describe("examplesForGraph", () => {
 
   it("keeps the selected graph's examples and graph-less ones", () => {
     expect(examplesForGraph(all, "IAM_DEMO").map((e) => e.question)).toEqual(["iam", "editor"]);
+  });
+});
+
+describe("normalizeSchemaWarnings", () => {
+  it("turns a bare string into a renderable, dismissable warning", () => {
+    expect(normalizeSchemaWarnings(["LLM provider not configured; returning deterministic baseline inference"])).toEqual([
+      {
+        code: "note:llm-provider-not-configured-returning-deterministic-baseline",
+        message: "LLM provider not configured; returning deterministic baseline inference",
+      },
+    ]);
+  });
+
+  it("keeps structured warnings and drops unusable entries", () => {
+    const w = { code: "ANALYZER_NOT_INSTALLED", message: "Install it", install_hint: "pip install x" };
+    expect(normalizeSchemaWarnings([w, "", "  ", 42, null, { code: "x" }])).toEqual([w]);
+  });
+
+  it("gives a structured warning without a code one derived from its message", () => {
+    expect(normalizeSchemaWarnings([{ code: "", message: "Heads up" }])).toEqual([{ code: "note:Heads up", message: "Heads up" }]);
+  });
+
+  it("treats a missing list as no warnings", () => {
+    expect(normalizeSchemaWarnings(undefined)).toEqual([]);
   });
 });

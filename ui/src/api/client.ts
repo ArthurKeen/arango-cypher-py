@@ -732,6 +732,26 @@ export interface IntrospectResult {
   status?: "ready" | "pending";
 }
 
+// The service passes some analyzer warnings through as plain strings
+// ("LLM provider not configured; ..."), others as {code, message}. The banner
+// renders `message` and keys dismissals on `code`, so a bare string showed as
+// an empty banner that could not be dismissed. Strings get a stable code
+// derived from their text.
+export function normalizeSchemaWarnings(raw: unknown): SchemaWarning[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SchemaWarning[] = [];
+  for (const w of raw) {
+    if (typeof w === "string") {
+      const message = w.trim();
+      if (message) out.push({ code: `note:${message.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`, message });
+    } else if (w && typeof w === "object" && typeof (w as SchemaWarning).message === "string") {
+      const sw = w as SchemaWarning;
+      out.push({ ...sw, code: sw.code || `note:${sw.message.slice(0, 60)}` });
+    }
+  }
+  return out;
+}
+
 export async function introspectSchema(
   token: string,
   sample = 50,
@@ -739,9 +759,10 @@ export async function introspectSchema(
 ): Promise<IntrospectResult> {
   const params = new URLSearchParams({ sample: String(sample) });
   if (force) params.set("force", "true");
-  return request(`/schema/introspect?${params}`, {
+  const result = await request<IntrospectResult>(`/schema/introspect?${params}`, {
     headers: authHeaders(token),
   });
+  return { ...result, warnings: normalizeSchemaWarnings(result.warnings) };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -796,10 +817,11 @@ export interface ForceReacquireResult {
 export async function forceReacquireSchema(
   token: string,
 ): Promise<ForceReacquireResult> {
-  return request(`/schema/force-reacquire`, {
+  const result = await request<ForceReacquireResult>(`/schema/force-reacquire`, {
     method: "POST",
     headers: authHeaders(token),
   });
+  return { ...result, warnings: normalizeSchemaWarnings(result.warnings) };
 }
 
 export function introspectToMapping(
