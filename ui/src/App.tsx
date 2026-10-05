@@ -14,6 +14,7 @@ import GraphSelector from "./components/GraphSelector";
 import SchemaWarningBanner from "./components/SchemaWarningBanner";
 import SettingsMenu from "./components/SettingsMenu";
 import ThemeToggle from "./components/ThemeToggle";
+import ReportProblem from "./components/ReportProblem";
 import ChatComposer from "./components/ChatComposer";
 import QueryInspector from "./components/QueryInspector";
 import { useAppState } from "./api/store";
@@ -303,6 +304,7 @@ export default function App() {
   // replace, never accumulate) whenever the connected DB or named-graph scope
   // changes, instead of going stale against a previously-connected database.
   const [nlSamples, setNlSamples] = useState<string[]>([]);
+  const [showReport, setShowReport] = useState(false);
   // Verified examples mined from this database's own saved queries; fetched
   // once per database and filtered by the selected graph on the client, so a
   // graph switch never races the server-side graph binding.
@@ -1401,6 +1403,7 @@ export default function App() {
             onToggleAutoOpenOnError={toggleAutoOpenOnError}
             nlMode={nlMode}
             onNlModeChange={setNlMode}
+            onReportProblem={() => setShowReport(true)}
           />
         </div>
       </header>
@@ -1410,6 +1413,13 @@ export default function App() {
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-800 flex items-center justify-between gap-3">
           <span className="text-sm text-red-300 flex-1 break-words">{state.error}</span>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowReport(true)}
+              title="File this as a GitHub issue (you review it first)"
+              className="text-xs text-red-300 hover:text-red-100 underline-offset-2 hover:underline"
+            >
+              Report
+            </button>
             {/*
               WP-30: one-click regenerate only when the editor's
               Cypher came from the NL pipeline and we still have the
@@ -1882,6 +1892,14 @@ export default function App() {
         />
       )}
 
+      {showReport && (
+        <ReportProblem
+          error={state.error}
+          cypher={state.cypher}
+          aql={state.aql}
+          onClose={() => setShowReport(false)}
+        />
+      )}
       {showSamples && (
         <SampleQueries
           minedExamples={scopedExamples}

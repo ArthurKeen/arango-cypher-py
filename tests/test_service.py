@@ -42,6 +42,11 @@ class TestHealth:
         assert body["service"] == "arango-cypher-py"
         assert "version" in body and body["version"]
 
+    def test_reports_the_analyzer_version(self):
+        from importlib.metadata import version
+
+        assert client.get("/health").json()["analyzer_version"] == version("arangodb-schema-analyzer")
+
 
 class TestCypherProfile:
     def test_returns_manifest(self):

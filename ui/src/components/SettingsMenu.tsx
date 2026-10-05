@@ -17,6 +17,7 @@ export interface SettingsMenuProps {
   onToggleAutoOpenOnError: () => void;
   nlMode: "cypher" | "aql";
   onNlModeChange: (mode: "cypher" | "aql") => void;
+  onReportProblem: () => void;
 }
 
 function GearIcon() {
@@ -187,6 +188,7 @@ export default function SettingsMenu(props: SettingsMenuProps) {
             badge={props.historyCount > 0 ? props.historyCount : ""}
             onClick={runItem(props.onOpenHistory)}
           />
+          <ActionRow label="Report a problem" onClick={runItem(props.onReportProblem)} />
 
           <div className="my-1 border-t border-gray-800" />
 

@@ -225,6 +225,17 @@ export async function importMappingOwl(turtle: string): Promise<ImportedOwlMappi
   });
 }
 
+export interface HealthInfo {
+  status: string;
+  service: string;
+  version: string;
+  analyzer_version: string | null;
+}
+
+export async function getHealth(): Promise<HealthInfo> {
+  return request("/health");
+}
+
 export async function getConnectDefaults(): Promise<ConnectDefaults> {
   return request("/connect/defaults");
 }

@@ -300,6 +300,16 @@ choice is not remembered). Every surface follows the toggle live — Tailwind
 utilities, the CodeMirror editors, and the Cytoscape/SVG graphs, whose canvas is
 light gray by day with Arango Green selection.
 
+The Workbench MUST offer "Report a problem" (settings menu, and beside every
+error banner). It builds a GitHub issue for `arango-solutions/arango-cypher` —
+a public repository — and opens GitHub's pre-filled new-issue page in the user's
+own browser: no token in the service, nothing filed until the user submits it
+there, and Copy for users without a GitHub account. The user sees and can edit
+the full text first. By default a report carries only the app and analyzer
+versions (`GET /health` reports `version` and `analyzer_version`), the error and
+the browser; the Cypher and AQL are added only when the user ticks "include my
+query", because they may contain names or values from the user's data.
+
 > `ui/dist/` is gitignored; rerun `cd ui && npm run build` after pulling UI
 > changes. The service logs a `UI bundle is stale` warning on drift.
 
