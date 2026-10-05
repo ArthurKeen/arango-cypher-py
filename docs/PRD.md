@@ -309,12 +309,17 @@ GitHub account. The user sees and can edit the full text first; their own
 "What happened" text is kept apart from the generated details, so changing an
 option never discards it. By default a report carries only the app and analyzer
 versions (`GET /health` reports `version` and `analyzer_version`), the error and
-the browser, under a fixed title; because errors can quote the query, quoted
-text in the error is masked by default. The Cypher, the AQL and the unmasked
-error are included only when the user ticks "include my query", since they may
-contain names or values from the user's data. A report too long for GitHub's
-link limit is shortened from the end — the versions come first so they always
-survive — and Copy keeps the full text.
+the browser, under a fixed title. Because errors can quote the query, the error
+is reduced by default: quoted text (straight, backtick and typographic quotes,
+not apostrophes in prose) and long digit runs are masked, and the attempted
+Cypher an NL → Cypher failure appends is cut. The Cypher, the AQL and the
+unreduced error are included only when the user ticks "include my query", since
+they may contain names or values from the user's data; the dialog warns that
+other values can still appear and must be checked. The report files the error of
+the banner it was opened from. A report too long for GitHub's link limit is
+shortened — the user's own text first, then the details from the end, so the
+versions always survive — the dialog says so, and Copy keeps the full text (when
+the clipboard is unavailable, the full report is shown selected for copying).
 
 > `ui/dist/` is gitignored; rerun `cd ui && npm run build` after pulling UI
 > changes. The service logs a `UI bundle is stale` warning on drift.

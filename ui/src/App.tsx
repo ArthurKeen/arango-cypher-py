@@ -304,7 +304,9 @@ export default function App() {
   // replace, never accumulate) whenever the connected DB or named-graph scope
   // changes, instead of going stale against a previously-connected database.
   const [nlSamples, setNlSamples] = useState<string[]>([]);
-  const [showReport, setShowReport] = useState(false);
+  // Which error the report dialog files: the banner that opened it decides,
+  // so an NL failure is not reported as a stale query error (or vice versa).
+  const [reportSource, setReportSource] = useState<"query" | "nl" | "menu" | null>(null);
   // Verified examples mined from this database's own saved queries; fetched
   // once per database and filtered by the selected graph on the client, so a
   // graph switch never races the server-side graph binding.
@@ -1403,7 +1405,7 @@ export default function App() {
             onToggleAutoOpenOnError={toggleAutoOpenOnError}
             nlMode={nlMode}
             onNlModeChange={setNlMode}
-            onReportProblem={() => setShowReport(true)}
+            onReportProblem={() => setReportSource("menu")}
           />
         </div>
       </header>
@@ -1414,7 +1416,7 @@ export default function App() {
           <span className="text-sm text-red-300 flex-1 break-words">{state.error}</span>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setShowReport(true)}
+              onClick={() => setReportSource("query")}
               title="File this as a GitHub issue (you review it first)"
               className="text-xs text-red-300 hover:text-red-100 underline-offset-2 hover:underline"
             >
@@ -1615,7 +1617,7 @@ export default function App() {
               <span className="font-semibold shrink-0">NL → Cypher failed:</span>
               <span className="flex-1 break-words">{nlError}</span>
               <button
-                onClick={() => setShowReport(true)}
+                onClick={() => setReportSource("nl")}
                 className="text-red-300 hover:text-red-100 text-[10px] uppercase tracking-wide shrink-0"
                 title="File this as a GitHub issue (you review it first)"
               >
@@ -1899,12 +1901,18 @@ export default function App() {
         />
       )}
 
-      {showReport && (
+      {reportSource && (
         <ReportProblem
-          error={state.error ?? (nlError || null)}
+          error={
+            reportSource === "nl"
+              ? nlError || null
+              : reportSource === "query"
+                ? state.error
+                : (state.error ?? (nlError || null))
+          }
           cypher={state.cypher}
           aql={state.aql}
-          onClose={() => setShowReport(false)}
+          onClose={() => setReportSource(null)}
         />
       )}
       {showSamples && (

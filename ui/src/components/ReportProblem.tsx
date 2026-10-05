@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getHealth, type HealthInfo } from "../api/client";
-import { DEFAULT_TITLE, buildDetails, composeBody, issueUrl } from "../utils/bugReport";
+import { DEFAULT_TITLE, buildDetails, buildIssue, composeBody } from "../utils/bugReport";
 
 interface Props {
   error: string | null;
@@ -25,6 +25,8 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const whatRef = useRef<HTMLTextAreaElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
+  const fullRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   // Callers pass a fresh onClose each render; the ref keeps the focus/Escape
   // effect below from re-running (and stealing focus) on every parent render.
   const onCloseRef = useRef(onClose);
@@ -46,18 +48,40 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
     };
   }, []);
 
-  // Escape closes; focus starts in "What happened" and returns to whatever
-  // opened the dialog.
+  // Escape closes (not mid-IME composition); Tab stays inside the dialog;
+  // focus starts in "What happened" and returns to whatever opened it — or to
+  // the settings button when that was a menu item that no longer exists.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     whatRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape" && !e.isComposing) {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>("a[href], button, input, textarea, select"),
+      ).filter((el) => !el.hasAttribute("disabled"));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      opener?.focus?.();
+      const target =
+        opener && document.contains(opener)
+          ? opener
+          : document.querySelector<HTMLElement>("button[aria-label='Settings']");
+      target?.focus?.();
     };
   }, []);
 
@@ -79,11 +103,12 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
 
   const link = useMemo(() => {
     try {
-      return { href: issueUrl(title, body), problem: null as string | null };
+      const issue = buildIssue(title, whatHappened, details);
+      return { href: issue.url as string | null, shortened: issue.shortened, problem: null as string | null };
     } catch (err) {
-      return { href: null, problem: err instanceof Error ? err.message : String(err) };
+      return { href: null, shortened: false, problem: err instanceof Error ? err.message : String(err) };
     }
-  }, [title, body]);
+  }, [title, whatHappened, details]);
 
   const toggleQuery = (next: boolean) => {
     if (
@@ -102,13 +127,19 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
       await navigator.clipboard.writeText(`# ${title}\n\n${body}`);
       setCopyState("copied");
     } catch (err) {
-      // No clipboard on plain-http deployments; let the user copy by hand.
+      // No clipboard on plain-http deployments: show the whole report — title
+      // and the user's own text included — selected, to copy by hand.
       console.warn("Copying the report failed:", err);
       setCopyState("failed");
-      detailsRef.current?.focus();
-      detailsRef.current?.select();
     }
   };
+
+  useEffect(() => {
+    if (copyState === "failed") {
+      fullRef.current?.focus();
+      fullRef.current?.select();
+    }
+  }, [copyState]);
 
   const fieldClass =
     "w-full px-3 py-2 rounded bg-gray-950 border border-gray-700 text-gray-50 focus:border-indigo-500 focus:outline-none";
@@ -120,7 +151,10 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
       aria-modal="true"
       aria-labelledby="report-title"
     >
-      <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-[680px] max-h-[90vh] flex flex-col">
+      <div
+        ref={dialogRef}
+        className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-full max-w-[680px] max-h-[90vh] flex flex-col"
+      >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <h2 id="report-title" className="text-sm font-semibold text-gray-50">Report a problem</h2>
           <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-200 text-lg leading-none">
@@ -134,8 +168,8 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
             it to your Arango contact.
           </p>
           <p className="text-xs text-amber-400">
-            Error messages can quote your query. Quoted values are hidden unless you include your query — check the
-            details before submitting.
+            Error messages can quote your query or contain values from your data. Quoted text, long numbers and the
+            attempted query are hidden unless you include your query — read the details before submitting.
           </p>
           {healthError && (
             <p role="alert" className="text-xs text-amber-400">
@@ -144,14 +178,24 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
           )}
           <label className="block">
             <span className="text-xs text-gray-400 block mb-1">Title</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${fieldClass} text-sm`} />
+            <input
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setCopyState("idle");
+              }}
+              className={`${fieldClass} text-sm`}
+            />
           </label>
           <label className="block">
             <span className="text-xs text-gray-400 block mb-1">What happened? What did you expect?</span>
             <textarea
               ref={whatRef}
               value={whatHappened}
-              onChange={(e) => setWhatHappened(e.target.value)}
+              onChange={(e) => {
+                setWhatHappened(e.target.value);
+                setCopyState("idle");
+              }}
               rows={3}
               className={`${fieldClass} text-sm`}
             />
@@ -179,8 +223,24 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
             />
           </label>
           {copyState === "failed" && (
-            <p role="alert" className="text-xs text-red-400">
-              Couldn't copy automatically. The details are selected — copy them with your keyboard.
+            <div className="space-y-1">
+              <p role="alert" className="text-xs text-red-400">
+                Couldn't copy automatically. The full report is selected below — copy it with your keyboard.
+              </p>
+              <textarea
+                ref={fullRef}
+                readOnly
+                value={`# ${title}\n\n${body}`}
+                rows={6}
+                aria-label="Full report"
+                className={`${fieldClass} text-xs font-mono`}
+              />
+            </div>
+          )}
+          {link.shortened && (
+            <p className="text-xs text-amber-400">
+              This report is too long for a GitHub link, so the link carries a shortened copy. Use Copy to send the full
+              text.
             </p>
           )}
           {link.problem && (
