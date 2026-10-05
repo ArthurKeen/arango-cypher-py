@@ -7,6 +7,8 @@ from typing import Any
 
 from arango_query_core import CoreError
 
+from .._antlr.CypherParser import CypherParser
+
 
 def _pick_fresh_var(name: str, *, forbidden_vars: set[str]) -> str:
     if name not in forbidden_vars:
@@ -72,6 +74,53 @@ def _strip_label_backticks(name: str) -> str:
     if len(name) >= 2 and name.startswith("`") and name.endswith("`"):
         return name[1:-1]
     return name
+
+
+_SHOWN_NAME_CHARS = 80
+
+
+def _reject_unsafe_escaped_names(tree: Any) -> None:
+    """Refuse backtick-quoted Cypher names that AQL would read differently.
+
+    Escaped names (variables, aliases, property keys, labels) reach the AQL
+    text verbatim, backticks included, at many sites. Inside AQL backticks a
+    ``\\`` starts an escape, so ``n.`a\\``` closes its quoting one character
+    later than Cypher's and splices the rest of the query into the AQL as code.
+    Cypher spells a literal backtick as a doubled one, which AQL reads as two
+    adjacent names. Content free of both characters means the same thing in
+    either language, so the check is made once, here, rather than at every
+    site that copies a name.
+    """
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        symbol = getattr(node, "symbol", None)
+        if symbol is not None:
+            text = symbol.text or ""
+            if symbol.type == CypherParser.EscapedSymbolicName and ("\\" in text or "`" in text[1:-1]):
+                shown = text if len(text) <= _SHOWN_NAME_CHARS else text[:_SHOWN_NAME_CHARS] + "…"
+                raise CoreError(
+                    f"Name {shown} contains a backslash or a backtick, which cannot be "
+                    "passed safely to AQL; rename it",
+                    code="UNSUPPORTED",
+                )
+            continue
+        stack.extend(node.getChildren())
+
+
+_BIND_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _aql_bind_name(parameter: str) -> str:
+    """Return the AQL bind reference for a Cypher parameter (``$name``)."""
+    name = _strip_label_backticks(parameter[1:])
+    if not _BIND_NAME.fullmatch(name):
+        raise CoreError(
+            f"Parameter {parameter[:_SHOWN_NAME_CHARS]} is not a valid AQL bind parameter "
+            "name; use letters, digits and underscores",
+            code="UNSUPPORTED",
+        )
+    return f"@{name}"
 
 
 def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:

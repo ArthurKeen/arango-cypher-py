@@ -27,10 +27,12 @@ from .hints import (
 )
 from .literals import _aql_string_literal
 from .naming import (
+    _aql_bind_name,
     _aql_collection_ref,
     _declared_aql_vars,
     _pick_bind_key,
     _pick_fresh_var,
+    _reject_unsafe_escaped_names,
     _rewrite_vars,
     _strip_label_backticks,
 )
@@ -114,6 +116,7 @@ def _translate_v0_inner(
 
     pr = parse_cypher(cypher)
     tree = pr.tree
+    _reject_unsafe_escaped_names(tree)
 
     query_ctx = tree.oC_Statement().oC_Query()
 
@@ -5073,7 +5076,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if name.isdigit():
             raise CoreError("Positional parameters not supported in v0", code="UNSUPPORTED")
         # Bind var value (if provided) is already in bind_vars; leave as-is.
-        return f"@{name}"
+        return _aql_bind_name(txt)
 
     if isinstance(ctx, CypherParser.OC_FunctionInvocationContext):
         fn = ctx.oC_FunctionName().getText()

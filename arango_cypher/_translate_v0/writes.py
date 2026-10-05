@@ -14,7 +14,18 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
+from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
+
+
+def _unset_key(lookup: CypherParser.OC_PropertyLookupContext) -> str:
+    """The attribute a ``REMOVE n.prop`` drops, as an AQL string for ``UNSET``.
+
+    The name sits inside a string here, not after a dot, so a backtick-quoted
+    key loses its backticks and any ``"`` in it is escaped.
+    """
+    return _aql_string_literal(_strip_label_backticks(lookup.oC_PropertyKeyName().getText().strip()))
+
 
 # Pipeline scanners used by WITH … SET/DELETE/REMOVE tails.  ``FOR x IN @@coll``
 # binds ``x`` to collection bind-key ``@coll``; traversal ``FOR v, r IN … @@edge``
@@ -173,9 +184,9 @@ def _append_multipart_mutate_tail(
             lookups = prop_expr.oC_PropertyLookup() or []
             if not lookups:
                 raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+            prop_name = _unset_key(lookups[-1])
             lines.append(
-                f'  UPDATE {target_var} WITH UNSET({target_var}, "{prop_name}") IN {_coll_ref_for(target_var)}'
+                f"  UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN {_coll_ref_for(target_var)}"
             )
 
     ret = tail.oC_Return()
@@ -679,14 +690,12 @@ def _translate_mutating_query(
                 target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
                 lookups = prop_expr.oC_PropertyLookup() or []
                 if lookups:
-                    prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
+                    prop_name = _unset_key(lookups[-1])
                     lines.append(
                         f"  UPDATE {target_var} WITH {{}} IN @@collection OPTIONS {{keepNull: false}}"
                     )
                     # Use UNSET approach
-                    lines[-1] = (
-                        f'  UPDATE {target_var} WITH UNSET({target_var}, "{prop_name}") IN @@collection'
-                    )
+                    lines[-1] = f"  UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN @@collection"
 
     # Optional RETURN
     ret = spq.oC_Return()
@@ -824,10 +833,8 @@ def _apply_create_writes(
             lookups = prop_expr.oC_PropertyLookup() or []
             if target_var is None or not lookups:
                 raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
-            _emit(
-                f'UPDATE {target_var} WITH UNSET({target_var}, "{prop_name}") IN {_coll_ref_for(target_var)}'
-            )
+            prop_name = _unset_key(lookups[-1])
+            _emit(f"UPDATE {target_var} WITH UNSET({target_var}, {prop_name}) IN {_coll_ref_for(target_var)}")
 
 
 def _compile_create(

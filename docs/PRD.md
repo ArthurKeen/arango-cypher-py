@@ -415,6 +415,18 @@ shared across replicas. Exposed via `GET /schema/status` and
    post-pass that re-indents by `FOR` depth and prepends a `WITH` collection
    declaration for traversals.
 
+**Name safety.** Cypher values reach AQL as bind parameters. Cypher *names*
+(variables, aliases, property keys, labels) reach the AQL text, and
+backtick-quoted ones are copied with their backticks. Inside AQL backticks a
+`\` starts an escape, so a name such as ``n.`a\` `` would end its quoting
+early and splice the rest of the query into the AQL as code. Translation
+therefore refuses (`UNSUPPORTED`) any backtick-quoted name containing a
+backslash or a backtick (`_reject_unsafe_escaped_names`, run on every parse
+tree). Any other content means the same thing in both languages. Parameter
+names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
+as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
+string.
+
 The translator core lives in `arango_cypher/_translate_v0/` (`core.py`,
 `writes.py`, `formatting.py`, shared `state.py` contextvars). Translation results
 are LRU-cached (256 entries).
