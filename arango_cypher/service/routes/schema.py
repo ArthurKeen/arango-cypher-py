@@ -219,6 +219,7 @@ def schema_introspect(
             "warnings": [
                 {
                     "code": "SCHEMA_PENDING",
+                    "severity": "info",
                     "message": (
                         "Schema for this database is being analyzed in the "
                         "background — retry in a moment, or use "

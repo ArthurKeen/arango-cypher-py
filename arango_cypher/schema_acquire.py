@@ -103,7 +103,8 @@ _heuristic_fallback_counter: int = 0
 
 
 #: Analyzer notes, matched by message prefix, with the code and severity the
-#: service reports them under. ``info`` describes normal operation — the
+#: service reports them under. The UI repeats the baseline prefix
+#: (ui/src/api/client.ts BASELINE_NOTE_PREFIX) for servers older than this. ``info`` describes normal operation — the
 #: service always runs the analyzer without an LLM (``AgenticSchemaAnalyzer()``
 #: below), so this note is on every analyzer mapping — and the Workbench keeps
 #: info notes out of its warning banner.
@@ -111,6 +112,17 @@ _ANALYZER_NOTES: tuple[tuple[str, str, str], ...] = (
     ("LLM provider not configured", "ANALYZER_BASELINE_NO_LLM", "info"),
 )
 WARNING_SEVERITIES = frozenset({"info", "warning", "error"})
+#: Analyzer messages that lead with their own category ("ORPHAN_AUTOGRAPH_KG: ...").
+_CATEGORY_PREFIX = re.compile(r"^([A-Z][A-Z0-9_]{2,}):\s")
+
+
+def _note_code(message: str) -> str:
+    """A code unique to *message*: its category (or ``ANALYZER_NOTE``) plus a
+    short hash. Clients key dismissals on the code, so a shared code would let
+    one dismissal hide every other — and every later — analyzer note."""
+    match = _CATEGORY_PREFIX.match(message)
+    category = match.group(1) if match else "ANALYZER_NOTE"
+    return f"{category}:{hashlib.sha1(message.encode('utf-8')).hexdigest()[:8]}"
 
 
 def normalize_warnings(warnings: Any) -> list[dict[str, Any]]:
@@ -118,18 +130,23 @@ def normalize_warnings(warnings: Any) -> list[dict[str, Any]]:
 
     The analyzer reports warnings (and errors) as plain strings, while this
     module attaches structured ones (:func:`_attach_warning`), so a bundle's
-    ``metadata["warnings"]`` is mixed. Every HTTP response normalizes it here,
-    so clients see one shape. Strings are matched against
-    :data:`_ANALYZER_NOTES`; anything unrecognized is an ``ANALYZER_NOTE``
-    with severity ``warning``. Entries with no message are dropped.
+    ``metadata["warnings"]`` is mixed. Schema responses normalize it here, so
+    clients see one shape. Strings are matched against :data:`_ANALYZER_NOTES`;
+    anything unrecognized gets a message-specific code (:func:`_note_code`)
+    and severity ``warning``. Entries with no message are dropped. A bare
+    string is one warning, not one per character; any other non-list is none.
     """
+    if isinstance(warnings, str):
+        warnings = [warnings]
+    elif not isinstance(warnings, (list, tuple)):
+        return []
     out: list[dict[str, Any]] = []
-    for w in warnings or []:
+    for w in warnings:
         if isinstance(w, str):
             message = w.strip()
             if not message:
                 continue
-            code, severity = "ANALYZER_NOTE", "warning"
+            code, severity = _note_code(message), "warning"
             for prefix, known_code, known_severity in _ANALYZER_NOTES:
                 if message.startswith(prefix):
                     code, severity = known_code, known_severity
@@ -142,7 +159,9 @@ def normalize_warnings(warnings: Any) -> list[dict[str, Any]]:
             raw_code = w.get("code")
             raw_severity = w.get("severity")
             entry: dict[str, Any] = {
-                "code": raw_code if isinstance(raw_code, str) and raw_code else "ANALYZER_NOTE",
+                "code": raw_code
+                if isinstance(raw_code, str) and raw_code
+                else _note_code(raw_message.strip()),
                 "message": raw_message.strip(),
                 "severity": raw_severity if raw_severity in WARNING_SEVERITIES else "warning",
             }

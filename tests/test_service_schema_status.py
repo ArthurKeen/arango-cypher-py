@@ -448,6 +448,7 @@ class TestIntrospectWarnings:
         assert body["entities"] == []
         assert body["relationships"] == []
         assert body["warnings"][0]["code"] == "SCHEMA_PENDING"
+        assert body["warnings"][0]["severity"] == "info"
         assert "background" in body["warnings"][0]["message"].lower()
         # The miss must have scheduled exactly one warm for this session's db.
         assert len(scheduled) == 1
@@ -610,15 +611,13 @@ class TestForceReacquire:
         monkeypatch.setattr(schema_acquire, "get_mapping", lambda db, **kw: warned)
         resp = client.post("/schema/force-reacquire")
         assert resp.status_code == 200
-        assert resp.json()["warnings"] == [
-            {
-                "code": "ANALYZER_BASELINE_NO_LLM",
-                "message": "LLM provider not configured; returning deterministic baseline inference",
-                "severity": "info",
-            },
-            {
-                "code": "ANALYZER_NOTE",
-                "message": "edge collection 'x' has no endpoints",
-                "severity": "warning",
-            },
-        ]
+        warnings = resp.json()["warnings"]
+        assert len(warnings) == 2
+        assert warnings[0] == {
+            "code": "ANALYZER_BASELINE_NO_LLM",
+            "message": "LLM provider not configured; returning deterministic baseline inference",
+            "severity": "info",
+        }
+        assert warnings[1]["message"] == "edge collection 'x' has no endpoints"
+        assert warnings[1]["severity"] == "warning"
+        assert warnings[1]["code"].startswith("ANALYZER_NOTE:")

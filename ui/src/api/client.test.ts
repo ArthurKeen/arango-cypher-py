@@ -3,6 +3,7 @@ import { afterEach, vi } from "vitest";
 import {
   apiBaseFor,
   examplesForGraph,
+  forceReacquireSchema,
   introspectSchema,
   normalizeSchemaWarnings,
   noteCode,
@@ -147,5 +148,24 @@ describe("introspectSchema", () => {
     );
     const result = await introspectSchema("token");
     expect(result.warnings?.[0]).toMatchObject({ message: "LLM provider not configured; x", severity: "info" });
+  });
+});
+
+describe("forceReacquireSchema", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("normalizes the warnings it returns", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ source: { kind: null, notes: null }, warnings: ["odd"], entity_count: 0, relationship_count: 0 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    const result = await forceReacquireSchema("token");
+    expect(result.warnings[0]).toMatchObject({ message: "odd", severity: "warning" });
   });
 });

@@ -33,8 +33,6 @@ function saveDismissed(map: Record<string, number>) {
   }
 }
 
-
-
 export default function SchemaWarningBanner({
   warnings,
   url,
@@ -154,8 +152,9 @@ export default function SchemaWarningBanner({
             &#9888;
           </span>
           <div className="flex-1 min-w-0">
-            {/* Codes derived from a message (note:…) mean nothing to a reader. */}
-            {!w.code.startsWith("note:") && <span className="text-xs text-amber-300 font-medium mr-2">{w.code}</span>}
+            {/* Codes derived from a message (note:… or CATEGORY:hash) mean
+                nothing to a reader; show only real codes. */}
+            {!w.code.includes(":") && <span className="text-xs text-amber-300 font-medium mr-2">{w.code}</span>}
             <span className="text-xs text-amber-400/90">{w.message}</span>
           </div>
           <button

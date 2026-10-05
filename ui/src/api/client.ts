@@ -740,8 +740,13 @@ export interface IntrospectResult {
 // configured; ..."). The banner renders `message`, keys dismissals on `code`
 // and hides `info`, so every entry needs a real message and a code that is
 // unique to it.
+// Also matched on the server (arango_cypher/schema_acquire.py _ANALYZER_NOTES);
+// repeated here for servers older than that normalization.
 const BASELINE_NOTE_PREFIX = "LLM provider not configured";
-const SEVERITIES = new Set(["info", "warning", "error"]);
+type Severity = NonNullable<SchemaWarning["severity"]>;
+function isSeverity(value: unknown): value is Severity {
+  return value === "info" || value === "warning" || value === "error";
+}
 
 // A stable code for a message: a readable slug plus a short hash of the whole
 // text, so messages sharing a prefix, or in non-Latin scripts, never collide.
@@ -774,8 +779,8 @@ export function normalizeSchemaWarnings(raw: unknown): SchemaWarning[] {
       continue;
     }
     const code = isRecord(w) && typeof w.code === "string" && w.code ? w.code : noteCode(message);
-    const given = isRecord(w) && typeof w.severity === "string" && SEVERITIES.has(w.severity) ? w.severity : null;
-    const severity = (given ?? (message.startsWith(BASELINE_NOTE_PREFIX) ? "info" : "warning")) as SchemaWarning["severity"];
+    const given = isRecord(w) && isSeverity(w.severity) ? w.severity : null;
+    const severity: Severity = given ?? (message.startsWith(BASELINE_NOTE_PREFIX) ? "info" : "warning");
     const entry: SchemaWarning = { code, message, severity };
     if (isRecord(w) && typeof w.install_hint === "string" && w.install_hint) entry.install_hint = w.install_hint;
     out.push(entry);

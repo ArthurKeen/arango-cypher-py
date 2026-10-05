@@ -32,4 +32,13 @@ describe("bannerWarnings", () => {
     expect(bannerWarnings(warnings, dismissed, url, db).map((w) => w.code)).toEqual(["B"]);
     expect(bannerWarnings(warnings, dismissed, url, "OTHER")).toHaveLength(2);
   });
+
+  it("dismisses two analyzer notes independently (codes are message-specific)", () => {
+    const warnings = [
+      { code: "ANALYZER_NOTE:1a2b3c4d", message: "first", severity: "warning" as const },
+      { code: "ANALYZER_NOTE:5e6f7a8b", message: "second", severity: "warning" as const },
+    ];
+    const dismissed = { [dismissalKey(url, db, warnings[0].code)]: 1 };
+    expect(bannerWarnings(warnings, dismissed, url, db).map((w) => w.message)).toEqual(["second"]);
+  });
 });

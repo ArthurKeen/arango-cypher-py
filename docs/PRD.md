@@ -269,7 +269,8 @@ Endpoint families (all under `arango_cypher.service`):
   `POST /schema/invalidate-cache`, `POST /schema/force-reacquire`,
   `GET /schema/statistics`, `POST /schema/index/create`. Schema warnings are
   returned as `{code, message, severity}` (`install_hint` when there is one),
-  whatever form the analyzer reported them in; `severity: "info"` marks notes
+  whatever form the analyzer reported them in, with a code specific to each
+  message (clients dismiss by code); `severity: "info"` marks notes
   about normal operation (e.g. `ANALYZER_BASELINE_NO_LLM`: the schema was read
   without an LLM), which the Workbench keeps out of its warning banner.
 - **Mapping** — `/mapping/export-owl`, `/mapping/import-owl`, `/suggest-indexes`.
