@@ -116,7 +116,7 @@ class TestStore:
 
         db = FakeDb({DEFAULT_COLLECTION: []}, handler=handler)
         assert list_examples(db, graph="IAM_DEMO", limit=10_000) == [{"question": "q"}]
-        assert seen == [{"@c": DEFAULT_COLLECTION, "graph": "IAM_DEMO", "limit": 200}]
+        assert seen == [{"@c": DEFAULT_COLLECTION, "scope": "IAM_DEMO", "limit": 200}]
 
 
 class TestConnectionTarget:

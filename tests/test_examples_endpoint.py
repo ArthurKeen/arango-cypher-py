@@ -51,7 +51,7 @@ def test_lists_the_sessions_examples_scoped_to_its_graph(client: TestClient) -> 
     resp = client.get("/examples?limit=20", headers={"X-Arango-Session": token})
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"examples": [EXAMPLE]}
-    assert seen == [{"@c": DEFAULT_COLLECTION, "graph": "IAM_DEMO", "limit": 20}]
+    assert seen == [{"@c": DEFAULT_COLLECTION, "scope": "IAM_DEMO", "limit": 20}]
 
 
 def test_a_database_never_mined_has_none(client: TestClient) -> None:
