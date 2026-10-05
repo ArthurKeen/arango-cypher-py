@@ -10,14 +10,10 @@ objects, so a driver change breaks these tests instead of passing them.
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
 from arango.exceptions import AQLQueryExecuteError, AQLQueryExplainError
-from arango.request import Request
-from arango.response import Response
 
 from arango_cypher.query_mining import binding
 from arango_cypher.query_mining.binding import (
@@ -38,111 +34,7 @@ from arango_cypher.query_mining.harvest import (
     plan_writes,
 )
 from arango_cypher.query_mining.signature import compare, signature_of
-
-
-def _server_error(cls: type, code: int, num: int, message: str) -> Exception:
-    """A real python-arango server error, populated as BaseConnection.prep_response does."""
-    body = {"error": True, "code": code, "errorNum": num, "errorMessage": message}
-    resp = Response("post", "http://db/_api/cursor", {}, code, "error", json.dumps(body))
-    resp.body = body
-    resp.error_code = num
-    resp.error_message = message
-    resp.is_success = False
-    return cls(resp, Request("post", "/_api/cursor"))
-
-
-class FakeCursor:
-    def __init__(self, rows: list[Any]):
-        self._rows = rows
-        self.closed = False
-
-    def __iter__(self) -> Iterator[Any]:
-        return iter(self._rows)
-
-    def close(self, ignore_missing: bool = False) -> bool | None:
-        self.closed = True
-        return True
-
-
-class FakeCollection:
-    def __init__(self, docs: list[dict[str, Any]]):
-        self._docs = docs
-
-    def all(self, skip: int | None = None, limit: int | None = None) -> list[dict[str, Any]]:
-        return list(self._docs)
-
-
-Handler = Callable[[str, dict[str, Any]], list[Any]]
-
-
-class FakeAQL:
-    def __init__(self, handler: Handler, plan_nodes: Callable[[str], list[str]]):
-        self._handler = handler
-        self._plan_nodes = plan_nodes
-        self.executed: list[tuple[str, dict[str, Any], float | None]] = []
-
-    def execute(
-        self,
-        query: str,
-        count: bool = False,
-        batch_size: int | None = None,
-        ttl: int | None = None,
-        bind_vars: dict[str, Any] | None = None,
-        full_count: bool | None = None,
-        max_plans: int | None = None,
-        optimizer_rules: list[str] | None = None,
-        cache: bool | None = None,
-        memory_limit: int = 0,
-        fail_on_warning: bool | None = None,
-        profile: bool | None = None,
-        max_transaction_size: int | None = None,
-        max_warning_count: int | None = None,
-        intermediate_commit_count: int | None = None,
-        intermediate_commit_size: int | None = None,
-        satellite_sync_wait: int | None = None,
-        stream: bool | None = None,
-        skip_inaccessible_cols: bool | None = None,
-        max_runtime: float | None = None,
-        **_more: Any,
-    ) -> FakeCursor:
-        self.executed.append((query, dict(bind_vars or {}), max_runtime))
-        return FakeCursor(self._handler(query, dict(bind_vars or {})))
-
-    def explain(
-        self,
-        query: str,
-        all_plans: bool = False,
-        max_plans: int | None = None,
-        opt_rules: list[str] | None = None,
-        bind_vars: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return {"nodes": [{"type": t} for t in self._plan_nodes(query)]}
-
-
-class FakeDb:
-    def __init__(
-        self,
-        collections: dict[str, list[dict[str, Any]]] | None = None,
-        *,
-        handler: Handler | None = None,
-        plan_nodes: Callable[[str], list[str]] | None = None,
-        name: str = "IAM",
-    ):
-        self._collections = collections or {}
-        self._name = name
-        self.aql = FakeAQL(
-            handler or (lambda q, b: []), plan_nodes or (lambda q: ["SingletonNode", "ReturnNode"])
-        )
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    def has_collection(self, name: str) -> bool:
-        return name in self._collections
-
-    def collection(self, name: str) -> FakeCollection:
-        return FakeCollection(self._collections[name])
+from tests.helpers.fake_arango import FakeDb, server_error
 
 
 def _q(**overrides: Any) -> SavedQuery:
@@ -348,7 +240,7 @@ class TestRunReadOnly:
 
     def test_a_killed_query_is_a_timeout(self) -> None:
         def _kill(q: str, b: dict[str, Any]) -> list[Any]:
-            raise _server_error(AQLQueryExecuteError, 410, 1500, "query killed")
+            raise server_error(AQLQueryExecuteError, 410, 1500, "query killed")
 
         with pytest.raises(TimedOut):
             run_read_only(FakeDb(handler=_kill), "FOR ...", {})
@@ -360,7 +252,7 @@ class TestRunReadOnly:
         db = _Db()
 
         def _explain(*a: Any, **k: Any) -> dict[str, Any]:
-            raise _server_error(AQLQueryExplainError, 400, 1221, "while looking up graph ''")
+            raise server_error(AQLQueryExplainError, 400, 1221, "while looking up graph ''")
 
         db.aql.explain = _explain  # type: ignore[method-assign]
         with pytest.raises(SourceRejected, match="does not run: while looking up graph"):
@@ -424,7 +316,7 @@ class TestCanvasActions:
         def handler(q: str, b: dict[str, Any]) -> list[Any]:
             if "IS_SAME_COLLECTION" in q:
                 return ["aws_iam_role/1"]
-            raise _server_error(AQLQueryExecuteError, 410, 1500, "query killed")
+            raise server_error(AQLQueryExecuteError, 410, 1500, "query killed")
 
         q = _q(source=CANVAS_ACTIONS, name="x", aql="FOR v IN 1..9 OUTBOUND @nodes[0] GRAPH 'G' RETURN v")
         with pytest.raises(SourceRejected, match="timed out"):
