@@ -108,10 +108,11 @@ def list_examples(db: Any, *, graph: str | None = None, limit: int = MAX_LIST) -
         return []
     query = (
         "FOR e IN @@c FILTER e.kind == 'mined' "
-        "FILTER @graph == null OR e.graph == null OR e.graph == @graph "
+        # e["graph"], not e.graph: GRAPH is an AQL keyword, even after a dot.
+        'FILTER @scope == null OR e["graph"] == null OR e["graph"] == @scope '
         "SORT e.source.name LIMIT @limit RETURN UNSET(e, '_id', '_rev')"
     )
     cursor = db.aql.execute(
-        query, bind_vars=bind({"@c": name, "graph": graph, "limit": max(1, min(limit, MAX_LIST))})
+        query, bind_vars=bind({"@c": name, "scope": graph, "limit": max(1, min(limit, MAX_LIST))})
     )
     return list(sync(cursor))
