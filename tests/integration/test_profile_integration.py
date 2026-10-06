@@ -85,6 +85,41 @@ def test_union_distinct_deduplicates(arango_pytest_url: str):
 
 
 @pytest.mark.integration
+def test_union_across_collections_executes(arango_pytest_url: str):
+    """Branches over different collections reuse ``@@collection`` with different
+    values; the second branch's copy is renamed. Each branch must still read
+    its own collection."""
+    db = _connect(arango_pytest_url, "cypher_union_it")
+    seed_social_dataset(db, mode="pg")
+    db.collection("persons").insert({"_key": "p1", "name": "Pat"}, overwrite=True)
+
+    cypher = (
+        "MATCH (n:User) WHERE n.id = $id RETURN n.name AS name UNION MATCH (n:Person) RETURN n.name AS name"
+    )
+    tq = translate(cypher, mapping=mapping_bundle_for("pg"), params={"id": "u1"})
+    assert "@@collection_u1" in tq.aql
+    rows = sorted(AqlExecutor(db).execute(tq.to_aql_query()), key=lambda r: r["name"])
+    assert rows == [{"name": "Alice"}, {"name": "Pat"}]
+
+
+@pytest.mark.integration
+def test_union_across_labels_in_one_collection_executes(arango_pytest_url: str):
+    """LPG: both branches scan ``vertices``, so ``@@collection`` merges, while the
+    type value differs and is renamed. Each branch must filter on its own label."""
+    db = _connect(arango_pytest_url, "cypher_union_lpg_it")
+    seed_social_dataset(db, mode="lpg")
+    db.collection("vertices").insert({"_key": "d1", "type": "Doc", "name": "Spec"}, overwrite=True)
+
+    cypher = (
+        "MATCH (n:User) WHERE n.id = 'u2' RETURN n.name AS name UNION ALL MATCH (n:Doc) RETURN n.name AS name"
+    )
+    tq = translate(cypher, mapping=mapping_bundle_for("lpg"))
+    assert "@typeValue_u1" in tq.aql
+    rows = sorted(AqlExecutor(db).execute(tq.to_aql_query()), key=lambda r: r["name"])
+    assert rows == [{"name": "Bob"}, {"name": "Spec"}]
+
+
+@pytest.mark.integration
 def test_optional_match_sole_clause_hit(arango_pytest_url: str):
     """OPTIONAL MATCH as sole clause should return matching rows normally."""
     db_name = "cypher_optional_it"
