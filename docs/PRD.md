@@ -415,6 +415,18 @@ shared across replicas. Exposed via `GET /schema/status` and
    post-pass that re-indents by `FOR` depth and prepends a `WITH` collection
    declaration for traversals.
 
+**Name safety.** Cypher values reach AQL as bind parameters. Cypher *names*
+(variables, aliases, property keys, labels) reach the AQL text, and
+backtick-quoted ones are copied with their backticks. Inside AQL backticks a
+`\` starts an escape, so a name such as ``n.`a\` `` would end its quoting
+early and splice the rest of the query into the AQL as code. Translation
+therefore refuses (`UNSUPPORTED`) any backtick-quoted name containing a
+backslash or a backtick (`_reject_unsafe_escaped_names`, run on every parse
+tree). Any other content means the same thing in both languages. Parameter
+names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
+as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
+string.
+
 The translator core lives in `arango_cypher/_translate_v0/` (`core.py`,
 `writes.py`, `formatting.py`, shared `state.py` contextvars). Translation results
 are LRU-cached (256 entries).
@@ -440,9 +452,12 @@ are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
 ### 8.3 Supported subset (write)
 
-`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`,
-`CREATE → SET/REMOVE`); `SET` (`=`, `+=`, property and whole-document forms);
-`DELETE` / `DETACH DELETE`; `REMOVE` (property unset); `MERGE` (node and
+`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`;
+`CREATE → SET/REMOVE` translates but does not yet execute, see the known gaps
+below); `SET` (`=`, `+=`, property and whole-document forms);
+`DELETE` / `DETACH DELETE`; `REMOVE` (property removal, emitted as
+`UPDATE n WITH {"prop": null} … OPTIONS {keepNull: false}`; `UPDATE` merges, so
+the earlier `UNSET(n, "prop")` form left the attribute in place); `MERGE` (node and
 single-hop relationship, with `ON CREATE` / `ON MATCH SET`); `FOREACH` (with
 `SET`, and — newly — `CREATE` / `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE`
 on MATCH-bound document variables (including identity aliases such as
@@ -451,6 +466,20 @@ on MATCH-bound document variables (including identity aliases such as
 **Recently closed write-clause gaps (2026-06):** unlabeled `SET`/`DELETE`/`REMOVE`
 on `MATCH (n)`; **multiple `MERGE` clauses** in one statement; **multi-hop
 relationship `MERGE`**; **`CREATE`/`DELETE` inside `FOREACH`**.
+
+**Known gaps (write forms that translate but fail on a server):**
+- `CREATE → SET/REMOVE` on the created variable: without a `RETURN` the
+  trailing `LET` is an AQL syntax error (ERR 1501), and with one the second
+  write to the collection is refused (ERR 1579). The fix is to fold the changes
+  into the inserted document.
+- More than one `REMOVE` item, or `SET` and `REMOVE` together, on one variable
+  (`REMOVE n.x, n.y`): each item is a separate `UPDATE` of the same collection,
+  which AQL refuses (ERR 1579). Multi-property `SET` is not affected; its fields
+  are merged into one `UPDATE`.
+- `REMOVE` on a relationship variable in a `MATCH` query
+  (`MATCH (a)-[r:R]->(b) REMOVE r.p`) updates the start node's collection
+  instead of the edge collection (ERR 1202). The `WITH … REMOVE` tail handles
+  relationship variables correctly.
 
 **Recently closed write-clause gaps (2026-08):** `MATCH … WITH … SET`/`DELETE`/
 `REMOVE` tails (`_append_multipart_mutate_tail`); computed WITH projections
