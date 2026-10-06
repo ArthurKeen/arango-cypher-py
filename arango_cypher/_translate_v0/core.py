@@ -12,6 +12,7 @@ from arango_query_core import (
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
+from .bind_names import _merge_bind_vars, _refuse_overwritten_params
 from .calls import (
     _inject_in_query_calls,
     _translate_standalone_call,
@@ -85,6 +86,7 @@ def translate_v0(
             mapping=mapping,
             params=params,
         )
+        _refuse_overwritten_params(params, result.bind_vars)
         result = _prepend_with_collections(result, resolver)
         result = AqlQuery(
             text=_reindent_aql(result.text),
@@ -1296,40 +1298,26 @@ def _translate_union(
         if uc.ALL() is None:
             is_all = False
 
+    # The caller seeds bind_vars with the user's parameters before any branch
+    # is translated; those names must never be renamed (see _merge_bind_vars).
+    user_params = frozenset(bind_vars)
     subqueries: list[str] = []
-    for branch in branches:
-        branch_bv: dict[str, Any] = {}
+    for index, branch in enumerate(branches):
+        # Seeded with the user's parameters, as a single query's bind vars are,
+        # so names the branch picks for itself (_pick_bind_key) avoid them.
+        branch_bv: dict[str, Any] = {k: bind_vars[k] for k in user_params}
         bq = _translate_single_query(
             branch,
             resolver=resolver,
             bind_vars=branch_bv,
         )
-        _merge_bind_vars(bind_vars, branch_bv)
-        subqueries.append(f"({bq.text})")
+        text = _merge_bind_vars(bind_vars, branch_bv, bq.text, branch_index=index, user_params=user_params)
+        subqueries.append(f"({text})")
 
     fn = "UNION" if is_all else "UNION_DISTINCT"
     joined = ",\n  ".join(subqueries)
     aql = f"FOR _u IN {fn}(\n  {joined}\n)\n  RETURN _u"
     return AqlQuery(text=aql, bind_vars=bind_vars)
-
-
-def _merge_bind_vars(
-    target: dict[str, Any],
-    source: dict[str, Any],
-) -> None:
-    """
-    Merge *source* bind vars into *target*.  Raise on key collision with
-    different values (bind var names must be unique across UNION branches).
-    """
-    for k, v in source.items():
-        if k in target:
-            if target[k] != v:
-                raise CoreError(
-                    f"Bind variable collision across UNION branches: @{k} has conflicting values",
-                    code="UNSUPPORTED",
-                )
-        else:
-            target[k] = v
 
 
 def _translate_computational_multi_part(

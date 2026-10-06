@@ -881,12 +881,12 @@ translate_fail	clauses/set/Set6/[9] Skipping all results after adding a label on
 translatable	clauses/union/Union1/[1] Two elements, both unique, distinct
 translatable	clauses/union/Union1/[2] Three elements, two unique, distinct
 translatable	clauses/union/Union1/[3] Two single-column inputs, one with duplicates, distinct
-translate_fail	clauses/union/Union1/[4] Should be able to create text output from union queries
+translatable	clauses/union/Union1/[4] Should be able to create text output from union queries
 translatable	clauses/union/Union1/[5] Failing when UNION has different columns
 translatable	clauses/union/Union2/[1] Two elements, both unique, not distinct
 translatable	clauses/union/Union2/[2] Three elements, two unique, not distinct
 translatable	clauses/union/Union2/[3] Two single-column inputs, one with duplicates, not distinct
-translate_fail	clauses/union/Union2/[4] Should be able to create text output from union all queries
+translatable	clauses/union/Union2/[4] Should be able to create text output from union all queries
 translatable	clauses/union/Union2/[5] Failing when UNION ALL has different columns
 translatable	clauses/union/Union3/[1] Failing when mixing UNION and UNION ALL
 translatable	clauses/union/Union3/[2] Failing when mixing UNION ALL and UNION
