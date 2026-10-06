@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getHealth, type HealthInfo } from "../api/client";
 import { DEFAULT_TITLE, buildDetails, buildIssue, composeBody } from "../utils/bugReport";
+import { focusReturnTarget } from "../utils/focusReturn";
 
 interface Props {
   error: string | null;
@@ -50,9 +51,9 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
 
   // Escape closes (not mid-IME composition); Tab stays inside the dialog;
   // focus starts in "What happened" and returns to whatever opened it — or to
-  // the settings button when that was a menu item that no longer exists.
+  // the settings button when a menu item opened it (see focusReturnTarget).
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
+    const opener = document.activeElement;
     whatRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !e.isComposing) {
@@ -77,11 +78,7 @@ export default function ReportProblem({ error, cypher, aql, onClose }: Props) {
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      const target =
-        opener && document.contains(opener)
-          ? opener
-          : document.querySelector<HTMLElement>("button[aria-label='Settings']");
-      target?.focus?.();
+      focusReturnTarget(opener, document)?.focus?.();
     };
   }, []);
 
