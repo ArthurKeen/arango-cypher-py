@@ -33,12 +33,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
+    # The services above publish fixed host ports. The job context, which
+    # would give mapped ports, is not available in job-level env, and using
+    # it made the whole workflow file invalid.
     env:
-      ARANGO_URL: http://localhost:${{ job.services.arangodb.ports[8529] }}
+      ARANGO_URL: http://localhost:8529
       ARANGO_USER: root
       ARANGO_PASS: openSesame
       ARANGO_DB: _system
-      NEO4J_URI: bolt://localhost:${{ job.services.neo4j.ports[7687] }}
+      NEO4J_URI: bolt://localhost:7687
       NEO4J_USER: neo4j
       NEO4J_PASS: openSesame
       RUN_INTEGRATION: "1"
