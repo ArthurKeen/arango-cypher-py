@@ -71,7 +71,7 @@ A complete template lives in [`.env.example`](../../.env.example).
 ## Entry point and probes
 
 - **Import path** for the ASGI app: `arango_cypher.service:app`.
-- **Liveness / readiness**: `GET /health` — returns `200 {"status":"ok","service":"arango-cypher-py","version":"0.1.0"}`. No DB round-trip, no auth. Point Container Manager health checks here.
+- **Liveness / readiness**: `GET /health` — returns `200 {"status":"ok","service":"arango-cypher-py","version":"<package version>","analyzer_version":"<schema analyzer version, or null when not installed>"}`. No DB round-trip, no auth. Point Container Manager health checks here.
 - **Port**: read `PORT` from env if the platform sets it; default `8000`.
 
 ## Packaging

@@ -42,6 +42,28 @@ class TestHealth:
         assert body["service"] == "arango-cypher-py"
         assert "version" in body and body["version"]
 
+    def test_reports_the_analyzer_version(self):
+        from importlib.metadata import version
+
+        assert client.get("/health").json()["analyzer_version"] == version("arangodb-schema-analyzer")
+
+    def test_reports_no_analyzer_version_when_it_is_not_installed(self, monkeypatch):
+        # The heuristic-fallback deployment (ARANGO_CYPHER_ALLOW_HEURISTIC) runs
+        # without the analyzer; /health must still answer, with null.
+        from importlib.metadata import PackageNotFoundError
+
+        from arango_cypher.service.routes import health as health_mod
+
+        def _missing(name: str) -> str:
+            raise PackageNotFoundError(name)
+
+        monkeypatch.setattr(health_mod, "version", _missing)
+        health_mod._analyzer_version.cache_clear()
+        try:
+            assert client.get("/health").json()["analyzer_version"] is None
+        finally:
+            health_mod._analyzer_version.cache_clear()
+
 
 class TestCypherProfile:
     def test_returns_manifest(self):
