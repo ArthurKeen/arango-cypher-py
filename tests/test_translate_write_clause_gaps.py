@@ -250,24 +250,32 @@ class TestWholeMapCreateParam:
 
 
 class TestCreateThenWrite:
+    # SET/REMOVE on a created variable are folded into the inserted document:
+    # a separate UPDATE would write the same collection twice (ERR 1579).
     def test_create_then_set(self, pg):
         out = translate("CREATE (n:Person {name: 'A'}) SET n.born = 1990", mapping=pg)
-        assert "INSERT {name: 'A'} INTO" in out.aql
-        # SET becomes a subquery-wrapped UPDATE on the created var.
-        assert "LET _w0 = (UPDATE n WITH {born: 1990} IN" in out.aql
+        assert "INSERT MERGE({name: 'A'}, {born: 1990}) INTO" in out.aql
+        assert "UPDATE" not in out.aql
 
     def test_create_then_set_map(self, pg):
         out = translate("CREATE (n:Person {name: 'A'}) SET n += {born: 1990}", mapping=pg)
-        assert "MERGE(n," in out.aql
+        assert "INSERT MERGE({name: 'A'}, {born: 1990}) INTO" in out.aql
 
     def test_create_then_remove(self, pg):
         out = translate("CREATE (n:Person {name: 'A', tmp: 1}) REMOVE n.tmp", mapping=pg)
-        assert '{"tmp": null}' in out.aql
+        assert "INSERT UNSET({name: 'A', tmp: 1}, \"tmp\") INTO" in out.aql
 
     def test_create_then_set_label_keeps_discriminator(self, lpg):
         out = translate("CREATE (o:ORG {name: 'x'}) SET o.score = 5", mapping=lpg)
-        assert "INSERT {" in out.aql and "type:" in out.aql
-        assert "UPDATE o WITH {score: 5} IN" in out.aql
+        assert "INSERT MERGE({type: @typeValue, name: 'x'}, {score: 5}) INTO" in out.aql
+
+    def test_create_then_replace_keeps_discriminator(self, lpg):
+        out = translate("CREATE (o:ORG {name: 'x'}) SET o = {score: 5}", mapping=lpg)
+        assert "INSERT MERGE({score: 5}, {type: @typeValue}) INTO" in out.aql
+
+    def test_create_then_set_reading_the_created_node(self, pg):
+        out = translate("CREATE (n:Person {born: 1990}) SET n.age = 2026 - n.born", mapping=pg)
+        assert "FIRST(FOR _d0 IN [{born: 1990}] RETURN MERGE(_d0, {age: (2026 - _d0.born)}))" in out.aql
 
     def test_create_combined_with_delete_is_rejected(self, pg):
         with pytest.raises(CoreError) as exc:

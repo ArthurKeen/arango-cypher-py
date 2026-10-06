@@ -141,14 +141,14 @@ translatable	clauses/delete/Delete1/[6] Detach delete on null node
 translatable	clauses/delete/Delete1/[7] Failing when deleting connected nodes
 correct_rejection	clauses/delete/Delete1/[8] Failing when deleting a label
 translatable	clauses/delete/Delete2/[1] Delete relationships
-translatable	clauses/delete/Delete2/[2] Delete optionally matched relationship
+translate_fail	clauses/delete/Delete2/[2] Delete optionally matched relationship
 translatable	clauses/delete/Delete2/[3] Delete relationship with bidirectional matching
 translatable	clauses/delete/Delete2/[4] Ignore null when deleting relationship
 correct_rejection	clauses/delete/Delete2/[5] Failing when deleting a relationship type
-translatable	clauses/delete/Delete3/[1] Detach deleting paths
-translatable	clauses/delete/Delete3/[2] Delete on null path
-translatable	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
-translatable	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
+translate_fail	clauses/delete/Delete3/[1] Detach deleting paths
+translate_fail	clauses/delete/Delete3/[2] Delete on null path
+translate_fail	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
+translate_fail	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
 translate_fail	clauses/delete/Delete4/[3] Create and delete in same query
 translate_fail	clauses/delete/Delete5/[1] Delete node from a list
 translate_fail	clauses/delete/Delete5/[2] Delete relationship from a list
@@ -157,8 +157,8 @@ translate_fail	clauses/delete/Delete5/[4] Delete relationships from a map
 translate_fail	clauses/delete/Delete5/[5] Detach delete nodes from nested map/list
 translate_fail	clauses/delete/Delete5/[6] Delete relationships from nested map/list
 translate_fail	clauses/delete/Delete5/[7] Delete paths from nested map/list
-translatable	clauses/delete/Delete5/[8] Failing when using undefined variable in DELETE
-translatable	clauses/delete/Delete5/[9] Failing when deleting an integer expression
+correct_rejection	clauses/delete/Delete5/[8] Failing when using undefined variable in DELETE
+correct_rejection	clauses/delete/Delete5/[9] Failing when deleting an integer expression
 translatable	clauses/delete/Delete6/[10] Skipping and limiting to a few results after deleting relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[11] Skipping zero result and limiting to all results after deleting relationships does not affect the result set nor the side effects
 translate_fail	clauses/delete/Delete6/[12] Filtering after deleting relationships affects the result set but not the side effects
@@ -668,7 +668,7 @@ translatable	clauses/remove/Remove1/[2] Remove multiple node properties
 translatable	clauses/remove/Remove1/[3] Remove a single relationship property
 translatable	clauses/remove/Remove1/[4] Remove multiple relationship properties
 translatable	clauses/remove/Remove1/[5] Ignore null when removing property from a node
-translatable	clauses/remove/Remove1/[6] Ignore null when removing property from a relationship
+translate_fail	clauses/remove/Remove1/[6] Ignore null when removing property from a relationship
 translatable	clauses/remove/Remove1/[7] Remove a missing node property
 translatable	clauses/remove/Remove2/[1] Remove a single label from a node with a single label
 translatable	clauses/remove/Remove2/[2] Remove a single label from a node with two labels

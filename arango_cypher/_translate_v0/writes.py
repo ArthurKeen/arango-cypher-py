@@ -8,6 +8,7 @@ split without a core <-> writes import cycle at module import time.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,21 +17,106 @@ from arango_query_core import AqlQuery, CoreError, MappingResolver
 from .._antlr.CypherParser import CypherParser
 from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
+from .property_writes import PropertyOp, PropertyWrites, StoredWrite, keep_fields_for
 
-_DROP_NULLS = "OPTIONS {keepNull: false}"
+
+def _atom_variable(atom: Any) -> str | None:
+    """The variable an atom names: ``n``, or ``(n)`` in ``SET (n).p = …``."""
+    if atom is None:
+        return None
+    if atom.oC_Variable() is not None:
+        return atom.oC_Variable().getText().strip()
+    inner = atom.oC_ParenthesizedExpression()
+    if inner is not None:
+        text = inner.oC_Expression().getText().strip()
+        if re.fullmatch(r"[A-Za-z_]\w*", text):
+            return text
+    return None
 
 
-def _removed_attribute(lookup: CypherParser.OC_PropertyLookupContext) -> str:
-    """The AQL object that drops the attribute a ``REMOVE n.prop`` names.
+def _property_writes(
+    set_clauses: list[CypherParser.OC_SetContext],
+    remove_clauses: list,
+    *,
+    bind_vars: dict[str, Any],
+    target_of: Callable[[str], str] = lambda name: name,
+    rewrite_value: Callable[[str], str] | None = None,
+) -> PropertyWrites:
+    """A statement's SET and REMOVE items, per variable, in query order.
 
-    Used as ``UPDATE n WITH <this> IN … OPTIONS {keepNull: false}``: ``UPDATE``
-    merges, so a document without the attribute (``UNSET(n, …)``) left it in
-    place; a ``null`` under ``keepNull: false`` deletes it. The key is an AQL
-    string, so a backtick-quoted name loses its backticks and any ``"`` in it is
-    escaped.
+    Refuses a nested property, which used to write or remove the wrong one
+    (``n.a.b`` touched ``n.b``), and ``SET n:Label``, which failed obscurely.
+    ``REMOVE n:Label`` is skipped, as it always was.
     """
-    key = _aql_string_literal(_strip_label_backticks(lookup.oC_PropertyKeyName().getText().strip()))
-    return f"{{{key}: null}}"
+    writes = PropertyWrites()
+
+    def value_of(expr: Any) -> str:
+        value = _compile_expression(expr, bind_vars)
+        return rewrite_value(value) if rewrite_value else value
+
+    for clause in sorted([*set_clauses, *remove_clauses], key=lambda c: c.start.tokenIndex):
+        is_set = isinstance(clause, CypherParser.OC_SetContext)
+        verb = "SET" if is_set else "REMOVE"
+        items = (clause.oC_SetItem() if is_set else clause.oC_RemoveItem()) or []
+        for item in items:
+            prop_expr = item.oC_PropertyExpression()
+            if prop_expr is not None:
+                atom_var = _atom_variable(prop_expr.oC_Atom())
+                lookups = prop_expr.oC_PropertyLookup() or []
+                if atom_var is None or not lookups:
+                    raise CoreError(f"{verb} requires a property expression", code="UNSUPPORTED")
+                if len(lookups) > 1:
+                    raise CoreError(
+                        f"{verb} of a nested property ({prop_expr.getText()}) is not supported; "
+                        "set the whole top-level property instead",
+                        code="UNSUPPORTED",
+                    )
+                var = target_of(atom_var)
+                token = lookups[0].oC_PropertyKeyName().getText().strip()
+                name = _strip_label_backticks(token)
+                if is_set:
+                    writes.add(
+                        var, PropertyOp("set", name=name, key=token, value=value_of(item.oC_Expression()))
+                    )
+                else:
+                    writes.add(var, PropertyOp("remove", name=name, key=_aql_string_literal(name)))
+                continue
+            if not is_set and item.oC_NodeLabels() is not None:
+                # REMOVE n:Label is skipped, as before: labels are collections or a
+                # type field here, and removing one is not modelled. The openCypher
+                # scenarios that remove labels check the returned rows, which a
+                # skipped removal leaves right.
+                continue
+            if item.oC_NodeLabels() is not None or item.oC_Variable() is None:
+                raise CoreError(f"{verb} of a label ({item.getText()}) is not supported", code="UNSUPPORTED")
+            var = target_of(item.oC_Variable().getText().strip())
+            merges = any(child.getText() == "+=" for child in item.getChildren())
+            writes.add(
+                var, PropertyOp("merge" if merges else "replace", value=value_of(item.oC_Expression()))
+            )
+    return writes
+
+
+def _stored_write_line(var: str, collection_ref: str, write: StoredWrite, indent: str = "  ") -> str:
+    line = f"{indent}{write.operation} {var} WITH {write.document} IN {collection_ref}"
+    return f"{line} {write.options}" if write.options else line
+
+
+def _refuse_repeated_collections(writes: list[tuple[str, str]]) -> None:
+    """Fail closed when two writes in one query hit the same collection.
+
+    *writes* pairs a description with the collection name. AQL refuses the
+    second (ERR 1579), and a translation error says which writes collided.
+    """
+    seen: dict[str, str] = {}
+    for what, collection in writes:
+        if collection in seen:
+            raise CoreError(
+                f"{seen[collection]} and {what} both write collection {collection!r}; AQL allows one "
+                "write per collection in a query, so run them as separate statements",
+                code="UNSUPPORTED",
+            )
+        seen[collection] = what
 
 
 # Pipeline scanners used by WITH … SET/DELETE/REMOVE tails.  ``FOR x IN @@coll``
@@ -99,7 +185,7 @@ def _append_multipart_mutate_tail(
             code="NOT_IMPLEMENTED",
         )
 
-    def _coll_ref_for(target_var: str) -> str:
+    def _coll_key_for(target_var: str) -> str:
         aql_var = var_env.get(target_var, target_var)
         key = var_collections.get(aql_var) or var_collections.get(target_var)
         if key is None:
@@ -113,45 +199,28 @@ def _append_multipart_mutate_tail(
                 f"Missing collection bind for SET/DELETE/REMOVE target {target_var!r}",
                 code="UNSUPPORTED",
             )
-        return _aql_collection_ref(key)
+        return key
+
+    def _coll_ref_for(target_var: str) -> str:
+        return _aql_collection_ref(_coll_key_for(target_var))
 
     def _rewrite_target(name: str) -> str:
         return var_env.get(name, name)
 
-    for sc in set_clauses:
-        update_fields: dict[str, dict[str, str]] = {}
-        for si in sc.oC_SetItem() or []:
-            prop_expr = si.oC_PropertyExpression()
-            if prop_expr is not None:
-                atom = prop_expr.oC_Atom()
-                if atom is None or atom.oC_Variable() is None:
-                    raise CoreError("SET requires a property expression", code="UNSUPPORTED")
-                target_var = _rewrite_target(atom.oC_Variable().getText().strip())
-                lookups = prop_expr.oC_PropertyLookup() or []
-                if not lookups:
-                    raise CoreError("SET requires a property expression", code="UNSUPPORTED")
-                prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
-                val = _compile_expression(si.oC_Expression(), bind_vars)
-                if var_env:
-                    val = _rewrite_vars(val, var_env)
-                update_fields.setdefault(target_var, {})[prop_name] = val
-            else:
-                si_var = si.oC_Variable()
-                if si_var is None:
-                    raise CoreError("Unsupported SET item after WITH", code="UNSUPPORTED")
-                target_var = _rewrite_target(si_var.getText().strip())
-                val = _compile_expression(si.oC_Expression(), bind_vars)
-                if var_env:
-                    val = _rewrite_vars(val, var_env)
-                ref = _coll_ref_for(target_var)
-                if "+=" in si.getText():
-                    lines.append(f"  UPDATE {target_var} WITH MERGE({target_var}, {val}) IN {ref}")
-                else:
-                    lines.append(f"  REPLACE {target_var} WITH {val} IN {ref}")
-
-        for target_var, fields in update_fields.items():
-            pairs = ", ".join(f"{k}: {v}" for k, v in fields.items())
-            lines.append(f"  UPDATE {target_var} WITH {{{pairs}}} IN {_coll_ref_for(target_var)}")
+    writes = _property_writes(
+        set_clauses,
+        remove_clauses,
+        bind_vars=bind_vars,
+        target_of=_rewrite_target,
+        rewrite_value=(lambda value: _rewrite_vars(value, var_env)) if var_env else None,
+    )
+    physical = resolver.bundle.physical_mapping
+    written: list[tuple[str, str]] = []
+    for target_var in writes.ops:
+        key = _coll_key_for(target_var)
+        write = writes.stored_write(target_var, keep_fields_for(bind_vars[key], physical))
+        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
+        written.append((f"SET/REMOVE on {target_var}", bind_vars[key]))
 
     for dc in delete_clauses:
         is_detach = dc.DETACH() is not None
@@ -176,22 +245,11 @@ def _append_multipart_mutate_tail(
                         f"  LET _edgeRm{idx} = (FOR {de_edge} IN 1..1 ANY {simple} {ec_ref} "
                         f"REMOVE {de_edge} IN {ec_ref})"
                     )
+                    written.append((f"DETACH DELETE {simple} (its {ec} edges)", ec))
             lines.append(f"  REMOVE {simple} IN {_coll_ref_for(simple)}")
+            written.append((f"DELETE {simple}", bind_vars[_coll_key_for(simple)]))
 
-    for rc in remove_clauses:
-        for ri in rc.oC_RemoveItem() or []:
-            prop_expr = ri.oC_PropertyExpression()
-            if prop_expr is None:
-                continue
-            atom = prop_expr.oC_Atom()
-            if atom is None or atom.oC_Variable() is None:
-                raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            target_var = _rewrite_target(atom.oC_Variable().getText().strip())
-            lookups = prop_expr.oC_PropertyLookup() or []
-            if not lookups:
-                raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            removed = _removed_attribute(lookups[-1])
-            lines.append(f"  UPDATE {target_var} WITH {removed} IN {_coll_ref_for(target_var)} {_DROP_NULLS}")
+    _refuse_repeated_collections(written)
 
     ret = tail.oC_Return()
     if ret is not None:
@@ -556,6 +614,10 @@ def _translate_mutating_query(
     prop_filters = _compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars)
 
     lines: list[str] = [f"FOR {var} IN @@collection"]
+    # Bind key of the collection each pattern variable lives in, for writes.
+    # ``None``: the variable cannot be written (a variable-length relationship
+    # is a list of edges).
+    write_keys: dict[str, str | None] = {var: "@collection"}
 
     if labels:
         primary = _pick_primary_entity_label(labels, resolver)
@@ -578,8 +640,6 @@ def _translate_mutating_query(
         lines.append(f"  FILTER {f}")
 
     # Handle relationship chain if present
-    trav_vars: dict[str, str] = {var: var}
-    forbidden: set[str] = {var}
     current = var
     for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
@@ -598,10 +658,14 @@ def _translate_mutating_query(
         rmin, rmax = rel_range
         edge_ref = _aql_collection_ref(edge_key)
         lines.append(f"  FOR {v_var}, {rel_var} IN {rmin}..{rmax} {direction} {current} {edge_ref}")
+        write_keys[rel_var] = edge_key if (rmin, rmax) == (1, 1) else None
 
         if v_labels:
             v_primary = _pick_primary_entity_label(v_labels, resolver)
             v_map = resolver.resolve_entity(_strip_label_backticks(v_primary))
+            write_keys[v_var] = _find_or_create_collection_bind_key(
+                "@collection", v_map["collectionName"], bind_vars
+            )
             v_style = v_map.get("style")
             if v_style == "LABEL":
                 vtf = _pick_bind_key("vTypeField", bind_vars)
@@ -618,63 +682,57 @@ def _translate_mutating_query(
             bind_vars[rtv] = r_map.get("typeValue")
             lines.append(f"    FILTER {rel_var}[@{rtf}] == @{rtv}")
 
+        if not v_labels:
+            # An unlabeled end node lives wherever the edge leads; resolve it
+            # the way the read path does, failing closed when that is ambiguous.
+            write_keys.setdefault(v_var, "")
         current = v_var
-        trav_vars[v_var] = v_var
-        trav_vars[rel_var] = rel_var
-        forbidden.add(v_var)
-        forbidden.add(rel_var)
 
     where_ctx = mc.oC_Where()
     if where_ctx is not None:
         wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
         lines.append(f"  FILTER {wf}")
 
-    # Compile SET items
-    for sc in set_clauses:
-        set_items = sc.oC_SetItem() or []
-        update_fields: dict[str, dict[str, str]] = {}
-        for si in set_items:
-            prop_expr = si.oC_PropertyExpression()
-            if prop_expr is not None:
-                # n.prop = val
-                atom = prop_expr.oC_Atom()
-                target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
-                lookups = prop_expr.oC_PropertyLookup() or []
-                if not lookups:
-                    raise CoreError("SET requires a property expression", code="UNSUPPORTED")
-                prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
-                val = _compile_expression(si.oC_Expression(), bind_vars)
-                update_fields.setdefault(target_var, {})[prop_name] = val
-            else:
-                si_var = si.oC_Variable()
-                if si_var is not None:
-                    target_var = si_var.getText().strip()
-                    val = _compile_expression(si.oC_Expression(), bind_vars)
-                    txt = si.getText()
-                    if "+=" in txt:
-                        lines.append(f"  UPDATE {target_var} WITH MERGE({target_var}, {val}) IN @@collection")
-                    else:
-                        lines.append(f"  REPLACE {target_var} WITH {val} IN @@collection")
+    def write_key_for(target_var: str, verb: str) -> str:
+        if target_var not in write_keys:
+            raise CoreError(
+                f"{verb} targets {target_var!r}, which is not bound by the first MATCH pattern",
+                code="UNSUPPORTED",
+            )
+        key = write_keys[target_var]
+        if key is None:
+            raise CoreError(
+                f"{verb} on {target_var!r}, a variable-length relationship (a list of edges), "
+                "is not supported",
+                code="UNSUPPORTED",
+            )
+        if key == "":
+            key = _find_or_create_collection_bind_key(
+                "@collection", _infer_unlabeled_collection(resolver), bind_vars
+            )
+            write_keys[target_var] = key
+        return key
 
-        for target_var, fields in update_fields.items():
-            pairs = ", ".join(f"{k}: {v}" for k, v in fields.items())
-            target_coll = "@@collection"
-            if target_var != var and target_var in trav_vars:
-                tc_key = _pick_bind_key("@setCollection", bind_vars)
-                # Determine collection from traversal context
-                bind_vars[tc_key] = bind_vars.get("@collection", "")
-                target_coll = f"@{tc_key}"
-            lines.append(f"  UPDATE {target_var} WITH {{{pairs}}} IN {target_coll}")
+    # SET and REMOVE: one write per variable, in its own collection.
+    writes = _property_writes(set_clauses, remove_clauses, bind_vars=bind_vars)
+    physical = resolver.bundle.physical_mapping
+    written: list[tuple[str, str]] = []
+    for target_var in writes.ops:
+        key = write_key_for(target_var, "SET/REMOVE")
+        write = writes.stored_write(target_var, keep_fields_for(bind_vars[key], physical))
+        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
+        written.append((f"SET/REMOVE on {target_var}", bind_vars[key]))
 
     # Compile DELETE
     for dc in delete_clauses:
         is_detach = dc.DETACH() is not None
-        del_exprs = dc.oC_Expression() or []
-        for de in del_exprs:
-            del_var = _compile_expression(de, bind_vars)
+        for de in dc.oC_Expression() or []:
+            del_var = _compile_expression(de, bind_vars).strip()
+            if not re.fullmatch(r"\w+", del_var):
+                raise CoreError("DELETE only supports a MATCH-bound variable", code="UNSUPPORTED")
+            key = write_key_for(del_var, "DELETE")
             if is_detach:
-                edge_colls = resolver.all_edge_collections()
-                for idx, ec in enumerate(edge_colls):
+                for idx, ec in enumerate(resolver.all_edge_collections()):
                     ec_key = _pick_bind_key("@detachEdge", bind_vars)
                     bind_vars[ec_key] = ec
                     ec_ref = _aql_collection_ref(ec_key)
@@ -682,20 +740,11 @@ def _translate_mutating_query(
                     lines.append(
                         f"  LET _edgeRm{idx} = (FOR {de_var} IN 1..1 ANY {del_var} {ec_ref} REMOVE {de_var} IN {ec_ref})"
                     )
-            lines.append(f"  REMOVE {del_var} IN @@collection")
+                    written.append((f"DETACH DELETE {del_var} (its {ec} edges)", ec))
+            lines.append(f"  REMOVE {del_var} IN {_aql_collection_ref(key)}")
+            written.append((f"DELETE {del_var}", bind_vars[key]))
 
-    # Compile REMOVE (property removal)
-    for rc in remove_clauses:
-        rm_items = rc.oC_RemoveItem() or []
-        for ri in rm_items:
-            prop_expr = ri.oC_PropertyExpression()
-            if prop_expr is not None:
-                atom = prop_expr.oC_Atom()
-                target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else var
-                lookups = prop_expr.oC_PropertyLookup() or []
-                if lookups:
-                    removed = _removed_attribute(lookups[-1])
-                    lines.append(f"  UPDATE {target_var} WITH {removed} IN @@collection {_DROP_NULLS}")
+    _refuse_repeated_collections(written)
 
     # Optional RETURN
     ret = spq.oC_Return()
@@ -716,10 +765,10 @@ def _translate_create_query(
 ) -> AqlQuery:
     """Translate a single-part query containing CREATE clause(s), optionally
     followed by SET/REMOVE on the created variables."""
-    set_clauses = set_clauses or []
-    remove_clauses = remove_clauses or []
-    has_writes = bool(set_clauses or remove_clauses)
     ret = spq.oC_Return()
+    # SET/REMOVE on created variables are folded into the inserted documents:
+    # a separate UPDATE would write the same collection twice (ERR 1579).
+    writes = _property_writes(set_clauses or [], remove_clauses or [], bind_vars=bind_vars)
 
     # Maps each created variable to the bind key of the collection it was
     # inserted into, so a trailing SET/REMOVE can target the right collection.
@@ -740,20 +789,16 @@ def _translate_create_query(
             var_env=var_env,
             lines=lines,
             indent=indent,
-            # SET/REMOVE need every created var LET-bound so they can be
-            # referenced, so force LET when there are trailing writes.
-            has_return=ret is not None or force_let or has_writes,
+            has_return=ret is not None or force_let,
             var_collections=var_collections,
+            writes=writes,
         )
 
-    if has_writes:
-        _apply_create_writes(
-            set_clauses,
-            remove_clauses,
-            var_collections=var_collections,
-            bind_vars=bind_vars,
-            lines=lines,
-            indent=indent,
+    not_created = [v for v in writes.ops if v not in var_collections]
+    if not_created:
+        raise CoreError(
+            f"SET/REMOVE after CREATE targets variable {not_created[0]!r} that was not created in this query",
+            code="NOT_IMPLEMENTED",
         )
 
     if ret is not None:
@@ -767,76 +812,6 @@ def _translate_create_query(
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
 
-def _apply_create_writes(
-    set_clauses: list[CypherParser.OC_SetContext],
-    remove_clauses: list,
-    *,
-    var_collections: dict[str, str],
-    bind_vars: dict[str, Any],
-    lines: list[str],
-    indent: str,
-) -> None:
-    """Emit UPDATE/REPLACE for SET/REMOVE that follow CREATE.
-
-    Each modification is wrapped in a ``LET _w<n> = ( … )`` subquery — the same
-    pattern the mutating translator uses for DETACH edge removal — so it
-    coexists with the ``FIRST(INSERT …)`` create subqueries without tripping
-    AQL's restriction on multiple top-level data-modification operations.
-    """
-    counter = 0
-
-    def _coll_ref_for(target_var: str) -> str:
-        key = var_collections.get(target_var)
-        if not key:
-            raise CoreError(
-                f"SET/REMOVE after CREATE targets variable {target_var!r} that was not created in this query",
-                code="NOT_IMPLEMENTED",
-            )
-        return _aql_collection_ref(key)
-
-    def _emit(body: str) -> None:
-        nonlocal counter
-        lines.append(f"{indent}LET _w{counter} = ({body} RETURN NEW)")
-        counter += 1
-
-    for sc in set_clauses:
-        for si in sc.oC_SetItem() or []:
-            prop_expr = si.oC_PropertyExpression()
-            if prop_expr is not None:
-                atom = prop_expr.oC_Atom()
-                target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else None
-                lookups = prop_expr.oC_PropertyLookup() or []
-                if target_var is None or not lookups:
-                    raise CoreError("SET requires a property expression", code="UNSUPPORTED")
-                prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
-                val = _compile_expression(si.oC_Expression(), bind_vars)
-                _emit(f"UPDATE {target_var} WITH {{{prop_name}: {val}}} IN {_coll_ref_for(target_var)}")
-            else:
-                si_var = si.oC_Variable()
-                if si_var is None:
-                    raise CoreError("Unsupported SET item after CREATE", code="UNSUPPORTED")
-                target_var = si_var.getText().strip()
-                val = _compile_expression(si.oC_Expression(), bind_vars)
-                ref = _coll_ref_for(target_var)
-                if "+=" in si.getText():
-                    _emit(f"UPDATE {target_var} WITH MERGE({target_var}, {val}) IN {ref}")
-                else:
-                    _emit(f"REPLACE {target_var} WITH {val} IN {ref}")
-
-    for rc in remove_clauses:
-        for ri in rc.oC_RemoveItem() or []:
-            prop_expr = ri.oC_PropertyExpression()
-            if prop_expr is None:
-                continue
-            atom = prop_expr.oC_Atom()
-            target_var = atom.oC_Variable().getText().strip() if atom.oC_Variable() is not None else None
-            lookups = prop_expr.oC_PropertyLookup() or []
-            if target_var is None or not lookups:
-                raise CoreError("REMOVE requires a property expression", code="UNSUPPORTED")
-            removed = _removed_attribute(lookups[-1])
-            _emit(f"UPDATE {target_var} WITH {removed} IN {_coll_ref_for(target_var)} {_DROP_NULLS}")
-
-
 def _compile_create(
     create_ctx: CypherParser.OC_CreateContext,
     *,
@@ -847,8 +822,13 @@ def _compile_create(
     indent: str,
     has_return: bool,
     var_collections: dict[str, str] | None = None,
+    writes: PropertyWrites | None = None,
 ) -> None:
-    """Compile a single CREATE clause into AQL INSERT lines."""
+    """Compile a single CREATE clause into AQL INSERT lines.
+
+    *writes* are SET/REMOVE items on the created variables, folded into the
+    documents being inserted.
+    """
     pattern = create_ctx.oC_Pattern()
     parts = pattern.oC_PatternPart() or []
 
@@ -944,6 +924,7 @@ def _compile_create(
                 indent=indent,
                 needs_let=needs_let,
                 var_collections=var_collections,
+                writes=writes,
             )
         elif op.kind == "rel":
             _compile_create_rel(
@@ -957,6 +938,7 @@ def _compile_create(
                 indent=indent,
                 needs_let=needs_let,
                 var_collections=var_collections,
+                writes=writes,
             )
 
 
@@ -989,6 +971,7 @@ def _compile_create_node(
     indent: str,
     needs_let: bool,
     var_collections: dict[str, str] | None = None,
+    writes: PropertyWrites | None = None,
 ) -> None:
     """Compile a single node INSERT."""
     param_ref = _create_props_param_ref(node_ctx.oC_Properties(), bind_vars)
@@ -1018,6 +1001,8 @@ def _compile_create_node(
             raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
 
     doc = _build_insert_doc(props, extra_fields, base=param_ref)
+    if writes is not None:
+        doc = writes.folded_into(var, doc, extra_fields)
     coll_ref = _aql_collection_ref(coll_key)
     if var_collections is not None:
         var_collections[var] = coll_key
@@ -1040,6 +1025,7 @@ def _compile_create_rel(
     indent: str,
     needs_let: bool,
     var_collections: dict[str, str] | None = None,
+    writes: PropertyWrites | None = None,
 ) -> None:
     """Compile a single relationship INSERT."""
     detail = rel_pat.oC_RelationshipDetail()
@@ -1091,6 +1077,8 @@ def _compile_create_rel(
     param_ref = _create_props_param_ref(rel_props_ctx, bind_vars)
     props = [] if param_ref else _compile_create_rel_props(rel_pat, bind_vars)
     doc = _build_insert_doc(props, extra_fields, base=param_ref)
+    if writes is not None:
+        doc = writes.folded_into(var, doc, extra_fields)
     coll_ref = _aql_collection_ref(edge_coll_key)
     if var_collections is not None:
         var_collections[var] = edge_coll_key

@@ -427,6 +427,12 @@ names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
 as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
 string.
 
+String literals are copied to AQL with their quotes, since both languages end
+a string in the same place, but the escapes AQL reads differently are
+rewritten: `\N`, `\T`, `\B`, `\F`, `\R` (plain letters in AQL) become their
+lowercase forms, and the eight-digit `\UXXXXXXXX` (absent from AQL) becomes a
+`\u` surrogate pair (`_aql_string_from_cypher`).
+
 The translator core lives in `arango_cypher/_translate_v0/` (`core.py`,
 `writes.py`, `formatting.py`, shared `state.py` contextvars). Translation results
 are LRU-cached (256 entries).
@@ -452,34 +458,49 @@ are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
 ### 8.3 Supported subset (write)
 
-`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`;
-`CREATE → SET/REMOVE` translates but does not yet execute, see the known gaps
-below); `SET` (`=`, `+=`, property and whole-document forms);
-`DELETE` / `DETACH DELETE`; `REMOVE` (property removal, emitted as
-`UPDATE n WITH {"prop": null} … OPTIONS {keepNull: false}`; `UPDATE` merges, so
-the earlier `UNSET(n, "prop")` form left the attribute in place); `MERGE` (node and
-single-hop relationship, with `ON CREATE` / `ON MATCH SET`); `FOREACH` (with
-`SET`, and — newly — `CREATE` / `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE`
-on MATCH-bound document variables (including identity aliases such as
-`WITH p AS x`, and relationship variables from traversals).
+`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and
+`CREATE → SET/REMOVE`, folded into the inserted document); `SET` (`=`, `+=`,
+property and whole-document forms); `DELETE` / `DETACH DELETE`; `REMOVE`
+(property removal); `MERGE` (node and single-hop relationship, with
+`ON CREATE` / `ON MATCH SET`); `FOREACH` (with `SET`, and — newly — `CREATE` /
+`DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
+(including identity aliases such as `WITH p AS x`, and relationship variables
+from traversals).
+
+**How SET and REMOVE are written** (`arango_cypher/_translate_v0/property_writes.py`).
+A statement's `SET` and `REMOVE` items are gathered per variable, in query
+order, and each variable gets one write, because a second write to a collection
+is refused (ERR 1579):
+- property changes, `+=` maps and removals become one `UPDATE`; a removal is a
+  `null` under `OPTIONS {keepNull: false}` (`UPDATE` merges, so a document
+  without the attribute would leave it in place);
+- `SET n = {…}` becomes one `REPLACE` that keeps `_from`/`_to` on edges and the
+  type field under label-style mappings (a plain replacement drops them: the
+  edge is rejected, ERR 1233, or the node silently loses its label);
+- after `CREATE`, the items are folded into the inserted document; a value that
+  reads the created variable sees the document as the earlier items left it.
+
+Each variable is written in its own collection: a relationship variable in its
+edge collection and an end node in its label's collection (an unlabeled one as
+the read path infers it, failing closed when that is ambiguous). Translation
+refuses (`UNSUPPORTED`) the forms that used to write the wrong thing: two
+variables writing one collection (`SET a.x = 1, b.x = 2` with `a`, `b` both
+`:User`), a nested property (`SET n.a.b` wrote `n.b`), a variable-length
+relationship, a variable not bound by the first `MATCH` pattern (such as one
+from `OPTIONAL MATCH`), and `SET n:Label`. `REMOVE n:Label` is skipped, as it
+always was: labels are collections or a type field here.
 
 **Recently closed write-clause gaps (2026-06):** unlabeled `SET`/`DELETE`/`REMOVE`
 on `MATCH (n)`; **multiple `MERGE` clauses** in one statement; **multi-hop
 relationship `MERGE`**; **`CREATE`/`DELETE` inside `FOREACH`**.
 
-**Known gaps (write forms that translate but fail on a server):**
-- `CREATE → SET/REMOVE` on the created variable: without a `RETURN` the
-  trailing `LET` is an AQL syntax error (ERR 1501), and with one the second
-  write to the collection is refused (ERR 1579). The fix is to fold the changes
-  into the inserted document.
-- More than one `REMOVE` item, or `SET` and `REMOVE` together, on one variable
-  (`REMOVE n.x, n.y`): each item is a separate `UPDATE` of the same collection,
-  which AQL refuses (ERR 1579). Multi-property `SET` is not affected; its fields
-  are merged into one `UPDATE`.
-- `REMOVE` on a relationship variable in a `MATCH` query
-  (`MATCH (a)-[r:R]->(b) REMOVE r.p`) updates the start node's collection
-  instead of the edge collection (ERR 1202). The `WITH … REMOVE` tail handles
-  relationship variables correctly.
+**Known gaps (write forms that translate but fail on a server, or misbehave):**
+- `CREATE` of two nodes in one collection (`CREATE (a:User)-[:R]->(b:User)`)
+  issues two `INSERT`s into it (ERR 1579). A single `INSERT` over an array of
+  documents would fix it.
+- `SET … RETURN n` returns the document as matched, before the write.
+- List concatenation with `+` (`n.list + [4, 5]`) is translated as numeric
+  addition.
 
 **Recently closed write-clause gaps (2026-08):** `MATCH … WITH … SET`/`DELETE`/
 `REMOVE` tails (`_append_multipart_mutate_tail`); computed WITH projections

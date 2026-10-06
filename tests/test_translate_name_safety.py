@@ -86,7 +86,12 @@ class TestRemove:
         ],
     )
     def test_every_remove_path_drops_the_attribute(self, cypher: str) -> None:
-        assert '{"age": null}' in _aql(cypher) and "keepNull: false" in _aql(cypher)
+        aql = _aql(cypher)
+        # A stored document is updated with a null under keepNull: false; a
+        # created one is inserted without the attribute.
+        assert (
+            '{"age": null}' in aql and "keepNull: false" in aql
+        ) or "UNSET({name: 'a', age: 1}, \"age\")" in aql
 
 
 class TestParameters:
