@@ -452,8 +452,9 @@ are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
 ### 8.3 Supported subset (write)
 
-`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`,
-`CREATE → SET/REMOVE`); `SET` (`=`, `+=`, property and whole-document forms);
+`CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`;
+`CREATE → SET/REMOVE` translates but does not yet execute, see the known gaps
+below); `SET` (`=`, `+=`, property and whole-document forms);
 `DELETE` / `DETACH DELETE`; `REMOVE` (property removal, emitted as
 `UPDATE n WITH {"prop": null} … OPTIONS {keepNull: false}`; `UPDATE` merges, so
 the earlier `UNSET(n, "prop")` form left the attribute in place); `MERGE` (node and
@@ -466,10 +467,19 @@ on MATCH-bound document variables (including identity aliases such as
 on `MATCH (n)`; **multiple `MERGE` clauses** in one statement; **multi-hop
 relationship `MERGE`**; **`CREATE`/`DELETE` inside `FOREACH`**.
 
-**Known gap:** `CREATE → SET/REMOVE` on the created variable translates but
-does not execute: without a `RETURN` the trailing `LET` is an AQL syntax error
-(ERR 1501), and with one the second write to the collection is refused
-(ERR 1579). The fix is to fold the changes into the inserted document.
+**Known gaps (write forms that translate but fail on a server):**
+- `CREATE → SET/REMOVE` on the created variable: without a `RETURN` the
+  trailing `LET` is an AQL syntax error (ERR 1501), and with one the second
+  write to the collection is refused (ERR 1579). The fix is to fold the changes
+  into the inserted document.
+- More than one `REMOVE` item, or `SET` and `REMOVE` together, on one variable
+  (`REMOVE n.x, n.y`): each item is a separate `UPDATE` of the same collection,
+  which AQL refuses (ERR 1579). Multi-property `SET` is not affected; its fields
+  are merged into one `UPDATE`.
+- `REMOVE` on a relationship variable in a `MATCH` query
+  (`MATCH (a)-[r:R]->(b) REMOVE r.p`) updates the start node's collection
+  instead of the edge collection (ERR 1202). The `WITH … REMOVE` tail handles
+  relationship variables correctly.
 
 **Recently closed write-clause gaps (2026-08):** `MATCH … WITH … SET`/`DELETE`/
 `REMOVE` tails (`_append_multipart_mutate_tail`); computed WITH projections

@@ -8,6 +8,7 @@ from typing import Any
 from arango_query_core import CoreError
 
 from .._antlr.CypherParser import CypherParser
+from .bind_names import _BIND_NAME_RE
 
 
 def _pick_fresh_var(name: str, *, forbidden_vars: set[str]) -> str:
@@ -108,13 +109,10 @@ def _reject_unsafe_escaped_names(tree: Any) -> None:
         stack.extend(node.getChildren())
 
 
-_BIND_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-
-
 def _aql_bind_name(parameter: str) -> str:
     """Return the AQL bind reference for a Cypher parameter (``$name``)."""
     name = _strip_label_backticks(parameter[1:])
-    if not _BIND_NAME.fullmatch(name):
+    if not _BIND_NAME_RE.fullmatch(name):
         raise CoreError(
             f"Parameter {parameter[:_SHOWN_NAME_CHARS]} is not a valid AQL bind parameter "
             "name; use letters, digits and underscores",
