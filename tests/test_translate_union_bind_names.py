@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from arango_query_core import CoreError
 
-from arango_cypher._translate_v0.core import _rename_bind_references
+from arango_cypher._translate_v0.bind_names import _rename_bind_references
 from arango_cypher.api import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
