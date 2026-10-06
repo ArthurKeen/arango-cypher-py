@@ -730,6 +730,8 @@ export interface IntrospectRelationship {
 export interface SchemaWarning {
   code: string;
   message: string;
+  // "info" describes normal operation and stays out of the warning banner.
+  severity?: "info" | "warning" | "error";
   install_hint?: string;
 }
 
@@ -743,6 +745,60 @@ export interface IntrospectResult {
   status?: "ready" | "pending";
 }
 
+// The service normalizes schema warnings to {code, message, severity}; this
+// is the defence for older servers and bundles cached before that, which
+// pass analyzer warnings through as plain strings ("LLM provider not
+// configured; ..."). The banner renders `message`, keys dismissals on `code`
+// and hides `info`, so every entry needs a real message and a code that is
+// unique to it.
+// Also matched on the server (arango_cypher/schema_acquire.py _ANALYZER_NOTES);
+// repeated here for servers older than that normalization.
+const BASELINE_NOTE_PREFIX = "LLM provider not configured";
+type Severity = NonNullable<SchemaWarning["severity"]>;
+function isSeverity(value: unknown): value is Severity {
+  return value === "info" || value === "warning" || value === "error";
+}
+
+// A stable code for a message: a readable slug plus a short hash of the whole
+// text, so messages sharing a prefix, or in non-Latin scripts, never collide.
+export function noteCode(message: string): string {
+  let hash = 0x811c9dc5;
+  for (const ch of message) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  const slug = message
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `note:${slug ? `${slug}-` : ""}${hash.toString(16).padStart(8, "0")}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function normalizeSchemaWarnings(raw: unknown): SchemaWarning[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SchemaWarning[] = [];
+  for (const w of raw) {
+    const text = typeof w === "string" ? w : isRecord(w) && typeof w.message === "string" ? w.message : null;
+    const message = text?.trim();
+    if (!message) {
+      if (isRecord(w) && typeof w.code === "string") console.warn("Schema warning without a message dropped:", w.code);
+      continue;
+    }
+    const code = isRecord(w) && typeof w.code === "string" && w.code ? w.code : noteCode(message);
+    const given = isRecord(w) && isSeverity(w.severity) ? w.severity : null;
+    const severity: Severity = given ?? (message.startsWith(BASELINE_NOTE_PREFIX) ? "info" : "warning");
+    const entry: SchemaWarning = { code, message, severity };
+    if (isRecord(w) && typeof w.install_hint === "string" && w.install_hint) entry.install_hint = w.install_hint;
+    out.push(entry);
+  }
+  return out;
+}
+
 export async function introspectSchema(
   token: string,
   sample = 50,
@@ -750,9 +806,10 @@ export async function introspectSchema(
 ): Promise<IntrospectResult> {
   const params = new URLSearchParams({ sample: String(sample) });
   if (force) params.set("force", "true");
-  return request(`/schema/introspect?${params}`, {
+  const result = await request<IntrospectResult>(`/schema/introspect?${params}`, {
     headers: authHeaders(token),
   });
+  return { ...result, warnings: normalizeSchemaWarnings(result.warnings) };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -807,10 +864,11 @@ export interface ForceReacquireResult {
 export async function forceReacquireSchema(
   token: string,
 ): Promise<ForceReacquireResult> {
-  return request(`/schema/force-reacquire`, {
+  const result = await request<ForceReacquireResult>(`/schema/force-reacquire`, {
     method: "POST",
     headers: authHeaders(token),
   });
+  return { ...result, warnings: normalizeSchemaWarnings(result.warnings) };
 }
 
 export function introspectToMapping(

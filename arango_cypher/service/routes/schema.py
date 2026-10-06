@@ -11,6 +11,7 @@ from arango_query_core import MappingBundle, MappingResolver
 from fastapi import Depends, HTTPException
 
 from ..._arango_sync import bind, sync
+from ...schema_acquire import normalize_warnings as _normalize_warnings
 from ..app import app
 from ..mapping import _mapping_from_dict
 from ..models import CreateIndexRequest, TranslateRequest
@@ -146,7 +147,9 @@ def _summarize_bundle(db: StandardDatabase, bundle: Any) -> dict[str, Any]:
             if lbl:
                 rel["range"] = lbl
 
-    result["warnings"] = (bundle.metadata or {}).get("warnings") or []
+    # Normalized on read too: bundles cached before normalization still hold
+    # the analyzer's plain-string warnings.
+    result["warnings"] = _normalize_warnings((bundle.metadata or {}).get("warnings"))
     return result
 
 
@@ -216,6 +219,7 @@ def schema_introspect(
             "warnings": [
                 {
                     "code": "SCHEMA_PENDING",
+                    "severity": "info",
                     "message": (
                         "Schema for this database is being analyzed in the "
                         "background — retry in a moment, or use "
@@ -495,7 +499,7 @@ def schema_force_reacquire(
 
     source_kind = bundle.source.kind if bundle.source is not None else None
     source_notes = bundle.source.notes if bundle.source is not None else None
-    warnings = (bundle.metadata or {}).get("warnings") or []
+    warnings = _normalize_warnings((bundle.metadata or {}).get("warnings"))
     payload = {
         "source": {"kind": source_kind, "notes": source_notes},
         "warnings": warnings,

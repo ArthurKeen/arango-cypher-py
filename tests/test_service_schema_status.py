@@ -376,6 +376,7 @@ class TestIntrospectWarnings:
             {
                 "code": "ANALYZER_NOT_INSTALLED",
                 "message": "analyzer not installed",
+                "severity": "warning",
                 "install_hint": "pip install arangodb-schema-analyzer",
             }
         ]
@@ -447,6 +448,7 @@ class TestIntrospectWarnings:
         assert body["entities"] == []
         assert body["relationships"] == []
         assert body["warnings"][0]["code"] == "SCHEMA_PENDING"
+        assert body["warnings"][0]["severity"] == "info"
         assert "background" in body["warnings"][0]["message"].lower()
         # The miss must have scheduled exactly one warm for this session's db.
         assert len(scheduled) == 1
@@ -580,4 +582,42 @@ class TestForceReacquire:
 
         resp = client.post("/schema/force-reacquire")
         assert resp.status_code == 200
-        assert resp.json()["warnings"] == [{"code": "SOMETHING", "message": "a downstream warning"}]
+        assert resp.json()["warnings"] == [
+            {"code": "SOMETHING", "message": "a downstream warning", "severity": "warning"}
+        ]
+
+    def test_force_reacquire_normalizes_analyzer_string_warnings(self, fake_session_factory, monkeypatch):
+        """The analyzer reports warnings as plain strings; the response must not."""
+        from arango_cypher import schema_acquire
+
+        fake_session_factory(
+            collections=[{"name": "users", "type": 2}],
+            counts={"users": 3},
+            indexes={"users": []},
+        )
+        warned = MappingBundle(
+            conceptual_schema={"entities": [], "relationships": []},
+            physical_mapping={"entities": {}, "relationships": {}},
+            metadata={
+                "warnings": [
+                    "LLM provider not configured; returning deterministic baseline inference",
+                    "edge collection 'x' has no endpoints",
+                    "",
+                ],
+            },
+            owl_turtle=None,
+            source=MappingSource(kind="schema_analyzer_export"),
+        )
+        monkeypatch.setattr(schema_acquire, "get_mapping", lambda db, **kw: warned)
+        resp = client.post("/schema/force-reacquire")
+        assert resp.status_code == 200
+        warnings = resp.json()["warnings"]
+        assert len(warnings) == 2
+        assert warnings[0] == {
+            "code": "ANALYZER_BASELINE_NO_LLM",
+            "message": "LLM provider not configured; returning deterministic baseline inference",
+            "severity": "info",
+        }
+        assert warnings[1]["message"] == "edge collection 'x' has no endpoints"
+        assert warnings[1]["severity"] == "warning"
+        assert warnings[1]["code"].startswith("ANALYZER_NOTE:")

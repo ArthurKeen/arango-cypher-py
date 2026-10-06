@@ -12,6 +12,7 @@ All tests are offline — the analyzer is simulated by patching
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -137,6 +138,7 @@ class TestAttachWarning:
         assert warnings[0] == {
             "code": "ANALYZER_NOT_INSTALLED",
             "message": "analyzer missing",
+            "severity": "warning",
             "install_hint": "pip install arangodb-schema-analyzer",
         }
         assert augmented.metadata.get("statistics") == {}
@@ -149,6 +151,7 @@ class TestAttachWarning:
         assert twice.metadata["warnings"][1] == {
             "code": "OTHER",
             "message": "second warning",
+            "severity": "warning",
         }
 
 
@@ -287,3 +290,72 @@ class TestGetMappingReacquires:
         assert fresh.source.kind == "schema_analyzer_export"
         fresh_warnings = (fresh.metadata or {}).get("warnings") or []
         assert not any(w.get("code") == "ANALYZER_NOT_INSTALLED" for w in fresh_warnings)
+
+
+class TestNormalizeWarnings:
+    """The analyzer reports plain strings, _attach_warning dicts; responses get one shape."""
+
+    def test_the_baseline_note_is_info_not_a_warning(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert normalize_warnings(
+            ["LLM provider not configured; returning deterministic baseline inference"]
+        ) == [
+            {
+                "code": "ANALYZER_BASELINE_NO_LLM",
+                "message": "LLM provider not configured; returning deterministic baseline inference",
+                "severity": "info",
+            }
+        ]
+
+    def test_unknown_strings_are_warnings_and_blanks_are_dropped(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        [w] = normalize_warnings(["  something odd  ", "", "   "])
+        assert w["message"] == "something odd" and w["severity"] == "warning"
+        assert re.fullmatch(r"ANALYZER_NOTE:[0-9a-f]{8}", w["code"])
+
+    def test_each_analyzer_note_gets_its_own_code(self):
+        """Clients key dismissals on the code: a shared code let one dismissal
+        hide every other analyzer note, including later ones."""
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        a, b = normalize_warnings(
+            ["edge collection x has no endpoints", "edge collection y has no endpoints"]
+        )
+        assert a["code"] != b["code"]
+        assert normalize_warnings(["edge collection x has no endpoints"])[0]["code"] == a["code"]
+
+    def test_a_leading_category_is_kept_in_the_code(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        [w] = normalize_warnings(["ORPHAN_AUTOGRAPH_KG: graph g has no corpus"])
+        assert w["code"].startswith("ORPHAN_AUTOGRAPH_KG:")
+
+    def test_a_bare_string_is_one_warning_and_other_shapes_none(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert [w["message"] for w in normalize_warnings("oops")] == ["oops"]
+        assert normalize_warnings({"code": "X", "message": "m"}) == []
+        assert normalize_warnings(42) == []
+
+    def test_dicts_are_sanitized(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        raw = [
+            {"code": "X", "message": "  m  ", "severity": "error", "install_hint": "pip install y"},
+            {"code": 42, "message": "n", "severity": "loud", "install_hint": {"bad": True}},
+            {"code": "Z"},
+            {"code": "W", "message": "   "},
+            7,
+            None,
+        ]
+        out = normalize_warnings(raw)
+        assert out[0] == {"code": "X", "message": "m", "severity": "error", "install_hint": "pip install y"}
+        assert len(out) == 2 and out[1]["message"] == "n" and out[1]["severity"] == "warning"
+        assert out[1]["code"].startswith("ANALYZER_NOTE:") and "install_hint" not in out[1]
+
+    def test_none_is_empty(self):
+        from arango_cypher.schema_acquire import normalize_warnings
+
+        assert normalize_warnings(None) == []

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { forceReacquireSchema, type SchemaWarning } from "../api/client";
 import type { Action } from "../api/store";
+import { bannerWarnings, dismissalKey } from "../utils/schemaWarnings";
 
 interface Props {
   warnings: SchemaWarning[];
@@ -32,10 +33,6 @@ function saveDismissed(map: Record<string, number>) {
   }
 }
 
-function dismissalKey(url: string, database: string, code: string): string {
-  return `${url}::${database}::${code}`;
-}
-
 export default function SchemaWarningBanner({
   warnings,
   url,
@@ -56,9 +53,7 @@ export default function SchemaWarningBanner({
     setReacquireError(null);
   }, [url, database]);
 
-  const visible = warnings.filter(
-    (w) => !dismissed[dismissalKey(url, database, w.code)],
-  );
+  const visible = bannerWarnings(warnings, dismissed, url, database);
 
   const handleDismiss = useCallback(
     (code: string) => {
@@ -157,8 +152,10 @@ export default function SchemaWarningBanner({
             &#9888;
           </span>
           <div className="flex-1 min-w-0">
-            <span className="text-xs text-amber-300 font-medium">{w.code}</span>
-            <span className="text-xs text-amber-400/90 ml-2">{w.message}</span>
+            {/* Codes derived from a message (note:… or CATEGORY:hash) mean
+                nothing to a reader; show only real codes. */}
+            {!w.code.includes(":") && <span className="text-xs text-amber-300 font-medium mr-2">{w.code}</span>}
+            <span className="text-xs text-amber-400/90">{w.message}</span>
           </div>
           <button
             type="button"
