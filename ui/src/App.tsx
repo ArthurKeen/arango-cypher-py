@@ -708,7 +708,7 @@ export default function App() {
           // so the user doesn't lose their selection across a
           // bundle upgrade.
           const list = resp.tenants || [];
-          let resolved =
+          const resolved =
             saved.property === "_key"
               ? list.find((t) => t.key === saved.value)
               : saved.property === "TENANT_HEX_ID"
