@@ -130,3 +130,18 @@ def test_create_then_set_or_remove_is_folded_into_the_insert(
     created = [d for d in db.collection("users").find({"name": "c"})]
     assert len(created) == 1
     assert {k: v for k, v in created[0].items() if not k.startswith("_")} == expected
+
+
+@pytest.mark.parametrize(
+    ("literal", "expected"),
+    [
+        ("'\\U0001F600'", "\U0001f600"),
+        ("'\\U00000022'", '"'),
+        ("'\\N'", "\n"),
+        ("'a\\Tb'", "a\tb"),
+        ("'\\\\U0001F600'", "\\U0001F600"),
+    ],
+)
+def test_cypher_string_escapes_mean_the_same_in_aql(db: Any, literal: str, expected: str) -> None:
+    rows = _run(db, f"RETURN {literal} AS x")
+    assert rows == [{"x": expected}]

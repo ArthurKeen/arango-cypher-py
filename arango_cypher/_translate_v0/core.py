@@ -25,7 +25,7 @@ from .hints import (
     _warn_missing_vci,
     _warn_multi_label_collection,
 )
-from .literals import _aql_string_literal
+from .literals import _aql_string_from_cypher, _aql_string_literal
 from .naming import (
     _aql_bind_name,
     _aql_collection_ref,
@@ -5050,7 +5050,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if ctx.oC_NumberLiteral() is not None:
             return ctx.oC_NumberLiteral().getText()
         if ctx.StringLiteral() is not None:
-            return ctx.StringLiteral().getText()
+            return _aql_string_from_cypher(ctx.StringLiteral().getText())
         if ctx.NULL() is not None:
             return "null"
         if ctx.oC_ListLiteral() is not None:

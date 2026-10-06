@@ -427,6 +427,12 @@ names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
 as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
 string.
 
+String literals are copied to AQL with their quotes, since both languages end
+a string in the same place, but the escapes AQL reads differently are
+rewritten: `\N`, `\T`, `\B`, `\F`, `\R` (plain letters in AQL) become their
+lowercase forms, and the eight-digit `\UXXXXXXXX` (absent from AQL) becomes a
+`\u` surrogate pair (`_aql_string_from_cypher`).
+
 The translator core lives in `arango_cypher/_translate_v0/` (`core.py`,
 `writes.py`, `formatting.py`, shared `state.py` contextvars). Translation results
 are LRU-cached (256 entries).
