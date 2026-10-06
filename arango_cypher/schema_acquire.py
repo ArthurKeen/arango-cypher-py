@@ -104,10 +104,11 @@ _heuristic_fallback_counter: int = 0
 
 #: Analyzer notes, matched by message prefix, with the code and severity the
 #: service reports them under. The UI repeats the baseline prefix
-#: (ui/src/api/client.ts BASELINE_NOTE_PREFIX) for servers older than this. ``info`` describes normal operation — the
-#: service always runs the analyzer without an LLM (``AgenticSchemaAnalyzer()``
-#: below), so this note is on every analyzer mapping — and the Workbench keeps
-#: info notes out of its warning banner.
+#: (ui/src/api/client.ts BASELINE_NOTE_PREFIX) for servers older than this.
+#: ``info`` describes normal operation: the service always runs the analyzer
+#: without an LLM (``AgenticSchemaAnalyzer()`` below), so this note is on every
+#: analyzer mapping, and the Workbench keeps info notes out of its warning
+#: banner.
 _ANALYZER_NOTES: tuple[tuple[str, str, str], ...] = (
     ("LLM provider not configured", "ANALYZER_BASELINE_NO_LLM", "info"),
 )
