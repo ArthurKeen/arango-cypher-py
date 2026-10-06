@@ -16,6 +16,8 @@ WRITE_CLAUSE_IDS = (
     + [f"C{n}" for n in range(425, 428)]
     # CREATE extras
     + [f"C{n}" for n in range(430, 432)]
+    # One write per variable, in its own collection
+    + [f"C{n}" for n in range(440, 446)]
 )
 
 

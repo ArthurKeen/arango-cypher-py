@@ -1622,7 +1622,7 @@ def _append_multipart_create_tail(
     SET/DELETE/REMOVE after WITH are handled by ``_append_multipart_mutate_tail``
     before this helper is called.
     """
-    from .writes import _apply_create_writes, _compile_create, _compile_return_for_create
+    from .writes import _compile_create, _compile_return_for_create, _property_writes
 
     create_clauses: list[CypherParser.OC_CreateContext] = []
     set_clauses: list[CypherParser.OC_SetContext] = []
@@ -1647,7 +1647,9 @@ def _append_multipart_create_tail(
         )
 
     ret = tail.oC_Return()
-    has_writes = bool(set_clauses or remove_clauses)
+    # Folded into the inserted documents; a separate UPDATE would write the
+    # same collection twice (ERR 1579).
+    writes = _property_writes(set_clauses, remove_clauses, bind_vars=bind_vars)
     var_collections: dict[str, str] = {}
     num_creates = len(create_clauses)
     create_resolver = _active_resolver.get()
@@ -1662,18 +1664,16 @@ def _append_multipart_create_tail(
             var_env=var_env,
             lines=lines,
             indent="  ",
-            has_return=ret is not None or ci < num_creates - 1 or has_writes,
+            has_return=ret is not None or ci < num_creates - 1,
             var_collections=var_collections,
+            writes=writes,
         )
 
-    if has_writes:
-        _apply_create_writes(
-            set_clauses,
-            remove_clauses,
-            var_collections=var_collections,
-            bind_vars=bind_vars,
-            lines=lines,
-            indent="  ",
+    not_created = [v for v in writes.ops if v not in var_collections]
+    if not_created:
+        raise CoreError(
+            f"SET/REMOVE after CREATE targets variable {not_created[0]!r} that was not created in this query",
+            code="NOT_IMPLEMENTED",
         )
 
     if ret is not None:

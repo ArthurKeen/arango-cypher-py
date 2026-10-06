@@ -247,3 +247,63 @@ cases:
     bind_vars:
       '@collection': vertices
       typeValue: User
+- id: C440
+  name: SET and REMOVE on one variable become one UPDATE, in query order
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: "MATCH (n:Person {name: \"Alice\"}) SET n.age = 31 REMOVE n.nickname, n.age"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {\"nickname\": null, \"age\": null} IN @@collection OPTIONS {keepNull: false}\n"
+    bind_vars:
+      "@collection": "persons"
+- id: C441
+  name: SET on a relationship updates the edge collection
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: "MATCH (a:User)-[r:FOLLOWS]->(b:User) WHERE a.name = \"Alice\" SET r.since = 2020"
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    UPDATE r WITH {since: 2020} IN @@edgeCollection\n"
+    bind_vars:
+      "@collection": "users"
+      "@edgeCollection": "follows"
+- id: C442
+  name: DELETE a relationship removes it from the edge collection
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: "MATCH (a:User)-[r:FOLLOWS]->(b:User) WHERE a.name = \"Alice\" DELETE r"
+  expected:
+    aql: "WITH docs, persons, places, users\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    REMOVE r IN @@edgeCollection\n"
+    bind_vars:
+      "@collection": "users"
+      "@edgeCollection": "follows"
+- id: C443
+  name: SET n = map under LPG keeps the type field
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "MATCH (n:User {name: \"Alice\"}) SET n = {name: \"Bob\"}"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REPLACE n WITH MERGE({name: \"Bob\"}, KEEP(n, \"type\")) IN @@collection\n"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+- id: C444
+  name: CREATE then SET/REMOVE folds into the insert
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: "CREATE (n:Person {name: \"A\", tmp: 1}) SET n.born = 1990 REMOVE n.tmp"
+  expected:
+    aql: "INSERT UNSET(MERGE({name: \"A\", tmp: 1}, {born: 1990}), \"tmp\") INTO @@collection\n"
+    bind_vars:
+      "@collection": "persons"
+- id: C445
+  name: SET += with a property change merges into one UPDATE
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: "MATCH (n:Person {name: \"Alice\"}) SET n += $props, n.age = 30"
+  params: {"props": {"x": 1}}
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH MERGE(n, @props, {age: 30}) IN @@collection\n"
+    bind_vars:
+      "props": {"x": 1}
+      "@collection": "persons"
