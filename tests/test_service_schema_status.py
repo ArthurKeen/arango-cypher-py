@@ -149,12 +149,9 @@ def fake_session_factory():
             counts=db_kwargs.get("counts", {}),
             indexes=db_kwargs.get("indexes", {}),
         )
-        session = _Session.__new__(_Session)
-        session.token = "test-token"
-        session.db = fake.db
-        session.client = MagicMock()
-        session.created_at = 0.0
-        session.last_used = 0.0
+        # The real constructor, so the session carries every field a real one
+        # does (platform_token, graph_name, ...), not only those a test reads.
+        session = _Session(token="test-token", db=fake.db, client=MagicMock())
         app.dependency_overrides[_get_session] = lambda: session
         return fake
 

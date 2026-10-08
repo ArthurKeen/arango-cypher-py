@@ -30,7 +30,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .app import _PUBLIC_MODE, _svc_logger, app
-from .platform_auth import PlatformTokenError, forwarded_token, open_platform_database
+from .platform_auth import (
+    PlatformTokenError,
+    background_token,
+    forwarded_token,
+    open_minted_database,
+    open_platform_database,
+)
 
 # ---------------------------------------------------------------------------
 # Sessions (in-memory dict, TTL-based, LRU-evicted)
@@ -126,6 +132,9 @@ class _Session:
     the platform JWT the ``db`` handle currently authenticates with. Such a
     session follows the caller's forwarded JWT on every request (see
     :func:`_follow_platform_identity`) and holds no password.
+    ``platform_user`` is that caller as the platform's integration sidecar
+    names them, or ``None``; background work runs as this user (see
+    :func:`background_database`).
     """
 
     __slots__ = (
@@ -139,6 +148,7 @@ class _Session:
         "is_admin",
         "graph_name",
         "platform_token",
+        "platform_user",
     )
 
     def __init__(
@@ -152,6 +162,7 @@ class _Session:
         is_admin: bool = False,
         graph_name: str | None = None,
         platform_token: str | None = None,
+        platform_user: str | None = None,
     ):
         self.token = token
         self.db = db
@@ -165,6 +176,7 @@ class _Session:
         # endpoints restrict introspection to this graph's collections.
         self.graph_name = graph_name
         self.platform_token = platform_token
+        self.platform_user = platform_user
 
     def touch(self) -> None:
         self.last_used = time.time()
@@ -198,6 +210,22 @@ def _evict_lru() -> None:
 #: Why a platform session's request was refused: it arrived without the
 #: platform JWT the session authenticates with.
 PLATFORM_TOKEN_MISSING = "This session uses your platform login, but the request did not carry it. Reload the page to sign in again."
+
+
+def background_database(session: _Session) -> StandardDatabase:
+    """The database handle for work that outlives this request.
+
+    A platform session's forwarded JWT expires, and a background schema warm
+    can run for minutes. When the integration sidecar knows the session's
+    user, the work gets a token minted for that same user; otherwise, or off
+    the platform, it keeps the session's own handle.
+    """
+    if session.platform_token is None:
+        return session.db
+    token = background_token(session.platform_user)
+    if token is None:
+        return session.db
+    return open_minted_database(session.client, session.db.name, token)
 
 
 def _follow_platform_identity(session: _Session, request: Request, *, via_session_header: bool) -> str | None:

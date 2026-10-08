@@ -13,7 +13,7 @@ export const ISSUE_REPOSITORY = "arango-solutions/arango-cypher";
 // GitHub rejects new-issue URLs much past ~8 KB; stay well under it.
 export const MAX_ISSUE_URL_LENGTH = 7000;
 export const MAX_TITLE_LENGTH = 256;
-export const DEFAULT_TITLE = "Workbench problem";
+export const DEFAULT_TITLE = "Arango Cypher problem";
 
 export interface ReportContext {
   appVersion: string | null;

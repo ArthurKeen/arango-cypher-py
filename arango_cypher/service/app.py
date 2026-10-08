@@ -107,7 +107,7 @@ def _service_version() -> str:
 
 
 app = FastAPI(
-    title="Arango Cypher Transpiler",
+    title="Arango Cypher",
     description="Cypher → AQL translation service for ArangoDB",
     version=_service_version(),
     root_path=os.getenv("ROOT_PATH", ""),

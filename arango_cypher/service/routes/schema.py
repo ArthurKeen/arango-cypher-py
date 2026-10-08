@@ -22,7 +22,21 @@ from ..security import (
     _get_session,
     _Session,
     _translate_errors,
+    background_database,
 )
+
+
+def _schedule_session_warm(session: _Session, graph_name: str | None) -> bool:
+    """Start the background schema warm for this session's database, as its user.
+
+    The UI polls while the schema is pending, so a token for the background
+    work (:func:`background_database`) is minted only when a warm will start.
+    """
+    from ...catalog.warm import is_warming, schedule_warm
+
+    if is_warming(session.db.name, graph_name):
+        return False
+    return schedule_warm(background_database(session), graph_name)
 
 
 def _sample_properties(
@@ -201,9 +215,7 @@ def schema_introspect(
         # was never registered in the sidecar self-heals — the client's retry
         # then finds a populated cache. We still return immediately; the
         # expensive analyzer never runs on the request path.
-        from ...catalog.warm import schedule_warm
-
-        warming = schedule_warm(db, graph_name)
+        warming = _schedule_session_warm(session, graph_name)
         log_endpoint_timing(
             "/schema/introspect",
             round((time.perf_counter() - t0) * 1000, 1),
@@ -314,9 +326,7 @@ def schema_statistics(
         # Mirror /schema/introspect: a catalog miss self-heals via a one-shot
         # background warm (deduped, so introspect + statistics firing together
         # share a single analysis pass) rather than staying pending forever.
-        from ...catalog.warm import schedule_warm
-
-        warming = schedule_warm(session.db, graph_name)
+        warming = _schedule_session_warm(session, graph_name)
         log_endpoint_timing(
             "/schema/statistics",
             round((time.perf_counter() - t0) * 1000, 1),

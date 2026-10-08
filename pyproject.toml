@@ -126,7 +126,7 @@ neo4j = [
 [tool.arango-byoc]
 app-name = "arango-cypher-py"
 instance = "arango-cypher-py"
-display-name = "Arango Cypher Workbench"
+display-name = "Arango Cypher"
 description = "openCypher → AQL translation, NL → Cypher, and a query Workbench."
 # prod.demo offers node22base, py12base, py12cugraph, py12torch, test.
 base-image = "py12base"
