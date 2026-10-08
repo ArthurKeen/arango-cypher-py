@@ -48,7 +48,8 @@ The product also ships: a `arangodb-schema-analyzer`-driven mapping layer that
 reverse-engineers a conceptual schema from a live database; a six-layer
 multi-tenant safety architecture; a registry of `arango.*` extension functions
 (search / vector / geo / document); schema-change detection with a two-tier cache;
-and a browser-based **Cypher Workbench** UI for debugging and demos.
+and a browser-based **Cypher Workbench** UI for debugging and demos, presented on
+the platform as **Arango Cypher**.
 
 ### 1.1 Defining decisions
 
