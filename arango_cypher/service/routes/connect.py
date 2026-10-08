@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import secrets
 import time
+from typing import Any
 
 from arango.database import StandardDatabase
 from fastapi import Depends, HTTPException, Request
@@ -25,18 +26,27 @@ from ..models import (
 )
 from ..observability import log_endpoint_timing
 from ..platform_auth import (
+    DEPLOYMENT_CA_ENV,
     DEPLOYMENT_ENDPOINT_ENV,
     PLATFORM_AUTH_ENV,
     PlatformTokenError,
+    SidecarError,
     choose_database,
     default_database,
+    deployment_ca,
     describe_endpoint,
+    describe_tls_verify,
+    endpoint_answer,
     forwarded_token,
     open_platform_database,
     platform_auth_enabled,
     platform_endpoint,
     platform_tls_verify,
     probe_endpoint,
+    sidecar_address,
+    sidecar_identity,
+    sidecar_token,
+    token_facts,
 )
 from ..security import (
     _check_connect_target,
@@ -311,9 +321,15 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
     if database not in databases:
         databases.append(database)
 
+    # Who the caller is, as the sidecar (which validates the token) says.
+    # Background work for this session runs as this user; unknown is fine.
+    user = sidecar_identity(token)
+
     _evict_lru()
     session_token = secrets.token_urlsafe(32)
-    _sessions[session_token] = _Session(token=session_token, db=db, client=client, platform_token=token)
+    _sessions[session_token] = _Session(
+        token=session_token, db=db, client=client, platform_token=token, platform_user=user
+    )
 
     log_endpoint_timing(
         "/connect/platform",
@@ -321,8 +337,61 @@ def connect_platform(req: PlatformConnectRequest, request: Request):
         database=database,
         requested=req.database is not None,
         databases_visible=len(databases),
+        user_identified=user is not None,
+        tls=describe_tls_verify(verify),
     )
-    return ConnectResponse(token=session_token, databases=databases, database=database)
+    return ConnectResponse(token=session_token, databases=databases, database=database, user=user)
+
+
+#: Lifetime of the token the diagnostics mint to test the sidecar.
+_DIAGNOSTIC_TOKEN_LIFETIME_S = 60
+
+
+@app.get("/connect/platform/diagnostics")
+def platform_diagnostics(request: Request) -> dict[str, Any]:
+    """What the platform provides this container, and whether each piece works.
+
+    For checking a BYOC deployment: the injected endpoint and CA, the TLS
+    policy in use and a direct request under it, the forwarded login, and the
+    integration sidecar (who the caller is, and a short-lived token minted for
+    them, tried against the endpoint). Reports facts about tokens (claim
+    names, lifetime), never a token or a claim value.
+    """
+    endpoint = platform_endpoint()
+    verify = platform_tls_verify()
+    token = forwarded_token(request)
+    report: dict[str, Any] = {
+        "platform_auth": platform_auth_enabled(),
+        "endpoint": {
+            "injected": bool(os.getenv(DEPLOYMENT_ENDPOINT_ENV, "").strip()),
+            "address": describe_endpoint(endpoint) if endpoint else None,
+        },
+        "tls": {
+            "ca_injected": bool(os.getenv(DEPLOYMENT_CA_ENV, "").strip()),
+            "ca_usable": deployment_ca() is not None,
+            "policy": describe_tls_verify(verify),
+        },
+        "forwarded_login": token_facts(token) if token else None,
+        "sidecar": {"address_injected": sidecar_address() is not None},
+    }
+    if endpoint and token:
+        report["tls"]["direct_request"] = endpoint_answer(endpoint, token, verify)
+        ca = deployment_ca()
+        if ca and verify != ca:
+            report["tls"]["direct_request_with_injected_ca"] = endpoint_answer(endpoint, token, ca)
+    if token and sidecar_address():
+        user = sidecar_identity(token)
+        report["sidecar"]["identity_found"] = user is not None
+        if user:
+            try:
+                minted = sidecar_token(user, _DIAGNOSTIC_TOKEN_LIFETIME_S)
+            except SidecarError as exc:
+                report["sidecar"]["create_token"] = str(exc)
+            else:
+                report["sidecar"]["minted_token"] = token_facts(minted)
+                if endpoint:
+                    report["sidecar"]["minted_token_request"] = endpoint_answer(endpoint, minted, verify)
+    return report
 
 
 @app.post("/session/tenant")

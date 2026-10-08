@@ -259,8 +259,8 @@ clusters refuse HTTP Basic) and Basic over HTTP, overridable with
 Endpoint families (all under `arango_cypher.service`):
 
 - **Connection & session** — `POST /connect`, `POST /disconnect`,
-  `GET /connections`, `GET /connect/defaults`, `GET`/`POST /connect/platform`
-  (§13, platform sessions).
+  `GET /connections`, `GET /connect/defaults`, `GET`/`POST /connect/platform`,
+  `GET /connect/platform/diagnostics` (§13, platform sessions).
 - **Cypher → AQL** — `POST /translate`, `POST /execute`, `POST /validate`,
   `POST /explain`, `POST /aql-profile`, `GET /cypher-profile`.
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
@@ -828,13 +828,32 @@ MUST:
   not decode;
 - answer an unusable token with 401 and an unknown database with 404, never 500;
 - reach the operator endpoint over its TLS: it presents a certificate from the
-  cluster's own CA, which the container does not trust, so by default that
-  endpoint is not verified (as the platform's first-party services connect to
-  it) while an explicit `ARANGO_URL` is; `ARANGO_CYPHER_PLATFORM_CA_BUNDLE`
-  verifies against the cluster CA, `ARANGO_CYPHER_PLATFORM_VERIFY_TLS=on|off`
-  overrides;
+  cluster's own CA, which the container does not trust by default. The operator
+  injects that CA as `ARANGO_DEPLOYMENT_CA` (a file path, or the PEM text), and
+  the endpoint is verified against it; without it the endpoint is not verified
+  (as the platform's first-party services connect to it). An explicit
+  `ARANGO_URL` is verified against the system trust store;
+  `ARANGO_CYPHER_PLATFORM_CA_BUNDLE` names another CA, and
+  `ARANGO_CYPHER_PLATFORM_VERIFY_TLS=on|off` overrides;
+- run work that outlives the request (the background schema warm) as the same
+  user, never as a more privileged one: the forwarded JWT expires, so when the
+  injected integration sidecar (`INTEGRATION_HTTP_ADDRESS[_FULL]`) names the
+  caller (`/_integration/authn/v1/identity`), the work gets a token minted for
+  that user (`/_integration/authn/v1/createToken`,
+  `ARANGO_CYPHER_SIDECAR_TOKEN_LIFETIME_S`, default 3600); a token is never
+  minted without a named user (the sidecar would default to root), and without
+  one the work keeps the request's token. `POST /connect/platform` returns the
+  user it identified;
 - name the cause when the endpoint cannot be reached (TLS, refused, timeout) and
   the endpoint's `scheme://host:port` — never the token.
+
+`GET /connect/platform/diagnostics` reports, for checking a deployment, what the
+platform provides and whether each piece works: the injected endpoint and CA, the
+TLS policy in use and a direct request under it (and under the injected CA), the
+forwarded login, and the sidecar (whether it names the caller, and a 60-second
+token minted for them, tried against the endpoint). It reports facts about tokens
+(claim names, lifetime, whether python-arango's own pre-check accepts them),
+never a token or a claim value.
 
 `ARANGO_CYPHER_PLATFORM_AUTH=off` disables the path; off the platform the
 credentials dialog is unchanged. Every UI request MUST resolve against the

@@ -75,6 +75,9 @@ class ConnectResponse(BaseModel):
     # The database the session opened. ``/connect/platform`` may choose it
     # (the caller can name none); ``/connect`` echoes the requested one.
     database: str | None = None
+    # ``/connect/platform`` only: the platform user the session runs as, as
+    # the platform's integration sidecar names them (``None`` when unknown).
+    user: str | None = None
     # Echoed for UI transparency: which tenant the session is bound to,
     # if any. UI surfaces this in the connect status badge so the user
     # always sees the active tenant alongside the active database.
