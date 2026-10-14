@@ -272,6 +272,14 @@ Endpoint families (all under `arango_cypher.service`):
   the Workbench asks for at most 1,000 rows (`RESULT_ROW_LIMIT`): an unbounded
   `RETURN a, b` over IAM came to 156,861 rows and 257 MB, which the browser
   never finished receiving.
+  AQL that ArangoDB rejects as invalid (HTTP 400, at EXPLAIN or at
+  execution) is still refused, but is not reported as a tenant-scope
+  refusal: when the service generated the AQL (`/execute`, `/aql-profile`) it
+  is a 500 `GENERATED_AQL_REJECTED` whose message says it is a bug in Arango
+  Cypher, not in the user's query; AQL the caller supplied (`/execute-aql`)
+  is a 400 `AQL_REJECTED`. A connection that drops before the answer arrives
+  (even after a 200, mid-body) reads in the Workbench as a lost connection
+  with the advice to retry or add LIMIT, not as "Failed to fetch".
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
   `cached_tokens` for cost telemetry).
 - **Schema** — `GET /schema/introspect`, `GET /schema/status`,

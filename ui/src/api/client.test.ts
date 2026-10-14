@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
 import {
+  ApiError,
+  CONNECTION_LOST_MESSAGE,
   RESULT_ROW_LIMIT,
   apiBaseFor,
   examplesForGraph,
@@ -209,5 +211,39 @@ describe("execute row cap", () => {
     await executeAql("FOR n IN c RETURN n", { x: 1 }, "token");
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/execute-aql$/);
     expect(sentBody(fetchMock)).toEqual({ aql: "FOR n IN c RETURN n", bind_vars: { x: 1 }, max_rows: RESULT_ROW_LIMIT });
+  });
+});
+
+describe("a dropped connection", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // fetch reports a dropped connection as a bare TypeError ("Failed to
+  // fetch") — even after a 200, while the body is still arriving.
+  it("before any answer reads as a lost connection", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    const err = await executeAql("RETURN 1", {}, "token").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toBe(CONNECTION_LOST_MESSAGE);
+  });
+
+  it("while a 200's body is arriving reads as a lost connection", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const cut = {
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new TypeError("network error")),
+    } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => cut));
+    const err = await executeAql("RETURN 1", {}, "token").catch((e: unknown) => e);
+    expect((err as ApiError).message).toBe(CONNECTION_LOST_MESSAGE);
+  });
+
+  it("leaves other failures alone", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const bad = { ok: true, status: 200, json: () => Promise.reject(new SyntaxError("bad json")) } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => bad));
+    const err = await executeAql("RETURN 1", {}, "token").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SyntaxError);
   });
 });
