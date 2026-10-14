@@ -60,7 +60,18 @@ export interface ExecuteResponse {
   warnings: Array<{ message: string }>;
   exec_ms?: number;
   translate_ms?: number;
+  /** True when the result had more than `row_limit` rows and was cut. */
+  truncated?: boolean;
+  row_limit?: number | null;
 }
+
+/**
+ * Most rows a Workbench Run asks for (Neo4j Browser's default). The service
+ * returns a result as one JSON document: an unbounded `RETURN a, b` over IAM
+ * came to 257 MB and ten minutes on the wire, and the browser gave up with
+ * "Failed to fetch". A cut result carries a warning saying so.
+ */
+export const RESULT_ROW_LIMIT = 1000;
 
 export interface ExplainResponse {
   aql: string;
@@ -282,7 +293,7 @@ export async function executeCypher(
 ): Promise<ExecuteResponse> {
   return request("/execute", {
     method: "POST",
-    body: JSON.stringify(req),
+    body: JSON.stringify({ ...req, max_rows: RESULT_ROW_LIMIT }),
     headers: authHeaders(token),
   });
 }
@@ -472,7 +483,7 @@ export async function executeAql(
 ): Promise<ExecuteResponse> {
   return request("/execute-aql", {
     method: "POST",
-    body: JSON.stringify({ aql, bind_vars: bindVars }),
+    body: JSON.stringify({ aql, bind_vars: bindVars, max_rows: RESULT_ROW_LIMIT }),
     headers: authHeaders(token),
   });
 }

@@ -264,6 +264,14 @@ Endpoint families (all under `arango_cypher.service`):
   `GET /connect/platform/diagnostics` (§13, platform sessions).
 - **Cypher → AQL** — `POST /translate`, `POST /execute`, `POST /validate`,
   `POST /explain`, `POST /aql-profile`, `GET /cypher-profile`.
+  `POST /execute` and `POST /execute-aql` take an optional `max_rows`
+  (1–1,000,000): the response then holds at most that many rows, with
+  `truncated: true`, `row_limit`, and a warning when the result had more, and
+  the service closes the server-side cursor it stopped reading. Without
+  `max_rows` every row is returned. A result travels as one JSON document, so
+  the Workbench asks for at most 1,000 rows (`RESULT_ROW_LIMIT`): an unbounded
+  `RETURN a, b` over IAM came to 156,861 rows and 257 MB, which the browser
+  never finished receiving.
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
   `cached_tokens` for cost telemetry).
 - **Schema** — `GET /schema/introspect`, `GET /schema/status`,
