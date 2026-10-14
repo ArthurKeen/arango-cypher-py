@@ -166,7 +166,7 @@ async function request<T>(
       throw new ApiError(401, AUTH_EXPIRED_MESSAGE);
     }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail ?? body);
+    throw new ApiError(res.status, body.detail ?? body, parseErrorReport(body.report));
   }
   try {
     return await res.json();
@@ -203,17 +203,48 @@ function extractCode(detail: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * How the service reported one of its own bugs to the team's error inbox
+ * (arango_cypher/service/error_inbox.py): a reference to quote, and how often
+ * that error has been seen. Present only on errors the service reported.
+ */
+export interface ErrorReport {
+  reference: string;
+  seen: number;
+  issue: number | null;
+  status: string;
+}
+
+export function parseErrorReport(raw: unknown): ErrorReport | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.reference !== "string" || typeof r.seen !== "number") return undefined;
+  return {
+    reference: r.reference,
+    seen: r.seen,
+    issue: typeof r.issue === "number" ? r.issue : null,
+    status: typeof r.status === "string" ? r.status : "pending",
+  };
+}
+
+export function reportNote(report: ErrorReport): string {
+  const seen = report.seen <= 1 ? "first report" : `seen ${report.seen} times so far`;
+  return `This was reported automatically to the Arango Cypher team (reference ${report.reference}, ${seen}).`;
+}
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
   code?: string;
+  report?: ErrorReport;
 
-  constructor(status: number, detail: unknown) {
-    super(formatDetail(detail));
+  constructor(status: number, detail: unknown, report?: ErrorReport) {
+    super(report ? `${formatDetail(detail)} ${reportNote(report)}` : formatDetail(detail));
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.code = extractCode(detail);
+    this.report = report;
   }
 }
 

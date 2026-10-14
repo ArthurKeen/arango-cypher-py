@@ -297,6 +297,31 @@ Endpoint families (all under `arango_cypher.service`):
   NL routes; `safe_execute`/EXPLAIN validation on every execute path.
 - **Agentic tools** — `GET /tools/schemas`, `POST /tools/call`.
 - **Mined examples** — `GET /examples` (session-scoped; §10, "Mined examples").
+- **Error inbox** — the service files its own bugs as issues in a private
+  GitHub repository (`ARANGO_CYPHER_ISSUE_REPO`, with a fine-grained token
+  limited to issues on that repository, `ARANGO_CYPHER_ISSUE_TOKEN`; both or
+  neither, and without them nothing is reported). Reported: generated AQL that
+  ArangoDB rejects (`translator`), other 500s caused inside the service
+  (`server_error`), and unhandled exceptions (`crash`). An unhandled
+  exception returns JSON with `INTERNAL_ERROR` and a message whether or not
+  the inbox is configured. Not reported: 4xx (the user's query, permissions,
+  tenant refusals) and 5xx caused by ArangoDB or the network. One issue per kind of error,
+  identified by a fingerprint of kind, code and summary with quoted text and
+  numbers masked, so one bug hit on different collections is one issue.
+  Repeats update the issue's counts: occurrences, hashed users, versions,
+  endpoints, first and last seen. A closed issue whose error recurs is
+  reopened with a comment. Edits people make to an issue survive the updates.
+  An issue's example carries the Cypher, the generated AQL and the collection
+  bind values, never other bind values, and nothing passes through the issue
+  text unsanitized. Requests only enqueue. A background thread files and
+  updates the issues, at most 20 new issues an hour, and keeps the counts
+  across GitHub failures and restarts. A reported error's response carries
+  `report: {reference, seen, issue, status}` next to `detail`. The Workbench
+  adds "This was reported automatically to the Arango Cypher team (reference …,
+  seen N times so far)". `GET /connect/platform/diagnostics` shows the
+  inbox's state, never the token. `package-byoc.sh` bakes the two settings,
+  and only them, into the bundle. (`arango_cypher/service/error_inbox.py`,
+  `error_handlers.py`, `github_issues.py`.)
 
 > **Operational note.** Agent/IDE shells inject `HTTP_PROXY`/`HTTPS_PROXY`/
 > `ALL_PROXY` pointing at a loopback proxy that blocks DB traffic. Start the

@@ -78,6 +78,10 @@ from .. import corrections as _corrections  # noqa: F401, E402
 from .. import nl_corrections as _nl_corrections  # noqa: F401, E402
 from .._env import read_arango_password  # noqa: F401  (re-export, used by tests)
 
+# 6b) Error handlers — report the service's own bugs to the error inbox
+#    (error_inbox.py) and give an unhandled 500 a JSON body with a message.
+from . import error_handlers as _error_handlers  # noqa: F401
+
 # 6) Routes — importing the subpackage runs every endpoint's
 #    ``@app.route(...)`` decorator and registers it on
 #    :data:`.app.app`.
