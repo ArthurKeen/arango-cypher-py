@@ -70,11 +70,42 @@ printed. `.env` is gitignored and is **not** bundled by default.
 | `pyproject.toml`, `uv.lock` | dependency resolution at boot |
 | `ui/dist/` | the Workbench; `arango_cypher/service/ui.py` resolves `<root>/ui/dist` |
 | `tests/fixtures/datasets/*/query-corpus.yml` | `/sample-queries` reads these (see below) |
-| `.env` | **only** with `PACKAGE_INCLUDE_ENV=1` — off by default |
+| `.env` | `ROOT_PATH` (from `SERVICE_ROOT_PATH`) and the two error-inbox settings when configured (below); the whole repo `.env` **only** with `PACKAGE_INCLUDE_ENV=1` — off by default |
 
 Flags: `PACKAGE_INCLUDE_UI=0` (headless API), `PACKAGE_BUILD_UI=0` (bundle the
 existing `ui/dist` without rebuilding), `PACKAGE_INCLUDE_SAMPLES=0`,
-`PACKAGE_USE_TOPDIR=1` (nested layout), `PACKAGE_INCLUDE_ENV=1`.
+`PACKAGE_USE_TOPDIR=1` (nested layout), `PACKAGE_INCLUDE_ENV=1`,
+`PACKAGE_INCLUDE_ISSUE_INBOX=0` (leave the error inbox out).
+
+### Error inbox (automatic error reports)
+
+The service files its own bugs, such as generated AQL that ArangoDB rejects or an
+unexpected exception, as issues in the **private** repository
+`arango-solutions-org/arango-cypher-inbox`. Each kind of error gets one issue;
+repeats update its counts (occurrences, users, versions, first and last seen),
+and a closed issue is reopened if its error comes back. The user's error message
+says it was reported, with a reference. Mistakes in the user's own query,
+missing permissions and database outages are not reported.
+
+To turn it on:
+
+1. Create a **fine-grained** GitHub token with resource owner
+   `arango-solutions-org`, repository access **only**
+   `arango-cypher-inbox`, and the permission **Issues: Read and write**
+   (Metadata: read-only is added automatically). Nothing else.
+2. Add to the repo-root `.env`, which is git-ignored:
+
+   ```bash
+   ARANGO_CYPHER_ISSUE_REPO=arango-solutions-org/arango-cypher-inbox
+   ARANGO_CYPHER_ISSUE_TOKEN=<the token>
+   ```
+
+3. Package and release as usual. `package-byoc.sh` bakes these two settings, and
+   nothing else from `.env`, into the bundle, and writes the tarball mode 600,
+   because it now holds the token.
+
+`GET /connect/platform/diagnostics` shows `error_inbox` (repository, issues
+known, reports pending, the last GitHub error) and never the token.
 
 ## Platform behaviours that will bite
 
@@ -185,6 +216,8 @@ Set these in the Container Manager UI (preferred) or bundle a sanitized `.env`.
 | `ARANGO_CYPHER_ALLOW_LOOPBACK` | defeat the loopback guard (debug) |
 | `ARANGO_CYPHER_SKIP_DEP_INSTALL` | skip the boot-time install for a pre-baked venv |
 | `UV_BINARY` | pin `uv` when `PATH` is minimal |
+| `ARANGO_CYPHER_ISSUE_REPO`, `ARANGO_CYPHER_ISSUE_TOKEN` | error inbox (above); both or neither |
+| `ARANGO_CYPHER_ISSUE_FLUSH_S` | seconds between issue count updates (default 60) |
 
 ## Rollback
 

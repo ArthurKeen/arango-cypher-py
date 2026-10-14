@@ -133,6 +133,41 @@ elif [[ -f "${REPO_ROOT}/.env" ]]; then
 	echo "==> Skipping .env (set PACKAGE_INCLUDE_ENV=1 to bundle it; the UI is safer for secrets)." >&2
 fi
 
+# --- Error inbox ----------------------------------------------------------
+# The service files its own bugs as issues in a private repository
+# (arango_cypher/service/error_inbox.py). The platform forwards no app env, so
+# the inbox repository and its token are baked here — these two settings only,
+# from the environment or the repo .env, never the rest of .env. The token
+# makes the tarball a secret: it is written mode 600, and nothing here prints
+# the token. Without both settings the deployed service reports nothing.
+#   ARANGO_CYPHER_ISSUE_REPO=owner/name ARANGO_CYPHER_ISSUE_TOKEN=... (env or .env)
+# PACKAGE_INCLUDE_ISSUE_INBOX=0 leaves them out.
+envval() {  # envval KEY -> value from the environment, else from .env (quotes stripped)
+	local key="$1" val="${!1:-}"
+	if [[ -z "${val}" && -f "${ENV_FILE:-${REPO_ROOT}/.env}" ]]; then
+		val="$(grep -E "^${key}=" "${ENV_FILE:-${REPO_ROOT}/.env}" | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")" || true
+	fi
+	printf '%s' "${val}"
+}
+INBOX_BAKED=0
+if [[ "${PACKAGE_INCLUDE_ISSUE_INBOX:-1}" == "1" ]]; then
+	INBOX_REPO="$(envval ARANGO_CYPHER_ISSUE_REPO)"
+	INBOX_TOKEN="$(envval ARANGO_CYPHER_ISSUE_TOKEN)"
+	if [[ -n "${INBOX_REPO}" && -n "${INBOX_TOKEN}" ]]; then
+		{
+			printf 'ARANGO_CYPHER_ISSUE_REPO=%s\n' "${INBOX_REPO}"
+			printf 'ARANGO_CYPHER_ISSUE_TOKEN=%s\n' "${INBOX_TOKEN}"
+		} >> "${BUNDLE}/.env"
+		INBOX_BAKED=1
+		echo "==> Baked the error inbox (${INBOX_REPO}); the tarball now holds its token — do not share it."
+	elif [[ -n "${INBOX_REPO}${INBOX_TOKEN}" ]]; then
+		echo "error: set both ARANGO_CYPHER_ISSUE_REPO and ARANGO_CYPHER_ISSUE_TOKEN, or neither" >&2
+		exit 1
+	else
+		echo "==> No error inbox configured: the deployed service will not report its errors." >&2
+	fi
+fi
+
 # --- Archive --------------------------------------------------------------
 if [[ "$(uname -s)" == "Darwin" ]] && command -v xattr >/dev/null 2>&1; then
 	xattr -cr "${BUNDLE}" 2>/dev/null || true
@@ -146,4 +181,7 @@ else
 	echo "Wrote ${OUT} (flat: entrypoint at archive root)"
 fi
 
+if [[ "${INBOX_BAKED}" == "1" ]]; then
+	chmod 600 "${OUT}"
+fi
 echo "==> $(du -h "${OUT}" | cut -f1) — verify with: tar -tzf ${OUT} | head"
