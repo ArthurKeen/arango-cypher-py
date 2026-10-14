@@ -426,7 +426,13 @@ backslash or a backtick (`_reject_unsafe_escaped_names`, run on every parse
 tree). Any other content means the same thing in both languages. Parameter
 names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
 as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
-string.
+string. Collection names never reach the AQL text: they come from the mapping,
+which callers send with `/translate` and `/execute`, and many are not bare AQL
+identifiers (`IAM-AWS-DOCS-DEMO_Chunks`). Every collection reference is a
+`@@` bind parameter, including the traversal `WITH` prelude, which reuses a
+collection's existing bind parameter and otherwise adds `@withCollectionN`
+names that clash with no other bind variable (`_with_collection_refs` in
+`formatting.py`).
 
 String literals are copied to AQL with their quotes, since both languages end
 a string in the same place, but the escapes AQL reads differently are

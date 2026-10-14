@@ -32,7 +32,8 @@ cases:
 
     '
   expected:
-    aql: "WITH movies, persons\nFOR a IN @@collection\n  FOR m, r IN 1..1 OUTBOUND a @@edgeCollection\n    RETURN {name: a.name, title: m.title}"
+    aql: "WITH @@withCollection0, @@collection\nFOR a IN @@collection\n  FOR m, r IN 1..1 OUTBOUND a @@edgeCollection\n    RETURN {name: a.name, title: m.title}"
     bind_vars:
       '@collection': persons
       '@edgeCollection': acted_in
+      '@withCollection0': movies

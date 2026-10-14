@@ -71,11 +71,12 @@ cases:
 
     '
   expected:
-    aql: "WITH movies, persons\nFOR _u IN UNION_DISTINCT(\n  (FOR p IN @@uCollection\n  FOR m, r IN 1..1 OUTBOUND p @@edgeCollection\n    RETURN {title: m.title}),\n    (FOR p IN @@uCollection\n    FOR m, r IN 1..1 OUTBOUND p @@edgeCollection_u1\n      RETURN {title: m.title})\n      )\n      RETURN _u"
+    aql: "WITH @@withCollection0, @@uCollection\nFOR _u IN UNION_DISTINCT(\n  (FOR p IN @@uCollection\n  FOR m, r IN 1..1 OUTBOUND p @@edgeCollection\n    RETURN {title: m.title}),\n    (FOR p IN @@uCollection\n    FOR m, r IN 1..1 OUTBOUND p @@edgeCollection_u1\n      RETURN {title: m.title})\n      )\n      RETURN _u"
     bind_vars:
       '@uCollection': persons
       '@edgeCollection': acted_in
       '@edgeCollection_u1': directed
+      '@withCollection0': movies
 - id: C811
   name: UNION rename leaves string literals and quoted attribute names untouched
   mapping_fixture: pg

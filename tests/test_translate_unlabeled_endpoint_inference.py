@@ -62,7 +62,11 @@ class TestPgEndpointInference:
             mapping=pg,
         )
         assert "INBOUND" in out.aql
-        assert "persons" in out.aql  # WITH prelude lists the resolved vertex coll
+        # The WITH prelude declares the resolved vertex collection (as a bind
+        # parameter, so its name never enters the AQL text).
+        with_line = out.aql.splitlines()[0]
+        declared = {out.bind_vars[ref[1:]] for ref in with_line[len("WITH ") :].split(", ")}
+        assert "persons" in declared
 
     def test_leading_unlabeled_anchor(self, pg):
         out = translate("MATCH ()-[:REVIEWED]->(m:Movie) RETURN avg(m.rating)", mapping=pg)

@@ -12,10 +12,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR w, r_1, _path IN 2..2 OUTBOUND u @@edgeCollection\n    LET v = _path.vertices[1]\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR w, r_1, _path IN 2..2 OUTBOUND u @@edgeCollection\n    LET v = _path.vertices[1]\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n\
       \    FILTER IS_SAME_COLLECTION(@vCollection2, w)\n    SORT u.id, w.id\n    RETURN {id: u.id, w_id: w.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
       vCollection2: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

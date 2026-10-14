@@ -8,10 +8,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0)\n  RETURN u.name\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0)\n  RETURN u.name\n"
     bind_vars:
       '@collection': users
       '@sqEdge': follows
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C341
   name: exists subquery negated
   mapping_fixture: pg
@@ -20,10 +23,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (NOT (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0))\n  RETURN u.name\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FILTER (NOT (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 0))\n  RETURN u.name\n"
     bind_vars:
       '@collection': users
       '@sqEdge': follows
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C342
   name: count subquery in return
   mapping_fixture: pg
@@ -32,10 +38,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  RETURN {name: u.name, followerCount: LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1)}\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  RETURN {name: u.name, followerCount: LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1)}\n"
     bind_vars:
       '@collection': users
       '@sqEdge': follows
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C343
   name: count subquery in where
   mapping_fixture: pg
@@ -44,10 +53,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) != null AND LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 5)\n  RETURN u.name\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FILTER (LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) != null AND LENGTH(FOR m, _sq_e IN 1..1 OUTBOUND u @@sqEdge RETURN 1) > 5)\n  RETURN u.name\n"
     bind_vars:
       '@collection': users
       '@sqEdge': follows
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C344
   name: foreach with set
   mapping_fixture: pg

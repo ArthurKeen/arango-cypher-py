@@ -12,12 +12,48 @@ _TERMINAL_RE = re.compile(r"^\s*(?:RETURN|SORT|LIMIT|COLLECT)\b")
 _FILTER_LET_RE = re.compile(r"^\s*(?:FILTER|LET|PRUNE)\b")
 
 
+_WITH_BIND_KEY = "@withCollection"
+
+
+def _with_collection_refs(
+    vertex_collections: set[str], bind_vars: dict[str, object]
+) -> tuple[list[str], dict[str, object]]:
+    """``@@`` references for *vertex_collections*, and the bind vars they need.
+
+    Collection names come from the mapping, which callers supply with the
+    request, so they are never spliced into the AQL text: a name such as
+    ``IAM-AWS-DOCS-DEMO_Chunks`` does not parse as a bare identifier, and a
+    crafted one could inject AQL. A collection the query already binds reuses
+    that bind variable; the rest get fresh ``@withCollectionN`` names that
+    clash with no existing bind variable. Ordered by collection name, so the
+    output is deterministic.
+    """
+    existing: dict[str, str] = {}
+    for key, val in bind_vars.items():
+        if key.startswith("@") and isinstance(val, str) and val not in existing:
+            existing[val] = key
+    added: dict[str, object] = {}
+    refs: list[str] = []
+    n = 0
+    for coll in sorted(vertex_collections):
+        key = existing.get(coll)
+        if key is None:
+            while f"{_WITH_BIND_KEY}{n}" in bind_vars:
+                n += 1
+            key = f"{_WITH_BIND_KEY}{n}"
+            n += 1
+            added[key] = coll
+        refs.append("@" + key)
+    return refs, {**bind_vars, **added}
+
+
 def _prepend_with_collections(result: AqlQuery, resolver: MappingResolver) -> AqlQuery:
-    """Prepend ``WITH coll1, coll2, ...`` listing all vertex collections.
+    """Prepend ``WITH @@c1, @@c2, ...`` listing all vertex collections.
 
     ArangoDB requires a leading ``WITH`` declaration of all vertex collections
     accessed during graph traversals. This is mandatory in cluster deployments
-    and harmless in single-server mode. Edge collections are excluded.
+    and harmless in single-server mode. Edge collections are excluded. The
+    collections are bind parameters (:func:`_with_collection_refs`).
     """
     has_traversal = re.search(
         r"\b(?:OUTBOUND|INBOUND|ANY|SHORTEST_PATH|ALL_SHORTEST_PATHS)\b",
@@ -51,10 +87,11 @@ def _prepend_with_collections(result: AqlQuery, resolver: MappingResolver) -> Aq
     if not vertex_collections:
         return result
 
-    with_line = "WITH " + ", ".join(sorted(vertex_collections))
+    refs, bind_vars = _with_collection_refs(vertex_collections, dict(result.bind_vars))
+    with_line = "WITH " + ", ".join(refs)
     return AqlQuery(
         text=with_line + "\n" + result.text,
-        bind_vars=result.bind_vars,
+        bind_vars=bind_vars,
         debug=result.debug,
         warnings=result.warnings,
     )
