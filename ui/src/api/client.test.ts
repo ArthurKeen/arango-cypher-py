@@ -3,6 +3,8 @@ import { afterEach, vi } from "vitest";
 import {
   ApiError,
   CONNECTION_LOST_MESSAGE,
+  parseErrorReport,
+  reportNote,
   RESULT_ROW_LIMIT,
   apiBaseFor,
   examplesForGraph,
@@ -245,5 +247,46 @@ describe("a dropped connection", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => bad));
     const err = await executeAql("RETURN 1", {}, "token").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SyntaxError);
+  });
+});
+
+describe("errors the service reported to the team", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("say so, with the reference and how often it was seen", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        new Response(
+          JSON.stringify({
+            detail: { code: "GENERATED_AQL_REJECTED", message: "Arango Cypher translated this query into AQL that ArangoDB rejected." },
+            report: { reference: "a1b2c3d4", seen: 3, issue: 7, status: "filed" },
+          }),
+          { status: 500, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    const err = (await executeAql("RETURN 1", {}, "token").catch((e: unknown) => e)) as ApiError;
+    expect(err.report).toEqual({ reference: "a1b2c3d4", seen: 3, issue: 7, status: "filed" });
+    expect(err.code).toBe("GENERATED_AQL_REJECTED");
+    expect(err.message).toBe(
+      "Arango Cypher translated this query into AQL that ArangoDB rejected. " +
+        "This was reported automatically to the Arango Cypher team (reference a1b2c3d4, seen 3 times so far).",
+    );
+  });
+
+  it("calls the first one the first report", () => {
+    expect(reportNote({ reference: "a1b2c3d4", seen: 1, issue: null, status: "pending" })).toContain("first report");
+  });
+
+  it("ignore a report that is not one", () => {
+    expect(parseErrorReport(undefined)).toBeUndefined();
+    expect(parseErrorReport({ reference: 5 })).toBeUndefined();
+    expect(parseErrorReport({ reference: "x", seen: 2 })).toEqual({ reference: "x", seen: 2, issue: null, status: "pending" });
+  });
+
+  it("leave errors without a report unchanged", () => {
+    expect(new ApiError(422, { message: "Unknown label" }).message).toBe("Unknown label");
   });
 });
