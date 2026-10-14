@@ -8,10 +8,11 @@ cases:
 
     '
   expected:
-    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    aql: "WITH @@uCollection, @@withCollection0\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
     bind_vars:
       '@uCollection': persons
       '@edgeCollection': knows
+      '@withCollection0': users
 - id: C091
   name: inbound KNOWS with domain/range skips IS_SAME_COLLECTION
   mapping_fixture: pg_typed
@@ -20,10 +21,11 @@ cases:
 
     '
   expected:
-    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 INBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    aql: "WITH @@uCollection, @@withCollection0\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 INBOUND p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
     bind_vars:
       '@uCollection': persons
       '@edgeCollection': knows
+      '@withCollection0': users
 - id: C092
   name: undirected KNOWS with domain/range skips IS_SAME_COLLECTION
   mapping_fixture: pg_typed
@@ -32,10 +34,11 @@ cases:
 
     '
   expected:
-    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 ANY p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
+    aql: "WITH @@uCollection, @@withCollection0\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 ANY p1 @@edgeCollection\n    RETURN {p1: p1, p2: p2}"
     bind_vars:
       '@uCollection': persons
       '@edgeCollection': knows
+      '@withCollection0': users
 - id: C093
   name: KNOWS with WHERE still skips IS_SAME_COLLECTION
   mapping_fixture: pg_typed
@@ -44,10 +47,11 @@ cases:
 
     '
   expected:
-    aql: "WITH persons, users\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    FILTER (p2.age != null AND p2.age > 30)\n    RETURN {name: p1.name, p2_name: p2.name}\n"
+    aql: "WITH @@uCollection, @@withCollection0\nFOR p1 IN @@uCollection\n  FOR p2, r IN 1..1 OUTBOUND p1 @@edgeCollection\n    FILTER (p2.age != null AND p2.age > 30)\n    RETURN {name: p1.name, p2_name: p2.name}\n"
     bind_vars:
       '@uCollection': persons
       '@edgeCollection': knows
+      '@withCollection0': users
 - id: C094
   name: cross-type source still skips filter (range guarantees target)
   mapping_fixture: pg_typed
@@ -56,10 +60,11 @@ cases:
 
     '
   expected:
-    aql: "WITH persons, users\nFOR u IN @@uCollection\n  FOR p, r IN 1..1 OUTBOUND u @@edgeCollection\n    RETURN {u: u, p: p}"
+    aql: "WITH @@withCollection0, @@uCollection\nFOR u IN @@uCollection\n  FOR p, r IN 1..1 OUTBOUND u @@edgeCollection\n    RETURN {u: u, p: p}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': knows
+      '@withCollection0': persons
 - id: C095
   name: no domain/range keeps IS_SAME_COLLECTION (pg fixture without domain/range)
   mapping_fixture: pg
@@ -68,8 +73,11 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

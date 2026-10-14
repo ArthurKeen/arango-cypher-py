@@ -16,12 +16,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    RETURN {id: u.id,\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    RETURN {id: u.id,\
       \ v_id: v.id}"
     bind_vars:
       '@collection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C038
   name: with where then distinct traversal cities skip
   mapping_fixture: pg
@@ -42,12 +45,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FILTER (u.active == true)\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FILTER (u.active == true)\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT\
       \ city = v.city\n    SORT city\n    LIMIT 1, 1\n    RETURN city"
     bind_vars:
       '@collection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C039
   name: with alias and passthrough then traversal
   mapping_fixture: pg
@@ -66,12 +72,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  LET name = u.name\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT name, v.name\n\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  LET name = u.name\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT name, v.name\n\
       \    LIMIT 5\n    RETURN {name: name, v_name: v.name}"
     bind_vars:
       '@collection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C040
   name: with aggregation then traversal
   mapping_fixture: pg
@@ -88,7 +97,7 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT u_1 = u AGGREGATE degree\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT u_1 = u AGGREGATE degree\
       \ = COUNT(v)\n    FOR w, r_1 IN 1..1 OUTBOUND u_1 @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      SORT u_1.id, w.id\n      RETURN {id: u_1.id, degree: degree, w_id: w.id}"
     bind_vars:
       '@uCollection': users
@@ -96,6 +105,9 @@ cases:
       vCollection: users
       '@edgeCollection2': follows
       vCollection2: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C041
   name: with distinct scalar then fresh match
   mapping_fixture: pg
@@ -136,13 +148,16 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  COLLECT city = u.city\n  FOR x IN @@tailCollection\n    FOR y, r IN 1..1 OUTBOUND x @@edgeCollection\n      FILTER IS_SAME_COLLECTION(@vCollection,\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  COLLECT city = u.city\n  FOR x IN @@tailCollection\n    FOR y, r IN 1..1 OUTBOUND x @@edgeCollection\n      FILTER IS_SAME_COLLECTION(@vCollection,\
       \ y)\n      FILTER (x.city == city)\n      SORT city, y.id\n      RETURN {city: city, id: y.id}"
     bind_vars:
       '@collection': users
       '@tailCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C043
   name: tail match relationship var type
   mapping_fixture: lpg
@@ -159,7 +174,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@collection\n  FILTER u[@typeField] == @typeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER v[@vTypeField]\
+    aql: "WITH @@collection\nFOR u IN @@collection\n  FILTER u[@typeField] == @typeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER v[@vTypeField]\
       \ == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    SORT u.id, v.id\n    RETURN {type: r[@relTypeField], id: u.id, v_id: v.id}"
     bind_vars:
       '@collection': vertices
@@ -187,7 +202,7 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r_1 IN 1..1 OUTBOUND v @@edgeCollection2\n\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r_1 IN 1..1 OUTBOUND v @@edgeCollection2\n\
       \      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      SORT u.id, w.id\n      RETURN {id: u.id, w_id: w.id}"
     bind_vars:
       '@collection': users
@@ -195,3 +210,6 @@ cases:
       vCollection: users
       '@edgeCollection2': follows
       vCollection2: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

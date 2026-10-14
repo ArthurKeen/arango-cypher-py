@@ -8,13 +8,16 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..3 OUTBOUND u @@edgeCollection\n\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..3 OUTBOUND u @@edgeCollection\n\
       \    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    PRUNE NOT ((v.active ==\
       \ true))\n    FILTER (v.active == true)\n    RETURN {id: u.id, v_id: v.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C711
   name: fixed-length traversal no PRUNE
   mapping_fixture: pg
@@ -23,10 +26,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN\
       \ 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
       \ v)\n    FILTER (v.active == true)\n    RETURN {id: u.id, v_id: v.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

@@ -8,7 +8,7 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR a IN @@uCollection\n  FOR c, r2,\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR a IN @@uCollection\n  FOR c, r2,\
       \ _path IN 2..2 OUTBOUND a @@edgeCollection\n    LET b = _path.vertices[1]\n\
       \    LET r1 = _path.edges[0]\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n\
       \    FILTER IS_SAME_COLLECTION(@vCollection2, c)\n    FILTER r1._id != r2._id\n\
@@ -18,6 +18,9 @@ cases:
       '@edgeCollection': follows
       vCollection: users
       vCollection2: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C721
   name: multi-pattern two named rels get uniqueness filter
   mapping_fixture: pg
@@ -26,7 +29,7 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR a IN @@aCollection\n  FOR b, r1 IN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@aCollection\nFOR a IN @@aCollection\n  FOR b, r1 IN\
       \ 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@bCollection,\
       \ b)\n    FOR c, r2 IN 1..1 OUTBOUND b @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@cCollection,\
       \ c)\n      FILTER r1._id != r2._id\n      RETURN {id: a.id, b_id: b.id, c_id:\
@@ -37,3 +40,6 @@ cases:
       bCollection: users
       '@edgeCollection2': follows
       cCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

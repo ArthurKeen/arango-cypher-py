@@ -8,11 +8,14 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    LIMIT 5\n    RETURN {u: u, v: v}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    LIMIT 5\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C012
   name: inbound follows one hop
   mapping_fixture: pg
@@ -21,11 +24,14 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 INBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 INBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C013
   name: undirected follows one hop
   mapping_fixture: pg
@@ -34,11 +40,14 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C058
   name: undirected follows ids with order and limit
   mapping_fixture: pg
@@ -53,12 +62,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    LIMIT 3\n    RETURN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    LIMIT 3\n    RETURN\
       \ {id: u.id, v_id: v.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C059
   name: type of relationship only
   mapping_fixture: pg
@@ -69,11 +81,14 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {type: \"FOLLOWS\"}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {type: \"FOLLOWS\"}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C014
   name: where on bound start node
   mapping_fixture: pg
@@ -84,13 +99,16 @@ cases:
   params:
     id: u1
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (u.id == @id)\n    RETURN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (u.id == @id)\n    RETURN\
       \ v"
     bind_vars:
       id: u1
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C015
   name: where on end node property
   mapping_fixture: pg
@@ -99,12 +117,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (v.city == \"SF\")\n    RETURN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (v.city == \"SF\")\n    RETURN\
       \ {name: u.name, v_name: v.name}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C016
   name: relationship variable and type function
   mapping_fixture: pg
@@ -113,12 +134,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {type: \"FOLLOWS\", id: u.id,\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {type: \"FOLLOWS\", id: u.id,\
       \ v_id: v.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C017
   name: distinct from relationship traversal
   mapping_fixture: pg
@@ -127,12 +151,15 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT city = v.city\n    RETURN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT city = v.city\n    RETURN\
       \ city"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C018
   name: boolean conjunction across nodes
   mapping_fixture: pg
@@ -146,7 +173,7 @@ cases:
     '
   expected:
     aql: |-
-      WITH docs, persons, places, users
+      WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
       FOR u IN @@uCollection
         FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
           FILTER IS_SAME_COLLECTION(@vCollection, v)
@@ -156,6 +183,9 @@ cases:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C031
   name: outbound follows one hop (LPG generic edges)
   mapping_fixture: lpg
@@ -164,7 +194,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER v[@vTypeField]\
+    aql: "WITH @@uCollection\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER v[@vTypeField]\
       \ == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    LIMIT 5\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': vertices
@@ -184,7 +214,7 @@ cases:
 
     '
   expected:
-    aql: "WITH users, vertices\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER r[@relTypeField] == @relTypeValue\n   \
+    aql: "WITH @@uCollection, @@withCollection0\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER r[@relTypeField] == @relTypeValue\n   \
       \ LIMIT 5\n    RETURN {u: u, v: v}"
     bind_vars:
       '@uCollection': users
@@ -192,3 +222,4 @@ cases:
       vCollection: users
       relTypeField: type
       relTypeValue: FOLLOWS
+      '@withCollection0': vertices

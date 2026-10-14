@@ -30,9 +30,12 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nLET _rows = (\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {from_name:\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nLET _rows = (\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {from_name:\
       \ u.name, to_name: v.name}\n    )\n    FOR _r IN (LENGTH(_rows) > 0 ? _rows : [{from_name: null, to_name: null}])\n      RETURN _r"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

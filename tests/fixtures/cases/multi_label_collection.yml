@@ -19,10 +19,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR a IN @@uCollection\n  FOR b, r IN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR a IN @@uCollection\n  FOR b, r IN\
       \ 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
       \ b)\n    RETURN {a: a, b: b}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
       vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

@@ -8,7 +8,7 @@ cases:
       MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN p
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, f)
@@ -19,6 +19,9 @@ cases:
         "@edgeCollection": follows
         vCollection: users
 
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places
   - id: C321
     name: named path nodes function
     mapping_fixture: pg
@@ -27,7 +30,7 @@ cases:
       MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN nodes(p) AS pathNodes
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, f)
@@ -38,6 +41,9 @@ cases:
         "@edgeCollection": follows
         vCollection: users
 
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places
   - id: C322
     name: named path relationships function
     mapping_fixture: pg
@@ -46,7 +52,7 @@ cases:
       MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN relationships(p) AS pathEdges
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, f)
@@ -57,6 +63,9 @@ cases:
         "@edgeCollection": follows
         vCollection: users
 
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places
   - id: C323
     name: named path length function
     mapping_fixture: pg
@@ -65,7 +74,7 @@ cases:
       MATCH p = (u:User)-[:FOLLOWS]->(f:User) RETURN length(p) AS pathLen
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR f, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, f)
@@ -75,3 +84,6 @@ cases:
         "@uCollection": users
         "@edgeCollection": follows
         vCollection: users
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places

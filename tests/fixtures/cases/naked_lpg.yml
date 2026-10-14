@@ -34,7 +34,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, v_name: v.name}"
+    aql: "WITH @@uCollection\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, v_name: v.name}"
     bind_vars:
       '@uCollection': vertices
       uTypeField: type
@@ -52,7 +52,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR d, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER d[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, body: d.body}"
+    aql: "WITH @@uCollection\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR d, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER d[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {name: u.name, body: d.body}"
     bind_vars:
       '@uCollection': vertices
       uTypeField: type
@@ -70,7 +70,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR a IN @@uCollection\n  FILTER a[@uTypeField] == @uTypeValue\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FOR d, r_1 IN 1..1 OUTBOUND b @@edgeCollection2\n      FILTER d[@vTypeField2] == @vTypeValue2\n      FILTER r_1[@relTypeField2] == @relTypeValue2\n      FILTER r._id != r_1._id\n      RETURN {name: a.name, body: d.body}\n"
+    aql: "WITH @@uCollection\nFOR a IN @@uCollection\n  FILTER a[@uTypeField] == @uTypeValue\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FOR d, r_1 IN 1..1 OUTBOUND b @@edgeCollection2\n      FILTER d[@vTypeField2] == @vTypeValue2\n      FILTER r_1[@relTypeField2] == @relTypeValue2\n      FILTER r._id != r_1._id\n      RETURN {name: a.name, body: d.body}\n"
     bind_vars:
       '@uCollection': vertices
       uTypeField: type
@@ -93,7 +93,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FILTER (u.name == \"Alice\")\n    RETURN v.name"
+    aql: "WITH @@uCollection\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FILTER (u.name == \"Alice\")\n    RETURN v.name"
     bind_vars:
       '@uCollection': vertices
       uTypeField: type
@@ -111,7 +111,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {type: r[@relTypeField], name: u.name, v_name: v.name}"
+    aql: "WITH @@uCollection\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER v[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {type: r[@relTypeField], name: u.name, v_name: v.name}"
     bind_vars:
       '@uCollection': vertices
       uTypeField: type

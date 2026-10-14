@@ -89,10 +89,13 @@ cases:
 
     '
   expected:
-    aql: "WITH docs, persons, places, users\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    aql: "WITH @@withCollection0, @@collection, @@withCollection1, @@withCollection2\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
     bind_vars:
       '@collection': persons
       '@detachEdge': follows
+      '@withCollection0': docs
+      '@withCollection1': places
+      '@withCollection2': users
 - id: C412
   name: DETACH DELETE node (LPG)
   mapping_fixture: lpg
@@ -101,7 +104,7 @@ cases:
 
     '
   expected:
-    aql: "WITH vertices\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    aql: "WITH @@collection\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
     bind_vars:
       '@collection': vertices
       '@detachEdge': edges
@@ -262,20 +265,26 @@ cases:
   extensions_enabled: false
   cypher: "MATCH (a:User)-[r:FOLLOWS]->(b:User) WHERE a.name = \"Alice\" SET r.since = 2020"
   expected:
-    aql: "WITH docs, persons, places, users\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    UPDATE r WITH {since: 2020} IN @@edgeCollection\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    UPDATE r WITH {since: 2020} IN @@edgeCollection\n"
     bind_vars:
       "@collection": "users"
       "@edgeCollection": "follows"
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C442
   name: DELETE a relationship removes it from the edge collection
   mapping_fixture: pg
   extensions_enabled: false
   cypher: "MATCH (a:User)-[r:FOLLOWS]->(b:User) WHERE a.name = \"Alice\" DELETE r"
   expected:
-    aql: "WITH docs, persons, places, users\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    REMOVE r IN @@edgeCollection\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (a.name == \"Alice\")\n    REMOVE r IN @@edgeCollection\n"
     bind_vars:
       "@collection": "users"
       "@edgeCollection": "follows"
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
 - id: C443
   name: SET n = map under LPG keeps the type field
   mapping_fixture: lpg

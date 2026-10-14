@@ -63,10 +63,11 @@ cases:
 
     '
   expected:
-    aql: "WITH movies, persons\nFOR p IN @@collection\n  RETURN {name: p.name, movies: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
+    aql: "WITH @@withCollection0, @@collection\nFOR p IN @@collection\n  RETURN {name: p.name, movies: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
     bind_vars:
       '@collection': persons
       '@pcEdge': acted_in
+      '@withCollection0': movies
 - id: C511
   name: Pattern comprehension with DIRECTED
   mapping_fixture: movies_pg
@@ -75,7 +76,8 @@ cases:
 
     '
   expected:
-    aql: "WITH movies, persons\nFOR p IN @@collection\n  RETURN {directed: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
+    aql: "WITH @@withCollection0, @@collection\nFOR p IN @@collection\n  RETURN {directed: (FOR m, _pc_e IN 1..1 OUTBOUND p @@pcEdge RETURN m.title)}"
     bind_vars:
       '@collection': persons
       '@pcEdge': directed
+      '@withCollection0': movies

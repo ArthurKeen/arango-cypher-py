@@ -32,7 +32,7 @@ cases:
       LIMIT 10
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
@@ -45,6 +45,9 @@ cases:
         "@edgeCollection": follows
         vCollection: users
 
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places
   - id: C021
     name: with then filter
     mapping_fixture: pg
@@ -142,7 +145,7 @@ cases:
       RETURN city, c
     expected:
       aql: |
-        WITH docs, persons, places, users
+        WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
@@ -153,6 +156,9 @@ cases:
         "@edgeCollection": follows
         vCollection: users
 
+        '@withCollection0': docs
+        '@withCollection1': persons
+        '@withCollection2': places
   - id: C033
     name: multi-stage with filter and skip
     mapping_fixture: pg
