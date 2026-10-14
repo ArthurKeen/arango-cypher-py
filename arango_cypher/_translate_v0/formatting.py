@@ -36,14 +36,14 @@ def _with_collection_refs(
     refs: list[str] = []
     n = 0
     for coll in sorted(vertex_collections):
-        key = existing.get(coll)
-        if key is None:
+        bound = existing.get(coll)
+        if bound is None:
             while f"{_WITH_BIND_KEY}{n}" in bind_vars:
                 n += 1
-            key = f"{_WITH_BIND_KEY}{n}"
+            bound = f"{_WITH_BIND_KEY}{n}"
             n += 1
-            added[key] = coll
-        refs.append("@" + key)
+            added[bound] = coll
+        refs.append("@" + bound)
     return refs, {**bind_vars, **added}
 
 
