@@ -36,6 +36,10 @@ _MAX_RETRY_HINT_LENGTH = 8_000  # WP-29 retry context (parser/EXPLAIN error blob
 _MAX_TURTLE_LENGTH = 1_000_000  # OWL ontologies can be sizeable; 1 MB cap
 _MAX_NOTE_LENGTH = 4_000  # correction notes — keep them human-readable
 _MAX_FIELD_LENGTH = 256  # urls, usernames, db names, tool names, tenant fields
+# Most rows a caller may ask /execute and /execute-aql for (``max_rows``). A
+# response is built in memory and sent as one JSON document: 156,861 whole
+# IAM nodes came to 257 MB and ten minutes on the wire.
+_MAX_RESULT_ROWS = 1_000_000
 
 
 class ConnectRequest(BaseModel):
@@ -178,6 +182,9 @@ class ExecuteRequest(BaseModel):
     # records the event on the audit stream. Ignored for non-admins.
     cross_tenant: bool = False
     bypass_reason: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+    # Return at most this many rows; ``truncated`` in the response says
+    # whether there were more. ``None`` (the default) returns every row.
+    max_rows: int | None = Field(default=None, ge=1, le=_MAX_RESULT_ROWS)
 
 
 class ExecuteResponse(BaseModel):
@@ -193,6 +200,10 @@ class ExecuteResponse(BaseModel):
     translate_ms: float | None = None
     # Wave 8a / MT-4 — see TranslateResponse.tenantRewritesAql.
     tenantRewritesAql: list[str] = []
+    # True when the request's ``max_rows`` cut the result short; ``row_limit``
+    # echoes that cap (``None`` when the request set none).
+    truncated: bool = False
+    row_limit: int | None = None
 
 
 class ValidateRequest(BaseModel):
@@ -221,6 +232,8 @@ class ExecuteAqlRequest(BaseModel):
     # MT-7 — admin cross-tenant bypass; see ExecuteRequest.cross_tenant.
     cross_tenant: bool = False
     bypass_reason: str | None = Field(default=None, max_length=_MAX_FIELD_LENGTH)
+    # See ExecuteRequest.max_rows.
+    max_rows: int | None = Field(default=None, ge=1, le=_MAX_RESULT_ROWS)
 
 
 class ToolCallRequest(BaseModel):

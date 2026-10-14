@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import itertools
 import logging as _log
 import time
+from typing import Any
 
 from arango_query_core import CoreError
 from fastapi import Depends, HTTPException
@@ -273,6 +275,41 @@ def _maybe_apply_layer4(
         ) from exc
 
 
+def _read_rows(cursor: Any, max_rows: int | None) -> tuple[list[Any], bool]:
+    """The cursor's rows: all of them, or the first *max_rows* and whether
+    there were more.
+
+    Reads one row past the cap to tell "exactly max_rows" from "more", and
+    then closes the server-side cursor so the coordinator frees the rest of
+    the result instead of keeping it until the cursor's TTL runs out.
+    """
+    if max_rows is None:
+        return list(cursor), False
+    rows = list(itertools.islice(cursor, max_rows + 1))
+    if len(rows) <= max_rows:
+        return rows, False
+    close = getattr(cursor, "close", None)
+    if callable(close):
+        try:
+            close(ignore_missing=True)
+        except Exception as exc:
+            # The rows are already read; a cursor left open only lingers
+            # until its TTL, so this is worth a warning, not a failure.
+            _log.getLogger("arango_cypher.service").warning(
+                "closing a truncated cursor failed: %s: %s", type(exc).__name__, exc
+            )
+    return rows[:max_rows], True
+
+
+def _truncation_warning(max_rows: int) -> dict[str, str]:
+    return {
+        "message": (
+            f"Showing the first {max_rows:,} rows; the query returns more. "
+            "Add LIMIT (with ORDER BY to choose which rows) to see a specific slice."
+        )
+    }
+
+
 @app.post("/execute", response_model=ExecuteResponse)
 def execute_endpoint(
     req: ExecuteRequest,
@@ -345,10 +382,12 @@ def execute_endpoint(
                 admin_bypass=admin_bypass,
                 bypass_reason=bypass_reason,
             )
-            results = list(cursor)
+            results, truncated = _read_rows(cursor, req.max_rows)
         except TenantScopeViolation as v:
             raise _tenant_violation_response(v) from v
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
+    if truncated and req.max_rows is not None:
+        warnings.append(_truncation_warning(req.max_rows))
 
     log_endpoint_timing(
         "/execute",
@@ -356,6 +395,7 @@ def execute_endpoint(
         translate_ms=translate_ms,
         exec_ms=exec_ms,
         rows=len(results),
+        truncated=truncated,
         cypher_len=len(req.cypher or ""),
         aql_len=len(run_aql or ""),
         used_correction=bool(correction),
@@ -369,6 +409,8 @@ def execute_endpoint(
         exec_ms=exec_ms,
         translate_ms=translate_ms,
         tenantRewritesAql=layer4_changes,
+        truncated=truncated,
+        row_limit=req.max_rows,
     )
 
 
@@ -422,7 +464,7 @@ def execute_aql_endpoint(
                 admin_bypass=admin_bypass,
                 bypass_reason=bypass_reason,
             )
-            results = list(cursor)
+            results, truncated = _read_rows(cursor, req.max_rows)
         except TenantScopeViolation as v:
             raise _tenant_violation_response(v) from v
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
@@ -431,6 +473,7 @@ def execute_aql_endpoint(
         "/execute-aql",
         exec_ms,
         rows=len(results),
+        truncated=truncated,
         aql_len=len(run_aql or ""),
         tenant_rewrites=len(layer4_changes),
     )
@@ -438,9 +481,11 @@ def execute_aql_endpoint(
         results=results,
         aql=run_aql,
         bind_vars=final_bind,
-        warnings=[],
+        warnings=[_truncation_warning(req.max_rows)] if truncated and req.max_rows is not None else [],
         exec_ms=exec_ms,
         tenantRewritesAql=layer4_changes,
+        truncated=truncated,
+        row_limit=req.max_rows,
     )
 
 

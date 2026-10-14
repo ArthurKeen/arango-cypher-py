@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
 import {
+  RESULT_ROW_LIMIT,
   apiBaseFor,
   examplesForGraph,
+  executeAql,
+  executeCypher,
   forceReacquireSchema,
   introspectSchema,
   normalizeSchemaWarnings,
@@ -167,5 +170,44 @@ describe("forceReacquireSchema", () => {
     );
     const result = await forceReacquireSchema("token");
     expect(result.warnings[0]).toMatchObject({ message: "odd", severity: "warning" });
+  });
+});
+
+describe("execute row cap", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // An unbounded result reached the browser as one 257 MB JSON document and
+  // never arrived ("Failed to fetch"); every Run asks for at most this many.
+  function stubExecute() {
+    // Typed like fetch, so the test can read the URL and init it was given.
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({ results: [], aql: "", bind_vars: {}, warnings: [], truncated: true, row_limit: 1000 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function sentBody(fetchMock: ReturnType<typeof stubExecute>): Record<string, unknown> {
+    const init = fetchMock.mock.calls[0][1];
+    return JSON.parse(String(init?.body));
+  }
+
+  it("asks /execute for at most RESULT_ROW_LIMIT rows", async () => {
+    const fetchMock = stubExecute();
+    const resp = await executeCypher({ cypher: "MATCH (n) RETURN n", mapping: {} }, "token");
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/execute$/);
+    expect(sentBody(fetchMock)).toMatchObject({ cypher: "MATCH (n) RETURN n", max_rows: RESULT_ROW_LIMIT });
+    expect(resp.truncated).toBe(true);
+  });
+
+  it("asks /execute-aql for at most RESULT_ROW_LIMIT rows", async () => {
+    const fetchMock = stubExecute();
+    await executeAql("FOR n IN c RETURN n", { x: 1 }, "token");
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/execute-aql$/);
+    expect(sentBody(fetchMock)).toEqual({ aql: "FOR n IN c RETURN n", bind_vars: { x: 1 }, max_rows: RESULT_ROW_LIMIT });
   });
 });
