@@ -73,7 +73,11 @@ analyzer = [
   # collections, so Cypher could not express them. Raising only the floor keeps
   # the ceiling shared: arango-sparql-py (>=0.12.1,<0.15.0) and r2g (>=0.13.0)
   # still co-resolve, at 0.14.1.
-  "arangodb-schema-analyzer>=0.14.1,<0.15.0",
+  # Ceiling <0.16.0 (2026-10-14, raised together with arango-sparql-py): 0.15
+  # groups an array-valued LPG type field by its primary label, so r2g's
+  # `labels: [...]` nodes become LABEL entities instead of one `Node` entity;
+  # the five symbols above are unchanged (signatures checked on 0.15.0).
+  "arangodb-schema-analyzer>=0.14.1,<0.16.0",
 ]
 service = [
   # Headless service installs (ServiceMaker / Container Manager /
