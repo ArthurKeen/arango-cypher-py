@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import logging as _log
 import time
 from typing import Any
@@ -52,7 +53,25 @@ def _rejected_by_database(v: TenantScopeViolation) -> Any | None:
     return cause if cause is not None and _is_rejected_aql(cause) else None
 
 
-def _aql_rejected_response(cause: Any, *, generated_aql: bool, aql_digest: str = "") -> HTTPException:
+def _inbox_example(cypher: str | None, aql: str, bind_vars: dict[str, Any] | None) -> dict[str, str]:
+    """What an error-inbox issue shows of the failing query: the Cypher, the
+    generated AQL, and the collection bind values only (other bind values are
+    the user's data)."""
+    collections = {k: v for k, v in (bind_vars or {}).items() if k.startswith("@")}
+    return {
+        "cypher": cypher or "",
+        "aql": aql or "",
+        "collections": json.dumps(collections, indent=1, sort_keys=True) if collections else "",
+    }
+
+
+def _aql_rejected_response(
+    cause: Any,
+    *,
+    generated_aql: bool,
+    aql_digest: str = "",
+    example: dict[str, str] | None = None,
+) -> HTTPException:
     """The response for AQL that ArangoDB rejected (HTTP 400) — at EXPLAIN,
     or at execution when no EXPLAIN ran (a session without a mapping).
 
@@ -75,7 +94,16 @@ def _aql_rejected_response(cause: Any, *, generated_aql: bool, aql_digest: str =
     detail: dict[str, Any] = {"error": error, "code": code, "message": message}
     if aql_digest:
         detail["aql_digest"] = aql_digest[:16]
-    return HTTPException(status_code=status, detail=detail)
+    exc = HTTPException(status_code=status, detail=detail)
+    if generated_aql:
+        # Our bug: the error handler files it in the error inbox (error_inbox.py).
+        exc.inbox_report = {  # type: ignore[attr-defined]
+            "kind": "translator",
+            "code": code,
+            "summary": f"ArangoDB error {err_num}: {reason}" if err_num else reason,
+            "details": example or {},
+        }
+    return exc
 
 
 def _is_rejected_aql(exc: BaseException) -> bool:
@@ -84,7 +112,9 @@ def _is_rejected_aql(exc: BaseException) -> bool:
     return isinstance(exc, ArangoServerError) and exc.http_code == 400
 
 
-def _tenant_violation_response(v: TenantScopeViolation, *, generated_aql: bool) -> HTTPException:
+def _tenant_violation_response(
+    v: TenantScopeViolation, *, generated_aql: bool, example: dict[str, str] | None = None
+) -> HTTPException:
     """Build the canonical 403 response for a Layer 5/6 tenant refusal.
 
     Must be raised **inside** any ``_translate_errors`` block so the
@@ -100,7 +130,9 @@ def _tenant_violation_response(v: TenantScopeViolation, *, generated_aql: bool) 
     """
     cause = _rejected_by_database(v)
     if cause is not None:
-        return _aql_rejected_response(cause, generated_aql=generated_aql, aql_digest=v.aql_digest)
+        return _aql_rejected_response(
+            cause, generated_aql=generated_aql, aql_digest=v.aql_digest, example=example
+        )
     return HTTPException(
         status_code=403,
         detail={
@@ -435,10 +467,14 @@ def execute_endpoint(
             )
             results, truncated = _read_rows(cursor, req.max_rows)
         except TenantScopeViolation as v:
-            raise _tenant_violation_response(v, generated_aql=True) from v
+            raise _tenant_violation_response(
+                v, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
+            ) from v
         except ArangoServerError as e:
             if _is_rejected_aql(e):
-                raise _aql_rejected_response(e, generated_aql=True) from e
+                raise _aql_rejected_response(
+                    e, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
+                ) from e
             raise
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
     if truncated and req.max_rows is not None:
@@ -673,10 +709,14 @@ def aql_profile_endpoint(
             stats = cursor.statistics()
             profile_data = cursor.profile() if hasattr(cursor, "profile") else None
         except TenantScopeViolation as v:
-            raise _tenant_violation_response(v, generated_aql=True) from v
+            raise _tenant_violation_response(
+                v, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
+            ) from v
         except ArangoServerError as e:
             if _is_rejected_aql(e):
-                raise _aql_rejected_response(e, generated_aql=True) from e
+                raise _aql_rejected_response(
+                    e, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
+                ) from e
             raise
     exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
 

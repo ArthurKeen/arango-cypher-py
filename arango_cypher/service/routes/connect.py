@@ -16,6 +16,7 @@ from ..._arango_sync import sync
 from ..._env import read_arango_password
 from ...api import get_cypher_profile
 from ..app import _PUBLIC_MODE, _svc_logger, app
+from ..error_inbox import get_inbox
 from ..models import (
     BindGraphRequest,
     BindTenantRequest,
@@ -391,6 +392,9 @@ def platform_diagnostics(request: Request) -> dict[str, Any]:
                 report["sidecar"]["minted_token"] = token_facts(minted)
                 if endpoint:
                     report["sidecar"]["minted_token_request"] = endpoint_answer(endpoint, minted, verify)
+    # Where this service's own bugs are reported (error_inbox.py); never the token.
+    inbox = get_inbox()
+    report["error_inbox"] = inbox.status() if inbox is not None else {"enabled": False}
     return report
 
 
