@@ -442,6 +442,20 @@ gated by `CACHE_SCHEMA_VERSION`). The persistent tier survives restarts and is
 shared across replicas. Exposed via `GET /schema/status` and
 `POST /schema/invalidate-cache`.
 
+**Service collections are not user data.** arango-cypher-py and
+arango-sparql-py each keep a schema cache and mined examples in the databases
+they serve: `arango_cypher_schema_cache`, `arango_cypher_examples`,
+`arango_sparql_schema_cache` and `arango_sparql_examples`. This service's
+two use their configured names. None of them may appear in an analyzed
+schema: not as a class, shard family, statistic, sharding-profile entry or OWL
+class. All four are excluded from both fingerprints, so one app's cache writes
+never make the other re-analyze. Every analysis tier (the analyzer, the
+heuristic detector and mapping builder, the fallback fingerprint) sees the
+database through `hide_service_collections`
+(`arango_cypher/service_collections.py`), whose `collections()` leaves them
+out, because the analyzer itself skips only `_` system collections (issue #19;
+mirrors arango-sparql-py's `schema/acquire.py`).
+
 ---
 
 ## 8. Cypher → AQL transpiler
