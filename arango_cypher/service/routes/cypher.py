@@ -9,6 +9,7 @@ import logging as _log
 import time
 from typing import Any
 
+from arango.exceptions import ArangoServerError
 from arango_query_core import CoreError
 from fastapi import Depends, HTTPException
 
@@ -40,7 +41,50 @@ from ..security import (
 )
 
 
-def _tenant_violation_response(v: TenantScopeViolation) -> HTTPException:
+def _rejected_by_database(v: TenantScopeViolation) -> Any | None:
+    """The database error behind a Layer 5 refusal when ArangoDB rejected the
+    AQL itself (EXPLAIN answered HTTP 400: a syntax or semantic error), else
+    ``None``. Such a query is refused either way (fail-closed); it is just not
+    a tenant-scope problem, and must not be reported as one."""
+    if v.code != "EXPLAIN_FAILED":
+        return None
+    cause = v.__cause__
+    return cause if cause is not None and _is_rejected_aql(cause) else None
+
+
+def _aql_rejected_response(cause: Any, *, generated_aql: bool, aql_digest: str = "") -> HTTPException:
+    """The response for AQL that ArangoDB rejected (HTTP 400) — at EXPLAIN,
+    or at execution when no EXPLAIN ran (a session without a mapping).
+
+    For AQL this service generated (``/execute``, ``/aql-profile``) that is a
+    bug in Arango Cypher, not in the user's query: HTTP 500, and the message
+    says so. For AQL the caller supplied (``/execute-aql``) it is a 400.
+    """
+    reason = _sanitize_error(str(getattr(cause, "error_message", None) or cause))
+    err_num = getattr(cause, "error_code", None)
+    where = f" (ArangoDB error {err_num})" if err_num else ""
+    if generated_aql:
+        status, error, code = 500, "generated_aql_rejected", "GENERATED_AQL_REJECTED"
+        message = (
+            f"Arango Cypher translated this query into AQL that ArangoDB rejected: {reason}{where}. "
+            "This is a bug in Arango Cypher, not in your query."
+        )
+    else:
+        status, error, code = 400, "aql_rejected", "AQL_REJECTED"
+        message = f"ArangoDB rejected this AQL: {reason}{where}."
+    detail: dict[str, Any] = {"error": error, "code": code, "message": message}
+    if aql_digest:
+        detail["aql_digest"] = aql_digest[:16]
+    return HTTPException(status_code=status, detail=detail)
+
+
+def _is_rejected_aql(exc: BaseException) -> bool:
+    """Whether *exc* is ArangoDB answering 400 to an AQL request: the query
+    itself is invalid (syntax or semantics), not the data or the access."""
+    return isinstance(exc, ArangoServerError) and exc.http_code == 400
+
+
+def _tenant_violation_response(v: TenantScopeViolation, *, generated_aql: bool) -> HTTPException:
     """Build the canonical 403 response for a Layer 5/6 tenant refusal.
 
     Must be raised **inside** any ``_translate_errors`` block so the
@@ -49,7 +93,14 @@ def _tenant_violation_response(v: TenantScopeViolation) -> HTTPException:
     raised inside that block would otherwise be masked as a generic
     HTTP 500 — hiding an actionable "connect with a tenant" refusal
     behind "Internal Server Error".
+
+    An EXPLAIN that ArangoDB rejected as invalid AQL is not a tenant refusal:
+    it gets :func:`_aql_rejected_response` instead (*generated_aql* says whose
+    AQL it was).
     """
+    cause = _rejected_by_database(v)
+    if cause is not None:
+        return _aql_rejected_response(cause, generated_aql=generated_aql, aql_digest=v.aql_digest)
     return HTTPException(
         status_code=403,
         detail={
@@ -384,7 +435,11 @@ def execute_endpoint(
             )
             results, truncated = _read_rows(cursor, req.max_rows)
         except TenantScopeViolation as v:
-            raise _tenant_violation_response(v) from v
+            raise _tenant_violation_response(v, generated_aql=True) from v
+        except ArangoServerError as e:
+            if _is_rejected_aql(e):
+                raise _aql_rejected_response(e, generated_aql=True) from e
+            raise
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
     if truncated and req.max_rows is not None:
         warnings.append(_truncation_warning(req.max_rows))
@@ -466,7 +521,11 @@ def execute_aql_endpoint(
             )
             results, truncated = _read_rows(cursor, req.max_rows)
         except TenantScopeViolation as v:
-            raise _tenant_violation_response(v) from v
+            raise _tenant_violation_response(v, generated_aql=False) from v
+        except ArangoServerError as e:
+            if _is_rejected_aql(e):
+                raise _aql_rejected_response(e, generated_aql=False) from e
+            raise
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
 
     log_endpoint_timing(
@@ -614,7 +673,11 @@ def aql_profile_endpoint(
             stats = cursor.statistics()
             profile_data = cursor.profile() if hasattr(cursor, "profile") else None
         except TenantScopeViolation as v:
-            raise _tenant_violation_response(v) from v
+            raise _tenant_violation_response(v, generated_aql=True) from v
+        except ArangoServerError as e:
+            if _is_rejected_aql(e):
+                raise _aql_rejected_response(e, generated_aql=True) from e
+            raise
     exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
 
     log_endpoint_timing(

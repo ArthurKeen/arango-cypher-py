@@ -128,18 +128,35 @@ function apiBase(): string {
 export const AUTH_EXPIRED_MESSAGE =
   "Your session has expired. Please re-authenticate to the database.";
 
+// fetch() rejects with a bare TypeError ("Failed to fetch", "NetworkError when
+// attempting to fetch resource", "Load failed") when the connection drops —
+// including after a 200, while the body is still arriving. Say what happened
+// instead.
+export const CONNECTION_LOST_MESSAGE =
+  "Lost the connection to the Arango Cypher service before its answer arrived. " +
+  "Try again; if the query returns a lot of data, add LIMIT.";
+
+function connectionLost(err: unknown): unknown {
+  return err instanceof TypeError ? new ApiError(0, CONNECTION_LOST_MESSAGE) : err;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
   const { headers: extraHeaders, ...rest } = options;
-  const res = await fetch(apiBase() + path, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...(extraHeaders as Record<string, string>),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + path, {
+      ...rest,
+      headers: {
+        "Content-Type": "application/json",
+        ...(extraHeaders as Record<string, string>),
+      },
+    });
+  } catch (err) {
+    throw connectionLost(err);
+  }
   if (!res.ok) {
     if (res.status === 401) {
       // Drain the body so the connection is released, but don't
@@ -151,7 +168,11 @@ async function request<T>(
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail ?? body);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch (err) {
+    throw connectionLost(err);
+  }
 }
 
 function formatDetail(detail: unknown): string {
