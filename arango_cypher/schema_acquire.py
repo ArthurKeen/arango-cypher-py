@@ -38,6 +38,7 @@ from .schema_cache import (
     DEFAULT_CACHE_KEY,
     ArangoSchemaCache,
 )
+from .service_collections import hide_service_collections, service_collections
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -502,7 +503,7 @@ def _fallback_fingerprint(
         if isinstance(c, dict)
         and isinstance(c.get("name"), str)
         and not c["name"].startswith("_")
-        and c["name"] != cache_collection
+        and c["name"] not in service_collections(cache_collection)
     )
     parts = [db.name, *names]
     if include_counts:
@@ -539,7 +540,7 @@ def _shape_fingerprint(db: StandardDatabase, *, cache_collection: str = DEFAULT_
     except ImportError:
         return _fallback_fingerprint(db, include_counts=False, cache_collection=cache_collection)
 
-    return fingerprint_physical_shape(db, exclude_collections={cache_collection})
+    return fingerprint_physical_shape(db, exclude_collections=set(service_collections(cache_collection)))
 
 
 def _full_fingerprint(db: StandardDatabase, *, cache_collection: str = DEFAULT_CACHE_COLLECTION) -> str:
@@ -560,7 +561,7 @@ def _full_fingerprint(db: StandardDatabase, *, cache_collection: str = DEFAULT_C
     except ImportError:
         return _fallback_fingerprint(db, include_counts=True, cache_collection=cache_collection)
 
-    return fingerprint_physical_counts(db, exclude_collections={cache_collection})
+    return fingerprint_physical_counts(db, exclude_collections=set(service_collections(cache_collection)))
 
 
 @dataclass(frozen=True)
@@ -742,6 +743,7 @@ def classify_schema(db: StandardDatabase) -> str:
     - If mixed -> hybrid
     - If unclear -> unknown
     """
+    db = hide_service_collections(db)
     try:
         all_cols = sync(db.collections())
     except Exception:
@@ -1629,6 +1631,7 @@ def _normalize_open_vocab_edges(
 
 def _build_heuristic_mapping(db: StandardDatabase, schema_type: str) -> MappingBundle:
     """Build a MappingBundle from heuristics for PG or LPG schemas."""
+    db = hide_service_collections(db)
     try:
         all_cols = sync(db.collections())
     except Exception as exc:
@@ -1863,6 +1866,9 @@ def acquire_mapping_bundle(
         ) from None
 
     analyzer = AgenticSchemaAnalyzer()
+    # The analyzer skips only system collections; the transpilers' own cache
+    # and examples collections would otherwise become classes (issue #19).
+    db = hide_service_collections(db)
     floor = min_type_value_count if min_type_value_count is not None else _default_min_type_value_count()
     if floor and floor > 0:
         # Only pass the kwarg when opted in, so older analyzer builds without the
@@ -2423,7 +2429,13 @@ def get_mapping(
             else:
                 logger.info("Schema shape changed for %s; full re-introspection", key)
 
-    bundle = _build_fresh_bundle(db, strategy=strategy, include_owl=include_owl, graph_name=graph_name)
+    bundle = _build_fresh_bundle(
+        db,
+        strategy=strategy,
+        include_owl=include_owl,
+        graph_name=graph_name,
+        cache_collection=cache_collection,
+    )
     bundle = _safe_refresh_statistics(db, bundle)
     if key:
         _save_cache(db, key, bundle, shape_fp, full_fp, persistent)
@@ -2436,14 +2448,19 @@ def _build_fresh_bundle(
     strategy: str,
     include_owl: bool,
     graph_name: str | None = None,
+    cache_collection: str | None = None,
 ) -> MappingBundle:
     """Run the chosen acquisition strategy and attach OWL Turtle if requested.
+
+    The analysis sees the database without the service collections (this
+    service's cache as configured, see :mod:`arango_cypher.service_collections`).
 
     When ``graph_name`` is set the freshly-built (whole-database) bundle is
     filtered down to that named graph's collection membership before statistics
     are computed, so the scoped view never carries non-member collections
     (PRD §17.4).
     """
+    db = hide_service_collections(db, cache_collection)
     if strategy == "analyzer":
         bundle = acquire_mapping_bundle(db, include_owl=include_owl)
     elif strategy == "heuristic":
