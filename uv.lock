@@ -165,16 +165,16 @@ wheels = [
 
 [[package]]
 name = "arangodb-schema-analyzer"
-version = "0.15.0"
+version = "0.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "python-arango" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/01/8f62003487674398d595eef322f995e4448fd11545afdc734600b42edbd4/arangodb_schema_analyzer-0.15.0.tar.gz", hash = "sha256:1156b979e7e6785dc9e398f68d7b69e7e375d8b6d971b5611324e7b429cbf7d9", size = 222526, upload-time = "2026-10-13T23:50:34.975Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/29/bd379475a6785bffb79e5650958fd426822d222ad10b1358c351451e3290/arangodb_schema_analyzer-0.15.1.tar.gz", hash = "sha256:0cf7d021d5ca39ed81ba25e66065069a14d98245906863da08e64b01e7e63a7a", size = 224767, upload-time = "2026-10-16T16:17:38.75Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/3d/432f70cba913ac4d30804f5ab94f243e5f1d4e4803ae201eb607c76ea01c/arangodb_schema_analyzer-0.15.0-py3-none-any.whl", hash = "sha256:e7b1baf5f64dd229c8d9b5a25e363a2ce95f2219e578d8e714173c66ca84e5f1", size = 220045, upload-time = "2026-10-13T23:50:33.173Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/b4/1f52d08f78f4c36b876270667fe32570cd851716419c39b411ccc60cd902/arangodb_schema_analyzer-0.15.1-py3-none-any.whl", hash = "sha256:c9f3595792e2e6a36877b04486a6db4054d1a59495a46ce87a4173c50ee69069", size = 221738, upload-time = "2026-10-16T16:17:37.014Z" },
 ]
 
 [[package]]
