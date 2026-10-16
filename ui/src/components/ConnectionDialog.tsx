@@ -7,6 +7,7 @@ import {
   getPlatformStatus,
   introspectSchema,
   introspectSchemaUntilReady,
+  watchSchemaRecheck,
   introspectToMapping,
   type ConnectDefaults,
   type ConnectResponse,
@@ -34,6 +35,9 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
   // null until GET /connect/platform answers (or fails on an older backend).
   const [platform, setPlatform] = useState<PlatformStatus | null>(null);
   const autoConnectAttempted = useRef(false);
+  // Stops polling for a background schema recheck (see watchSchemaRecheck).
+  const recheckCancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancelRef.current?.(), []);
 
   useEffect(() => {
     if (connection.status === "disconnected") {
@@ -167,6 +171,14 @@ export default function ConnectionDialog({ connection, introspecting, analyzing,
             mapping,
             warnings: schema.warnings ?? [],
           });
+          recheckCancelRef.current?.();
+          recheckCancelRef.current = watchSchemaRecheck(resp.token, schema, (fresh) =>
+            dispatch({
+              type: "INTROSPECT_SUCCESS",
+              mapping: introspectToMapping(fresh),
+              warnings: fresh.warnings ?? [],
+            }),
+          );
         }
       } catch (introspectErr) {
         console.warn("Schema introspection failed:", introspectErr);

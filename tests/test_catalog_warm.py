@@ -44,8 +44,10 @@ def test_schedule_warm_runs_get_mapping(monkeypatch):
     done = threading.Event()
     calls: list[dict] = []
 
-    def _fake_get_mapping(db, *, force_refresh=False, graph_name=None):
-        calls.append({"db": db, "force_refresh": force_refresh, "graph_name": graph_name})
+    def _fake_get_mapping(db, *, force_refresh=False, graph_name=None, revalidate=False):
+        calls.append(
+            {"db": db, "force_refresh": force_refresh, "graph_name": graph_name, "revalidate": revalidate}
+        )
         done.set()
         return object()
 
@@ -66,6 +68,7 @@ def test_schedule_warm_runs_get_mapping(monkeypatch):
 
     assert len(calls) == 1
     assert calls[0]["force_refresh"] is True
+    assert calls[0]["revalidate"] is False
     assert calls[0]["graph_name"] == "g1"
 
 
@@ -76,7 +79,7 @@ def test_schedule_warm_dedupes_concurrent_targets(monkeypatch):
     entered = threading.Event()
     call_count = {"n": 0}
 
-    def _blocking_get_mapping(db, *, force_refresh=False, graph_name=None):
+    def _blocking_get_mapping(db, *, force_refresh=False, graph_name=None, revalidate=False):
         call_count["n"] += 1
         entered.set()
         release.wait(timeout=5.0)
@@ -114,7 +117,7 @@ def test_schedule_warm_clears_flag_on_failure(monkeypatch):
 
     done = threading.Event()
 
-    def _boom(db, *, force_refresh=False, graph_name=None):
+    def _boom(db, *, force_refresh=False, graph_name=None, revalidate=False):
         try:
             raise RuntimeError("analyzer exploded")
         finally:
@@ -142,3 +145,22 @@ def test_schedule_warm_rejects_nameless_handle():
 
 def test_schedule_warm_rejects_empty_name():
     assert warm.schedule_warm(_FakeDB(""), None) is False
+
+
+def test_a_recheck_revalidates_instead_of_forcing(monkeypatch):
+    """``force=False``: compare fingerprints even inside the cache TTL, and
+    re-analyze only if they changed — never an unconditional rebuild."""
+    from arango_cypher import schema_acquire
+
+    done = threading.Event()
+    calls: list[dict] = []
+
+    def _fake_get_mapping(db, *, force_refresh=False, graph_name=None, revalidate=False):
+        calls.append({"force_refresh": force_refresh, "revalidate": revalidate})
+        done.set()
+        return object()
+
+    monkeypatch.setattr(schema_acquire, "get_mapping", _fake_get_mapping)
+    assert warm.schedule_warm(_FakeDB("recheck-db"), None, force=False) is True
+    assert done.wait(timeout=5.0)
+    assert calls == [{"force_refresh": False, "revalidate": True}]

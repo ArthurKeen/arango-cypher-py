@@ -12,6 +12,7 @@ import {
   executeCypher,
   forceReacquireSchema,
   introspectSchema,
+  watchSchemaRecheck,
   normalizeSchemaWarnings,
   noteCode,
   type MinedExample,
@@ -288,5 +289,76 @@ describe("errors the service reported to the team", () => {
 
   it("leave errors without a report unchanged", () => {
     expect(new ApiError(422, { message: "Unknown label" }).message).toBe("Unknown label");
+  });
+});
+
+describe("watchSchemaRecheck", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const ready = (hash: string, rechecking: boolean) =>
+    new Response(JSON.stringify({ status: "ready", entities: [], relationships: [], rechecking, schema_hash: hash }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  function stubPolls(...answers: Array<Response | Error>) {
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      const next = answers.shift();
+      if (!next) throw new Error("unexpected poll");
+      if (next instanceof Error) throw next;
+      return next;
+    });
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  const current = { status: "ready" as const, entities: [], relationships: [], rechecking: true, schema_hash: "old" };
+
+  it("swaps in the schema a finished recheck changed", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubPolls(ready("old", true), ready("new", false));
+    const onChange = vi.fn();
+    watchSchemaRecheck("t", current, onChange, { delayMs: 1000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onChange).not.toHaveBeenCalled(); // still rechecking
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ schema_hash: "new" }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // and stops
+  });
+
+  it("leaves an unchanged schema alone", async () => {
+    vi.useFakeTimers();
+    stubPolls(ready("old", false));
+    const onChange = vi.fn();
+    watchSchemaRecheck("t", current, onChange, { delayMs: 1000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no recheck is running", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubPolls();
+    watchSchemaRecheck("t", { ...current, rechecking: false }, vi.fn(), { delayMs: 1000 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops when cancelled or when a poll fails", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubPolls(new TypeError("Failed to fetch"));
+    const onChange = vi.fn();
+    watchSchemaRecheck("t", current, onChange, { delayMs: 1000 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const cancel = watchSchemaRecheck("t", current, onChange, { delayMs: 1000 });
+    cancel();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

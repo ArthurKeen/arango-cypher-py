@@ -2333,8 +2333,14 @@ def get_mapping(
     cache_key: str = DEFAULT_CACHE_KEY,
     force_refresh: bool = False,
     graph_name: str | None = None,
+    revalidate: bool = False,
 ) -> MappingBundle:
     """3-tier mapping acquisition with two-tier caching.
+
+    ``revalidate=True`` skips only the TTL fast path: the live fingerprints are
+    always compared with the cached schema's, and the schema is re-analyzed
+    only if they differ (a background recheck; ``force_refresh`` rebuilds
+    unconditionally).
 
     Strategies
     ----------
@@ -2387,7 +2393,7 @@ def get_mapping(
     # TTL fast-path: a recently-validated cache entry is trusted without the
     # expensive live-database fingerprint walk (the dominant cost on remote
     # clusters). force_refresh skips this so "Refresh schema" always rebuilds.
-    if not force_refresh:
+    if not force_refresh and not revalidate:
         fresh = _fresh_cached_bundle(db, key, persistent, CACHE_TTL_SECONDS)
         if fresh is not None:
             return fresh

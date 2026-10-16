@@ -806,6 +806,11 @@ export interface IntrospectResult {
   // database has not been analyzed yet (the sidecar/background warm is working
   // on it). Absent on older servers — treat undefined as "ready".
   status?: "ready" | "pending";
+  // The server is rechecking this (cached) schema against the database in the
+  // background; poll with watchSchemaRecheck to pick up a replacement.
+  rechecking?: boolean;
+  // Identifies the schema served; changes when a recheck replaced it.
+  schema_hash?: string;
 }
 
 // The service normalizes schema warnings to {code, message, severity}; this
@@ -932,6 +937,45 @@ export async function forceReacquireSchema(
     headers: authHeaders(token),
   });
   return { ...result, warnings: normalizeSchemaWarnings(result.warnings) };
+}
+
+/**
+ * After a schema that came back with `rechecking`, keep polling quietly until
+ * the server's background recheck is done, then call `onChange` with the new
+ * schema — only if it differs (`schema_hash`), so an unchanged database costs
+ * the UI nothing. Returns a function that stops the polling. Polling also
+ * stops when a poll fails (the session ended or the service is unreachable):
+ * the schema on screen stays valid, it just isn't refreshed.
+ */
+export function watchSchemaRecheck(
+  token: string,
+  current: IntrospectResult,
+  onChange: (fresh: IntrospectResult) => void,
+  opts: { delayMs?: number; maxAttempts?: number } = {},
+): () => void {
+  const { delayMs = 10_000, maxAttempts = 60 } = opts;
+  let cancelled = false;
+  if (!current.rechecking) return () => {};
+  void (async () => {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await sleep(delayMs);
+      if (cancelled) return;
+      let next: IntrospectResult;
+      try {
+        next = await introspectSchema(token, 50, false);
+      } catch {
+        return; // documented above: a failed poll ends the watch
+      }
+      if (cancelled) return;
+      if (next.status === "ready" && !next.rechecking) {
+        if (next.schema_hash !== current.schema_hash) onChange(next);
+        return;
+      }
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
 }
 
 export function introspectToMapping(
