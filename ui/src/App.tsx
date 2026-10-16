@@ -43,6 +43,7 @@ import {
   bindGraph,
   introspectSchema,
   introspectSchemaUntilReady,
+  watchSchemaRecheck,
   introspectToMapping,
   isAuthError,
   isTranspileFallbackError,
@@ -819,9 +820,15 @@ export default function App() {
   // is reflected in the mapping. Uses the cache (force=false): each scope
   // has its own cache slot, so this is cheap on rehydrate. Shared by the
   // graph picker and the rehydrate path.
+  // Stops polling for a background schema recheck (see watchSchemaRecheck).
+  const recheckCancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancelRef.current?.(), []);
+
   const reintrospectScoped = useCallback(
     async (token: string, opts: { force?: boolean } = {}) => {
       const force = opts.force ?? false;
+      recheckCancelRef.current?.();
+      recheckCancelRef.current = null;
       dispatch({ type: "INTROSPECT_START", analyzing: force });
       try {
         // Catalog model: a read serves the analyzed mapping the sidecar keeps
@@ -841,6 +848,15 @@ export default function App() {
             mapping,
             warnings: schema.warnings ?? [],
           });
+          // The server may be rechecking this cached schema against the
+          // database; swap in the new one quietly when it changes.
+          recheckCancelRef.current = watchSchemaRecheck(token, schema, (fresh) =>
+            dispatch({
+              type: "INTROSPECT_SUCCESS",
+              mapping: introspectToMapping(fresh),
+              warnings: fresh.warnings ?? [],
+            }),
+          );
         }
       } catch (err) {
         dispatch({
