@@ -68,3 +68,36 @@ def test_genuine_tenant_refusals_are_unchanged() -> None:
         "aql_digest": "a" * 16,
         "plan_digest": "",
     }
+
+
+# A collection that does not exist (ERR 1203, HTTP 404) — the schema mapping is
+# out of date. Seen live on BYOC as "403 tenant_scope_violation".
+NOT_FOUND = "collection or view not found: name: IAM-AWS-DOCS-DEMO_Chunks (while parsing)"
+
+
+def test_a_missing_collection_in_generated_aql_means_the_schema_is_out_of_date() -> None:
+    v = _violation(server_error(AQLQueryExplainError, 404, 1203, NOT_FOUND))
+    resp = _tenant_violation_response(v, generated_aql=True)
+    assert resp.status_code == 409
+    assert resp.detail["code"] == "SCHEMA_OUT_OF_DATE"
+    assert resp.detail["collection"] == "IAM-AWS-DOCS-DEMO_Chunks"
+    assert "Click Refresh schema" in resp.detail["message"]
+    assert "tenant" not in resp.detail["message"]
+    assert not hasattr(resp, "inbox_report")  # not our bug: never filed
+
+
+def test_a_missing_collection_in_supplied_aql_is_a_400() -> None:
+    v = _violation(server_error(AQLQueryExplainError, 404, 1203, NOT_FOUND))
+    resp = _tenant_violation_response(v, generated_aql=False)
+    assert resp.status_code == 400 and resp.detail["code"] == "AQL_UNKNOWN_COLLECTION"
+    assert "'IAM-AWS-DOCS-DEMO_Chunks'" in resp.detail["message"]
+
+
+def test_the_execution_time_message_shape_names_the_collection_too() -> None:
+    from arango_cypher.service.routes.cypher import _aql_rejected_response
+
+    cause = server_error(
+        AQLQueryExecuteError, 404, 1203, "AQL: collection or view not found: nosuch (while parsing)"
+    )
+    resp = _aql_rejected_response(cause, generated_aql=True)
+    assert resp.status_code == 409 and resp.detail["collection"] == "nosuch"

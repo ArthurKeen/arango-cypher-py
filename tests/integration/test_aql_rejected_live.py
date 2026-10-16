@@ -98,3 +98,43 @@ def test_valid_aql_still_runs(session: tuple[Any, TestClient, str]) -> None:
         "/execute-aql", json={"aql": "FOR u IN users RETURN u.n"}, headers={"X-Arango-Session": token}
     )
     assert resp.status_code == 200 and resp.json()["results"] == [1]
+
+
+_STALE_MAPPING = {
+    "conceptualSchema": {
+        "entities": [{"labels": ["Gone"], "name": "Gone", "properties": []}],
+        "relationships": [],
+    },
+    "physicalMapping": {
+        "entities": {"Gone": {"collectionName": "dropped_since_analysis", "style": "COLLECTION"}},
+        "relationships": {},
+    },
+    "metadata": {},
+}
+
+
+def test_a_mapping_naming_a_dropped_collection_says_refresh_the_schema(
+    session: tuple[Any, TestClient, str],
+) -> None:
+    _, client, token = session
+    resp = client.post(
+        "/execute",
+        json={"cypher": "MATCH (g:Gone) RETURN g", "mapping": _STALE_MAPPING},
+        headers={"X-Arango-Session": token},
+    )
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "SCHEMA_OUT_OF_DATE" and detail["collection"] == "dropped_since_analysis"
+    assert "report" not in resp.json()
+
+
+def test_supplied_aql_naming_a_missing_collection_is_a_400(session: tuple[Any, TestClient, str]) -> None:
+    _, client, token = session
+    resp = client.post(
+        "/execute-aql",
+        json={"aql": "FOR x IN no_such_collection RETURN x"},
+        headers={"X-Arango-Session": token},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == "AQL_UNKNOWN_COLLECTION"
+    assert resp.json()["detail"]["collection"] == "no_such_collection"

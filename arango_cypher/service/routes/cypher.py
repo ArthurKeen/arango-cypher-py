@@ -7,6 +7,7 @@ from __future__ import annotations
 import itertools
 import json
 import logging as _log
+import re
 import time
 from typing import Any
 
@@ -44,13 +45,16 @@ from ..security import (
 
 def _rejected_by_database(v: TenantScopeViolation) -> Any | None:
     """The database error behind a Layer 5 refusal when ArangoDB rejected the
-    AQL itself (EXPLAIN answered HTTP 400: a syntax or semantic error), else
-    ``None``. Such a query is refused either way (fail-closed); it is just not
-    a tenant-scope problem, and must not be reported as one."""
+    query itself — invalid AQL (HTTP 400) or a collection that does not exist
+    (ERR 1203) — else ``None``. Such a query is refused either way
+    (fail-closed); it is just not a tenant-scope problem, and must not be
+    reported as one."""
     if v.code != "EXPLAIN_FAILED":
         return None
     cause = v.__cause__
-    return cause if cause is not None and _is_rejected_aql(cause) else None
+    if cause is not None and (_is_rejected_aql(cause) or _is_unknown_collection(cause)):
+        return cause
+    return None
 
 
 def _inbox_example(cypher: str | None, aql: str, bind_vars: dict[str, Any] | None) -> dict[str, str]:
@@ -77,8 +81,11 @@ def _aql_rejected_response(
 
     For AQL this service generated (``/execute``, ``/aql-profile``) that is a
     bug in Arango Cypher, not in the user's query: HTTP 500, and the message
-    says so. For AQL the caller supplied (``/execute-aql``) it is a 400.
+    says so. For AQL the caller supplied (``/execute-aql``) it is a 400. A
+    collection that does not exist is neither: :func:`_unknown_collection_response`.
     """
+    if _is_unknown_collection(cause):
+        return _unknown_collection_response(cause, generated_aql=generated_aql)
     reason = _sanitize_error(str(getattr(cause, "error_message", None) or cause))
     err_num = getattr(cause, "error_code", None)
     where = f" (ArangoDB error {err_num})" if err_num else ""
@@ -110,6 +117,58 @@ def _is_rejected_aql(exc: BaseException) -> bool:
     """Whether *exc* is ArangoDB answering 400 to an AQL request: the query
     itself is invalid (syntax or semantics), not the data or the access."""
     return isinstance(exc, ArangoServerError) and exc.http_code == 400
+
+
+#: ArangoDB's "collection or view not found" (ERR_ARANGO_DATA_SOURCE_NOT_FOUND).
+_ERR_DATA_SOURCE_NOT_FOUND = 1203
+_NOT_FOUND_NAME_RE = re.compile(r"not found: (?:name: )?(.+?)(?: \(while [a-z ]+\))?$")
+
+
+def _is_unknown_collection(exc: BaseException) -> bool:
+    """Whether *exc* is ArangoDB saying a collection the query names does not
+    exist — for mapping-generated AQL, the schema is out of date."""
+    return isinstance(exc, ArangoServerError) and exc.error_code == _ERR_DATA_SOURCE_NOT_FOUND
+
+
+def _unknown_collection_response(cause: Any, *, generated_aql: bool) -> HTTPException:
+    """The response for a query naming a collection the database does not have.
+
+    For AQL built from the schema mapping (``/execute``, ``/aql-profile``) the
+    mapping is out of date: the database changed after its schema was
+    analyzed. That is neither the user's mistake nor a bug here, so it is a
+    409 that says how to fix it (Refresh schema), not a 403 "tenant scope
+    violation". For AQL the caller supplied (``/execute-aql``) it is a 400.
+    """
+    text = str(getattr(cause, "error_message", None) or cause)
+    match = _NOT_FOUND_NAME_RE.search(text.strip())
+    name = _sanitize_error(match.group(1)) if match else None
+    named = f" ({name!r})" if name else ""
+    if generated_aql:
+        return HTTPException(
+            status_code=409,
+            detail={
+                "error": "stale_mapping",
+                "code": "SCHEMA_OUT_OF_DATE",
+                "collection": name,
+                "message": (
+                    f"The schema Arango Cypher is using names a collection that is not in this "
+                    f"database{named}: the database has changed since its schema was analyzed. "
+                    "Click Refresh schema, then run the query again."
+                ),
+            },
+        )
+    return HTTPException(
+        status_code=400,
+        detail={
+            "error": "aql_unknown_collection",
+            "code": "AQL_UNKNOWN_COLLECTION",
+            "collection": name,
+            "message": (
+                f"This AQL uses a collection that is not in this database{named}. If the AQL "
+                "came from the schema (for example the AI), click Refresh schema and try again."
+            ),
+        },
+    )
 
 
 def _tenant_violation_response(
@@ -471,7 +530,7 @@ def execute_endpoint(
                 v, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
             ) from v
         except ArangoServerError as e:
-            if _is_rejected_aql(e):
+            if _is_rejected_aql(e) or _is_unknown_collection(e):
                 raise _aql_rejected_response(
                     e, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
                 ) from e
@@ -559,7 +618,7 @@ def execute_aql_endpoint(
         except TenantScopeViolation as v:
             raise _tenant_violation_response(v, generated_aql=False) from v
         except ArangoServerError as e:
-            if _is_rejected_aql(e):
+            if _is_rejected_aql(e) or _is_unknown_collection(e):
                 raise _aql_rejected_response(e, generated_aql=False) from e
             raise
         exec_ms = round((time.perf_counter() - t_exec) * 1000, 1)
@@ -713,7 +772,7 @@ def aql_profile_endpoint(
                 v, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
             ) from v
         except ArangoServerError as e:
-            if _is_rejected_aql(e):
+            if _is_rejected_aql(e) or _is_unknown_collection(e):
                 raise _aql_rejected_response(
                     e, generated_aql=True, example=_inbox_example(req.cypher, run_aql, run_bind)
                 ) from e
