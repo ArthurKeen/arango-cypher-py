@@ -156,11 +156,11 @@ deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/ar
 
 [[package]]
 name = "arango-query-core"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d1/1a/2f4e183e963fef036180bad454348c401c1863361d10c25bd419823bd1f8/arango_query_core-0.2.0.tar.gz", hash = "sha256:9f81366eded22167a2a04bce3d918f25f1b7fa59b8bfddd32d86cb4a3665b970", size = 79434, upload-time = "2026-08-23T02:45:37.98Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/a2/1ee1a32abf9493e95cdae57adcf80d3f0eb0fcd43a4ce54d23b247bba8ef/arango_query_core-0.2.1.tar.gz", hash = "sha256:0c25ddb1469f0c024760c7a5af6a083c73d56e3dcdbe8333051bad402874759e", size = 81641, upload-time = "2026-10-16T17:38:02.091Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/d2/82266793d0ee2876c5b751622d0fe599b35da5e2b97e7f3f8b38fa938b73/arango_query_core-0.2.0-py3-none-any.whl", hash = "sha256:428c754f0b563a42828b55fa42c7a63b6b307e5099dcc6d0971d0d901f215d14", size = 59804, upload-time = "2026-08-23T02:45:36.89Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/14/97410c37868ccc4aabb6caa38ac54875281da225f1f9429a657c5589c4ba/arango_query_core-0.2.1-py3-none-any.whl", hash = "sha256:9cfeaa1eed3a6bf325d4a4684e3cc87fce328806a882bfeecadd8cf2f52540bb", size = 60844, upload-time = "2026-10-16T17:38:00.721Z" },
 ]
 
 [[package]]
