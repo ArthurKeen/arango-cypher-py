@@ -277,7 +277,12 @@ Endpoint families (all under `arango_cypher.service`):
   refusal: when the service generated the AQL (`/execute`, `/aql-profile`) it
   is a 500 `GENERATED_AQL_REJECTED` whose message says it is a bug in Arango
   Cypher, not in the user's query; AQL the caller supplied (`/execute-aql`)
-  is a 400 `AQL_REJECTED`. A connection that drops before the answer arrives
+  is a 400 `AQL_REJECTED`. A query naming a collection the database does not
+  have (ERR 1203) is not a tenant refusal either. Built from the schema
+  mapping, it means the database changed after its schema was analyzed: a 409
+  `SCHEMA_OUT_OF_DATE` naming the collection and saying to click Refresh
+  schema. In AQL the caller supplied, it is a 400 `AQL_UNKNOWN_COLLECTION`.
+  Neither is reported to the error inbox. A connection that drops before the answer arrives
   (even after a 200, mid-body) reads in the Workbench as a lost connection
   with the advice to retry or add LIMIT, not as "Failed to fetch".
 - **NL → Cypher / AQL** — `POST /nl2cypher`, `POST /nl2aql` (responses carry
