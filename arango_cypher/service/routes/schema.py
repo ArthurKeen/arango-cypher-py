@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from arango.database import StandardDatabase
-from arango_query_core import MappingBundle, MappingResolver
+from arango_query_core import MappingBundle, MappingResolver, mapping_hash
 from fastapi import Depends, HTTPException
 
 from ..._arango_sync import bind, sync
@@ -24,6 +27,61 @@ from ..security import (
     _translate_errors,
     background_database,
 )
+
+_log = logging.getLogger("arango_cypher.service")
+
+#: Seconds between background rechecks of a served schema, per database and
+#: graph (``ARANGO_CYPHER_SCHEMA_RECHECK_S``; 0 turns rechecks off).
+_DEFAULT_RECHECK_S = 300.0
+_last_recheck: dict[tuple[str, str], float] = {}
+_recheck_lock = threading.Lock()
+
+
+def _recheck_interval_s() -> float:
+    raw = os.environ.get("ARANGO_CYPHER_SCHEMA_RECHECK_S", "").strip()
+    if not raw:
+        return _DEFAULT_RECHECK_S
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        _log.warning("ARANGO_CYPHER_SCHEMA_RECHECK_S=%r is not a number; using %ss", raw, _DEFAULT_RECHECK_S)
+        return _DEFAULT_RECHECK_S
+
+
+def _note_fresh(db_name: str, graph_name: str | None) -> None:
+    """Record that this schema was just analyzed (no recheck needed yet)."""
+    with _recheck_lock:
+        _last_recheck[(db_name, graph_name or "")] = time.monotonic()
+
+
+def _maybe_recheck(session: _Session, graph_name: str | None) -> bool:
+    """Start a background recheck of the served (cached) schema when one is due;
+    return whether a recheck is running for it.
+
+    ``/schema/introspect`` serves the cached schema without looking at the
+    database, and on BYOC no catalog process re-analyzes it, so a database
+    that changed kept its old schema until someone clicked Refresh schema. A
+    recheck compares the live fingerprints in the background (never on the
+    request path: on a large database they cost seconds) and re-analyzes only
+    if the shape changed. It runs on the first serve after a restart, then at
+    most every ``ARANGO_CYPHER_SCHEMA_RECHECK_S`` seconds per database.
+    """
+    from ...catalog.warm import is_warming, schedule_warm
+
+    db_name = session.db.name
+    if is_warming(db_name, graph_name):
+        return True
+    interval = _recheck_interval_s()
+    if interval <= 0:
+        return False
+    key = (db_name, graph_name or "")
+    now = time.monotonic()
+    with _recheck_lock:
+        last = _last_recheck.get(key)
+        if last is not None and now - last < interval:
+            return False
+        _last_recheck[key] = now
+    return schedule_warm(background_database(session), graph_name, force=False)
 
 
 def _schedule_session_warm(session: _Session, graph_name: str | None) -> bool:
@@ -203,10 +261,14 @@ def schema_introspect(
     from ...schema_acquire import read_cached_mapping as _read_cached
 
     bundle: MappingBundle | None
+    rechecking = False
     if force:
         bundle = _get_mapping(db, force_refresh=True, graph_name=graph_name)
+        _note_fresh(db.name, graph_name)
     else:
         bundle = _read_cached(db, graph_name=graph_name)
+        if bundle is not None:
+            rechecking = _maybe_recheck(session, graph_name)
 
     if bundle is None:
         # True catalog miss: the sidecar has not analyzed this database yet.
@@ -250,11 +312,16 @@ def schema_introspect(
 
     result = _summarize_bundle(db, bundle)
     result["status"] = "ready"
+    # A recheck may replace this schema in the background: the Workbench polls
+    # while ``rechecking`` and swaps in the new one when ``schema_hash`` changes.
+    result["rechecking"] = rechecking
+    result["schema_hash"] = mapping_hash(bundle)
     log_endpoint_timing(
         "/schema/introspect",
         round((time.perf_counter() - t0) * 1000, 1),
         force=force,
         status="ready",
+        rechecking=rechecking,
         entities=len(result.get("entities") or []),
         relationships=len(result.get("relationships") or []),
         warnings=len(result["warnings"]),

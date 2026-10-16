@@ -55,8 +55,16 @@ def is_warming(db_name: str, graph_name: str | None = None) -> bool:
 def schedule_warm(
     db: StandardDatabase,
     graph_name: str | None = None,
+    *,
+    force: bool = True,
 ) -> bool:
     """Start a one-shot background warm for ``(db, graph_name)`` if not running.
+
+    *force* re-analyzes unconditionally (a catalog miss). ``force=False`` is a
+    **recheck**: ``get_mapping(revalidate=True)`` compares the live
+    fingerprints with the cached schema's, even inside the cache TTL, and
+    re-analyzes only if the shape changed (refreshing just the statistics when
+    only counts did, doing nothing when nothing did).
 
     Returns ``True`` when a new warm thread was started, ``False`` when a warm
     for the same target was already in flight (deduped) or the database name
@@ -81,14 +89,16 @@ def schedule_warm(
         # the analyzer/driver stack just to reference the warm scheduler.
         from ..schema_acquire import get_mapping
 
+        what = "warm" if force else "recheck"
         try:
             logger.info(
-                "Catalog warm starting (background): db=%s graph=%s",
+                "Catalog %s starting (background): db=%s graph=%s",
+                what,
                 db_name,
                 graph_name or "-",
             )
-            get_mapping(db, force_refresh=True, graph_name=graph_name)
-            logger.info("Catalog warm complete: db=%s graph=%s", db_name, graph_name or "-")
+            get_mapping(db, force_refresh=force, revalidate=not force, graph_name=graph_name)
+            logger.info("Catalog %s complete: db=%s graph=%s", what, db_name, graph_name or "-")
         except Exception:  # noqa: BLE001 - background best-effort; log and move on
             logger.warning(
                 "Catalog warm failed: db=%s graph=%s",

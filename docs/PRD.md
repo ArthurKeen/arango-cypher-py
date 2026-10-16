@@ -442,6 +442,19 @@ gated by `CACHE_SCHEMA_VERSION`). The persistent tier survives restarts and is
 shared across replicas. Exposed via `GET /schema/status` and
 `POST /schema/invalidate-cache`.
 
+**A served schema rechecks itself.** `GET /schema/introspect` answers from the
+cache and never fingerprints or analyzes on the request path, because on a
+large database the fingerprints alone cost seconds. Nothing else re-analyzes
+it where the catalog process doesn't run, as on BYOC. So introspect starts a
+background **recheck**: on the first serve after a restart, then at most every
+`ARANGO_CYPHER_SCHEMA_RECHECK_S` seconds per database and graph (default
+300; 0 turns it off). A recheck is `get_mapping(revalidate=True)`: it compares
+the live fingerprints with the cached schema's even inside the cache TTL. It
+re-analyzes only when the shape changed, refreshes statistics when only counts
+changed, and does nothing otherwise. A forced refresh counts as a fresh check.
+The response carries `rechecking` and `schema_hash`. The Workbench keeps
+polling while `rechecking` and swaps in the new schema when the hash changes.
+
 **Service collections are not user data.** arango-cypher-py and
 arango-sparql-py each keep a schema cache and mined examples in the databases
 they serve: `arango_cypher_schema_cache`, `arango_cypher_examples`,
