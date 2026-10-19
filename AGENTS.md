@@ -76,6 +76,12 @@ RUN_NL2CYPHER_EVAL=1 pytest tests/test_nl2cypher_eval_gate.py     # NL eval (nee
 - Additional enforced rules live in `.cursor/rules/` (read-before-write,
   test-what-you-touch, verify-before-done, incremental-over-atomic,
   comprehensiveness-over-simplification, modularity, checkpoint-regularly).
+- **Fix upstream, don't fork** (`.cursor/rules/fix-upstream-dont-fork.mdc`):
+  a gap in a library we own — arango-query-core above all — is fixed or filed in
+  that library, not worked around here. A workaround that cannot wait is marked
+  `# upstream: <owner>/<repo>#<n> — remove when <condition>`
+  (`tests/test_upstream_markers.py` checks the format) and removed in the pin
+  bump that ships the fix.
 
 ## Key files
 
