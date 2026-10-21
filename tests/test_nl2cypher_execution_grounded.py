@@ -3,7 +3,7 @@
 Covers:
 
 * ``explain_aql`` helper: success, DB failure, structured error payload.
-* ``_call_llm_with_retry`` retry loop: EXPLAIN failure feeds back into
+* the ``nl_to_cypher`` retry loop: EXPLAIN failure feeds back into
   the next prompt and a subsequent EXPLAIN success returns the second
   Cypher.
 * Offline bit-identity: with ``db=None`` the pre-WP-25.3 behaviour is
@@ -27,16 +27,24 @@ from arango_cypher.nl2cypher import (
     _build_schema_summary,
     nl_to_cypher,
 )
-from arango_cypher.nl2cypher._core import _call_llm_with_retry
 from tests.helpers.mapping_fixtures import mapping_bundle_for
-
-# The contract for both NL→Cypher loops (issue #24): every test runs on each.
-pytestmark = pytest.mark.usefixtures("nl_engine")
 
 
 @pytest.fixture
 def movies_mapping():
     return mapping_bundle_for("movies_pg")
+
+
+def _ask(question: str, mapping: Any, provider: Any, **kwargs: Any) -> Any:
+    """``nl_to_cypher`` with retrieval off, so only the retry loop is exercised."""
+    return nl_to_cypher(
+        question,
+        mapping=mapping,
+        llm_provider=provider,
+        use_fewshot=False,
+        use_entity_resolution=False,
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -307,8 +315,8 @@ class TestOfflineBitIdentity:
         assert captured["system"] == expected
 
 
-class TestCallLlmWithRetryDirect:
-    """Direct unit tests on ``_call_llm_with_retry`` with scripted providers."""
+class TestRetryLoopEdges:
+    """Edges of the ``nl_to_cypher`` retry loop, with scripted providers."""
 
     def test_empty_max_retries_zero_with_explain_fail(self, movies_mapping) -> None:
         """``max_retries=0`` with a single EXPLAIN-failing response → fail-closed.
@@ -320,15 +328,7 @@ class TestCallLlmWithRetryDirect:
         """
         provider = _Provider(["```cypher\nMATCH (n:A) RETURN n\n```"])
         db = _FakeDb(lambda a, b: {"error": True, "errorMessage": "bad"})
-        schema_summary = _build_schema_summary(movies_mapping)
-        res = _call_llm_with_retry(
-            "q",
-            schema_summary,
-            provider,
-            max_retries=0,
-            mapping=movies_mapping,
-            db=db,
-        )
+        res = _ask("q", movies_mapping, provider, max_retries=0, db=db)
         assert res is not None
         assert res.retries == 0
         assert res.method == "validation_failed"
@@ -375,7 +375,7 @@ class TestCallLlmWithRetryDirect:
 class TestValidationFailedFailClosed:
     """WP-29 D4: retry-budget exhaustion returns empty-cypher + structured method."""
 
-    def test_call_llm_with_retry_fails_closed_on_exhaustion(
+    def test_the_retry_loop_fails_closed_on_exhaustion(
         self,
         movies_mapping,
     ) -> None:
@@ -389,15 +389,7 @@ class TestValidationFailedFailClosed:
                 "nope",
             ]
         )
-        schema_summary = _build_schema_summary(movies_mapping)
-        res = _call_llm_with_retry(
-            "q",
-            schema_summary,
-            provider,
-            max_retries=2,
-            mapping=movies_mapping,
-            db=None,
-        )
+        res = _ask("q", movies_mapping, provider, max_retries=2, db=None)
         assert res is not None
         assert res.cypher == ""
         assert res.method == "validation_failed"
@@ -406,7 +398,7 @@ class TestValidationFailedFailClosed:
         assert "validation failed after 3 attempts" in res.explanation
         assert "Last attempted Cypher was:" in res.explanation
 
-    def test_call_llm_with_retry_does_not_write_invalid_cypher(
+    def test_the_retry_loop_does_not_write_invalid_cypher(
         self,
         movies_mapping,
     ) -> None:
@@ -414,15 +406,7 @@ class TestValidationFailedFailClosed:
         accidentally populate the editor — ``result.cypher`` is empty
         even though an invalid query was attempted."""
         provider = _Provider(["garbage garbage garbage"])
-        schema_summary = _build_schema_summary(movies_mapping)
-        res = _call_llm_with_retry(
-            "q",
-            schema_summary,
-            provider,
-            max_retries=0,
-            mapping=movies_mapping,
-            db=None,
-        )
+        res = _ask("q", movies_mapping, provider, max_retries=0, db=None)
         assert res is not None
         assert not res.cypher, (
             "validation_failed contract: UI must be unable to write "
@@ -438,16 +422,8 @@ class TestValidationFailedFailClosed:
         import logging
 
         provider = _Provider(["not cypher"])
-        schema_summary = _build_schema_summary(movies_mapping)
-        with caplog.at_level(logging.WARNING, logger="arango_cypher.nl2cypher._core"):
-            res = _call_llm_with_retry(
-                "q",
-                schema_summary,
-                provider,
-                max_retries=0,
-                mapping=movies_mapping,
-                db=None,
-            )
+        with caplog.at_level(logging.WARNING, logger="arango_cypher.nl2cypher.engine_path"):
+            res = _ask("q", movies_mapping, provider, max_retries=0, db=None)
         assert res is not None and res.method == "validation_failed"
         matching = [
             r
@@ -489,13 +465,11 @@ class TestRetryContextSeeding:
         movies_mapping,
     ) -> None:
         provider = _Provider(["```cypher\nMATCH (p:Person) RETURN p\n```"])
-        schema_summary = _build_schema_summary(movies_mapping)
-        _call_llm_with_retry(
+        _ask(
             "who are the people?",
-            schema_summary,
+            movies_mapping,
             provider,
             max_retries=0,
-            mapping=movies_mapping,
             db=None,
             retry_context="parser: expected ')' at position 17",
         )
@@ -511,15 +485,7 @@ class TestRetryContextSeeding:
         """Without ``retry_context`` the first user message is the
         question verbatim — byte-identical to the pre-WP-29 shape."""
         provider = _Provider(["```cypher\nMATCH (p:Person) RETURN p\n```"])
-        schema_summary = _build_schema_summary(movies_mapping)
-        _call_llm_with_retry(
-            "who are the people?",
-            schema_summary,
-            provider,
-            max_retries=0,
-            mapping=movies_mapping,
-            db=None,
-        )
+        _ask("who are the people?", movies_mapping, provider, max_retries=0, db=None)
         assert provider.seen_users[0] == "who are the people?"
 
     def test_retry_context_plumbed_through_nl_to_cypher(

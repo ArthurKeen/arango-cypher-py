@@ -707,29 +707,32 @@ The pipeline implements the SOTA Text2Cypher reference architecture
   (`movies_pg` + `northwind_pg`, 5 categories), reproducible runner, tolerance
   policy (5 pp / +20% / +0.3 retry), nightly CI matrix over OpenAI + Anthropic.
 
-> **Shared NL engine (2026-07, loop re-pointed 2026-10).** The language-agnostic
-> primitives — LLM providers, BM25 few-shot retrieval, and the
+> **Shared NL engine (2026-07; the only loop since 2026-10).** The
+> language-agnostic primitives — LLM providers, BM25 few-shot retrieval, and the
 > generate→validate→repair loop — were extracted into the published
 > `arango-query-core` distribution behind a `QueryLanguageAdapter` seam.
 > `arango_cypher.nl2cypher` supplies the Cypher adapter (`CypherAdapter`). Until
 > issue #24, `nl_to_cypher` still ran its own copy of the loop.
 >
-> It now runs on `NLQueryEngine` by default (`arango_cypher/nl2cypher/engine_path.py`);
-> `ARANGO_CYPHER_NL_ENGINE=legacy` selects the old loop until it is removed. The
-> engine path keeps the old loop's behaviour and result contract:
+> `nl_to_cypher` now generates only through `NLQueryEngine`
+> (`arango_cypher/nl2cypher/engine_path.py`, arango-query-core ≥ 0.2.4); its own
+> loop and the `ARANGO_CYPHER_NL_ENGINE` switch are gone. The behaviour and
+> result contract are those of the old loop:
 > - the tenant guardrail runs as the first postcondition, so a violation is
 >   retried with its hint;
 > - resolved entities render through the grounding seam, after the examples;
 > - the tenant and graph-intent sections extend the grammar section;
-> - the caller's hint rides on the first user message;
+> - the caller's hint rides on the first user message, in the old wording;
+> - the query is found in a fenced block anywhere in the response, and
+>   `CypherAdapter.normalize` strips prose before an unfenced query and
+>   repairs labels the mapping lacks, before validation;
+> - a provider call that raises spends one attempt of the retry budget; when
+>   every call raises, the rule-based translator answers;
+> - a few-shot index that raises costs the examples, not the LLM: the question
+>   is asked zero-shot;
 > - method values, explanation wording and token accounting are unchanged.
 >
-> Four engine gaps are bridged in the provider and filed upstream:
-> arango-query-core #7 (a fenced query after prose), #8 (label repair before
-> validation), #9 (retrying a provider call that raised) and #10 (the
-> first-message hint).
->
-> Both loops pass the same NL test modules, which run once per loop. On the
+> Before the old loop was removed, both ran the same NL test modules. On the
 > eval (gpt-4o-mini, 31 cases, 3 runs each) the engine matched the old loop case
 > for case without a database (pattern match 83.9% both), and was not worse
 > with the fixtures seeded (94.6% vs 93.5%).

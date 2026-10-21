@@ -30,9 +30,6 @@ from tests.nl2cypher.eval.runner import (
     run_eval,
 )
 
-# The contract for both NL→Cypher loops (issue #24): every test runs on each.
-pytestmark = pytest.mark.usefixtures("nl_engine")
-
 BASELINE_PATH = Path(__file__).parent / "nl2cypher" / "eval" / "baseline.json"
 
 

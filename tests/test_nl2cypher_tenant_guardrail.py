@@ -37,9 +37,6 @@ from arango_cypher.nl2cypher.tenant_scope import (
     analyze_tenant_scope,
 )
 
-# The contract for both NL→Cypher loops (issue #24): every test runs on each.
-pytestmark = pytest.mark.usefixtures("nl_engine")
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

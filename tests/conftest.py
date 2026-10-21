@@ -36,14 +36,3 @@ def _reset_tenant_plan_cache():
 
     reset_plan_cache()
     yield
-
-
-@pytest.fixture(params=["legacy", "shared"])
-def nl_engine(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Run a test once per NL→Cypher loop (issue #24): the original one and
-    the shared ``NLQueryEngine``. Modules whose tests are the contract for both
-    paths opt in with ``pytestmark = pytest.mark.usefixtures("nl_engine")``."""
-    from arango_cypher.nl2cypher.engine_path import ENGINE_ENV
-
-    monkeypatch.setenv(ENGINE_ENV, request.param)
-    return str(request.param)
