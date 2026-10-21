@@ -17,8 +17,8 @@ invert the dependency direction the extraction established.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from arango_query_core.mapping import MappingBundle
 from arango_query_core.nl.fewshot import FewShotIndex
@@ -34,12 +34,11 @@ if TYPE_CHECKING:
     from arango_query_core.nl.grounding import LabelIndex, PredicateIndex
     from arango_query_core.nl.pathindex import ClassPathIndex
 
+from . import _core
 from ._core import (
     _SYSTEM_PROMPT,
     _augment_explain_hint,
     _get_default_fewshot_index,
-    _validate_cypher,
-    _validate_via_explain,
 )
 from .tenant_guardrail import (
     check_tenant_scope,
@@ -62,7 +61,9 @@ class CypherAdapter:
     mapping: MappingBundle | None = None
     db: Any | None = None
 
-    language: ClassVar[str] = "cypher"
+    # An instance attribute, as QueryLanguageAdapter declares it (a ClassVar
+    # does not satisfy the protocol); fixed, so not a constructor argument.
+    language: str = field(default="cypher", init=False)
 
     def grammar_prompt_section(self, schema_context: str) -> str:
         """Seam 1 — the NL→Cypher system prompt over *schema_context*.
@@ -79,10 +80,12 @@ class CypherAdapter:
 
     def validate(self, query: str) -> ValidationResult:
         """Seam 3 — ANTLR parse, then (mapping+db permitting) EXPLAIN."""
-        ok, err = _validate_cypher(query)
+        # Looked up on the module at call time, so the legacy loop and this
+        # seam always run the same validators (and a test patch reaches both).
+        ok, err = _core._validate_cypher(query)
         if not ok:
             return ValidationResult(ok=False, error=err, code="E_CYPHER_PARSE")
-        explain_ok, explain_err = _validate_via_explain(
+        explain_ok, explain_err = _core._validate_via_explain(
             query,
             mapping=self.mapping,
             db=self.db,
@@ -94,10 +97,17 @@ class CypherAdapter:
     def repair_hint(self, query: str, failure: ValidationResult) -> str:
         """Seam 4 — augment known EXPLAIN errors with a targeted fix.
 
-        Matches the legacy retry loop: the raw validator error plus the
-        multiple-assignment hint when it applies; the empty string
-        otherwise, which tells the engine to retry with the bare error.
+        Matches the legacy retry loop. An EXPLAIN failure says so, so the model
+        can tell a hallucinated collection or property from broken Cypher
+        ("Translated AQL failed EXPLAIN: ..."), plus the multiple-assignment
+        hint when it applies. Otherwise the raw error plus that hint, or the
+        empty string, which tells the engine to retry with the bare error.
         """
+        if failure.code == "E_CYPHER_EXPLAIN":
+            return (
+                f"Translated AQL failed EXPLAIN: {failure.error}. Please revise your Cypher."
+                + _augment_explain_hint(failure.error)
+            )
         hint = _augment_explain_hint(failure.error)
         if hint:
             return failure.error + hint

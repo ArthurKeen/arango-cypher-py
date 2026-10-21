@@ -1635,6 +1635,7 @@ def nl_to_cypher(
     tenant_context: TenantContext | None = None,
     retry_context: str | None = None,
     postconditions: Sequence[Postcondition] | None = None,
+    engine: str | None = None,
 ) -> NL2CypherResult:
     """Translate a natural language question to Cypher.
 
@@ -1663,6 +1664,10 @@ def nl_to_cypher(
         db: Optional python-arango ``StandardDatabase``.  When supplied
             (and ``use_entity_resolution=True``) an :class:`EntityResolver`
             is constructed lazily against this connection.
+        engine: Which generate → validate → repair loop runs: ``"legacy"``
+            (this module's own) or ``"shared"`` (:class:`NLQueryEngine` from
+            arango-query-core, issue #24). ``None`` reads
+            ``ARANGO_CYPHER_NL_ENGINE`` (see :mod:`.engine_path`).
     """
     # NL-side guardrail: questions that merely ask to echo a literal/constant
     # value must never become a database query, regardless of (or absence of)
@@ -1711,8 +1716,12 @@ def nl_to_cypher(
     if use_llm:
         provider = llm_provider or _get_default_provider()
         if provider is not None:
+            from .engine_path import SHARED, nl_engine_choice
+
+            shared_engine = nl_engine_choice(engine) == SHARED
             few_shot: list[tuple[str, str]] = []
-            if use_fewshot:
+            # The shared engine retrieves examples itself (adapter seam 2).
+            if use_fewshot and not shared_engine:
                 index = fewshot_index if fewshot_index is not None else _get_default_fewshot_index()
                 if index is not None:
                     try:
@@ -1752,22 +1761,43 @@ def nl_to_cypher(
                         logger.info("Reading resolver advisories failed: %s", exc)
                         index_advisories = []
 
-            result = _call_llm_with_retry(
-                question,
-                schema_summary,
-                provider,
-                max_retries=max_retries,
-                ctx=ctx,
-                few_shot_examples=few_shot,
-                resolved_entities=resolved_lines,
-                mapping=bundle,
-                db=db,
-                tenant_context=tenant_context,
-                tenant_manifest=tenant_manifest,
-                retry_context=retry_context,
-                graph_intent=graph_intent,
-                postconditions=postconditions,
-            )
+            if shared_engine:
+                from .engine_path import translate_with_engine
+
+                result = translate_with_engine(
+                    question,
+                    provider=provider,
+                    schema_summary=schema_summary,
+                    ctx=ctx,
+                    mapping=bundle,
+                    db=db,
+                    max_retries=max_retries,
+                    use_fewshot=use_fewshot,
+                    fewshot_index=fewshot_index,
+                    resolved_entities=resolved_lines,
+                    tenant_context=tenant_context,
+                    tenant_manifest=tenant_manifest,
+                    retry_context=retry_context,
+                    graph_intent=graph_intent,
+                    postconditions=postconditions,
+                )
+            else:
+                result = _call_llm_with_retry(
+                    question,
+                    schema_summary,
+                    provider,
+                    max_retries=max_retries,
+                    ctx=ctx,
+                    few_shot_examples=few_shot,
+                    resolved_entities=resolved_lines,
+                    mapping=bundle,
+                    db=db,
+                    tenant_context=tenant_context,
+                    tenant_manifest=tenant_manifest,
+                    retry_context=retry_context,
+                    graph_intent=graph_intent,
+                    postconditions=postconditions,
+                )
             # Fail-closed methods (`tenant_guardrail_blocked` for tenant
             # scope violations, `validation_failed` for retry-budget
             # exhaustion) have empty `cypher` by design; return them

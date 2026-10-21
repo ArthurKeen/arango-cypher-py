@@ -30,6 +30,9 @@ from arango_cypher.nl2cypher import (
 from arango_cypher.nl2cypher._core import _call_llm_with_retry
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# The contract for both NL→Cypher loops (issue #24): every test runs on each.
+pytestmark = pytest.mark.usefixtures("nl_engine")
+
 
 @pytest.fixture
 def movies_mapping():
