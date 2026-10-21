@@ -691,7 +691,10 @@ The pipeline implements the SOTA Text2Cypher reference architecture
 - **Pre-flight entity resolution (WP-25.2)** — `EntityResolver` rewrites user
   string literals against the live DB before generation, combining exact /
   contains / reverse-contains / `LEVENSHTEIN_DISTANCE` scoring with a configurable
-  `fuzzy_threshold`. Role-aware (identifier/name first), exact-first two-pass
+  `fuzzy_threshold`. When none of those matches, a word-level pass compares the
+  mention with each run of as many words in the value (`word_fuzzy_threshold`,
+  default 0.8), so a typo in one word of a longer value still resolves ("Matrx"
+  → "The Matrix"; ties go to the shortest value). Role-aware (identifier/name first), exact-first two-pass
   collection scans for performance on large collections, and `alt_labels` guidance
   for ambiguous types.
 - **Execution-grounded validation (WP-25.3)** — translated AQL is run through

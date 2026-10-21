@@ -14,6 +14,7 @@ minimal duck-typed mock (see :class:`_FakeDb`).  They pin:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -42,6 +43,10 @@ class _FakeCursor:
 
 
 class _FakeAql:
+    """Answers through *responder*, after the one check ArangoDB makes that a
+    test can make without parsing AQL: every bind parameter is declared, and
+    every declared one is bound (ERR 1552 / ERR 1551)."""
+
     def __init__(self, responder):
         self._responder = responder
         self.calls: list[dict[str, Any]] = []
@@ -54,6 +59,13 @@ class _FakeAql:
         max_runtime: float | None = None,
         **_: Any,
     ) -> _FakeCursor:
+        declared = set(re.findall(r"@(@?\w+)", aql))
+        undeclared = sorted(set(bind_vars) - declared)
+        if undeclared:
+            raise RuntimeError(f"[ERR 1552] bind parameter(s) {undeclared} not declared in the query")
+        unbound = sorted(declared - set(bind_vars))
+        if unbound:
+            raise RuntimeError(f"[ERR 1551] no value specified for declared bind parameter(s) {unbound}")
         self.calls.append({"aql": aql, "bind_vars": dict(bind_vars), "max_runtime": max_runtime})
         rows = self._responder(aql, bind_vars)
         return _FakeCursor(rows or [])
@@ -472,6 +484,59 @@ class TestFuzzyScoring:
             mapping=movies_mapping,
         )
         assert resolver.resolve('find "Totally Unrelated"') == []
+
+
+class TestWordLevelPass:
+    """Pass 3: a typo in one word of a longer value ("Matrx" → "The Matrix")."""
+
+    @staticmethod
+    def _word_query(aql: str) -> bool:
+        return "REGEX_SPLIT" in aql
+
+    def test_resolves_when_the_whole_value_passes_find_nothing(self, movies_mapping) -> None:
+        def responder(aql: str, bind_vars: dict[str, Any]):
+            if (
+                self._word_query(aql)
+                and bind_vars.get("@c") == "movies"
+                and bind_vars.get("field") == "title"
+            ):
+                return [{"value": "The Matrix", "score": 0.67}]
+            return []
+
+        db = _FakeDb(responder)
+        hits = EntityResolver(db=db, mapping=movies_mapping).resolve("Who acted in the Matrx?")
+        assert [(h.label, h.property, h.value) for h in hits] == [("Movie", "title", "The Matrix")]
+        word = next(c["bind_vars"] for c in db.aql.calls if self._word_query(c["aql"]))
+        assert (word["phrase"], word["n"], word["word_threshold"]) == ("matrx", 1, 0.8)
+        assert "m" not in word  # the phrase replaces the raw mention
+
+    def test_not_run_when_the_fuzzy_pass_matched(self, movies_mapping) -> None:
+        def responder(aql: str, bind_vars: dict[str, Any]):
+            if "LEVENSHTEIN_DISTANCE" in aql and not self._word_query(aql):
+                return [{"value": "Forrest Gump", "score": 0.8}]
+            return []
+
+        db = _FakeDb(responder)
+        EntityResolver(db=db, mapping=movies_mapping).resolve('who acted in "Forest Gump"?')
+        assert not any(self._word_query(c["aql"]) for c in db.aql.calls)
+
+    def test_a_multi_word_mention_compares_runs_of_as_many_words(self, movies_mapping) -> None:
+        db = _FakeDb(lambda aql, bind_vars: [])
+        EntityResolver(db=db, mapping=movies_mapping).resolve('who acted in "Matrx: Reloded"?')
+        word = next(c["bind_vars"] for c in db.aql.calls if self._word_query(c["aql"]))
+        # Punctuation separates words, as REGEX_SPLIT does on the value side.
+        assert (word["phrase"], word["n"], word["p_len"]) == ("matrx reloded", 2, 13)
+        assert (word["w_min"], word["w_max"]) == (10, 17)
+
+    def test_a_zero_threshold_disables_it(self, movies_mapping) -> None:
+        db = _FakeDb(lambda aql, bind_vars: [])
+        EntityResolver(db=db, mapping=movies_mapping, word_fuzzy_threshold=0).resolve(
+            "Who acted in the Matrx?"
+        )
+        assert db.aql.calls and not any(self._word_query(c["aql"]) for c in db.aql.calls)
+
+    def test_default_threshold(self) -> None:
+        assert EntityResolver(db=None, mapping=None).word_fuzzy_threshold == 0.8
 
 
 class TestOfflineFallback:
