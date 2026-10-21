@@ -12,6 +12,9 @@ from arango_cypher.nl2cypher._core import (
 )
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# The contract for both NL→Cypher loops (issue #24): every test runs on each.
+pytestmark = pytest.mark.usefixtures("nl_engine")
+
 
 class TestAugmentExplainHint:
     def test_detects_reused_variable_and_names_it(self) -> None:

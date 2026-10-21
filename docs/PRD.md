@@ -707,12 +707,32 @@ The pipeline implements the SOTA Text2Cypher reference architecture
   (`movies_pg` + `northwind_pg`, 5 categories), reproducible runner, tolerance
   policy (5 pp / +20% / +0.3 retry), nightly CI matrix over OpenAI + Anthropic.
 
-> **Shared NL engine (2026-07).** The language-agnostic primitives — LLM providers,
-> BM25 few-shot retrieval, and the generate→validate→repair loop — were extracted into
-> the published `arango-query-core` distribution behind a `QueryLanguageAdapter` seam.
-> `arango_cypher.nl2cypher` now supplies the Cypher adapter (`CypherAdapter`) and
-> re-exports the engine's public surface, so `nl2cypher` and a future `nl2sparql` share
-> one engine. The re-point was behavior-preserving (per-case eval identical).
+> **Shared NL engine (2026-07, loop re-pointed 2026-10).** The language-agnostic
+> primitives — LLM providers, BM25 few-shot retrieval, and the
+> generate→validate→repair loop — were extracted into the published
+> `arango-query-core` distribution behind a `QueryLanguageAdapter` seam.
+> `arango_cypher.nl2cypher` supplies the Cypher adapter (`CypherAdapter`). Until
+> issue #24, `nl_to_cypher` still ran its own copy of the loop.
+>
+> It now runs on `NLQueryEngine` by default (`arango_cypher/nl2cypher/engine_path.py`);
+> `ARANGO_CYPHER_NL_ENGINE=legacy` selects the old loop until it is removed. The
+> engine path keeps the old loop's behaviour and result contract:
+> - the tenant guardrail runs as the first postcondition, so a violation is
+>   retried with its hint;
+> - resolved entities render through the grounding seam, after the examples;
+> - the tenant and graph-intent sections extend the grammar section;
+> - the caller's hint rides on the first user message;
+> - method values, explanation wording and token accounting are unchanged.
+>
+> Four engine gaps are bridged in the provider and filed upstream:
+> arango-query-core #7 (a fenced query after prose), #8 (label repair before
+> validation), #9 (retrying a provider call that raised) and #10 (the
+> first-message hint).
+>
+> Both loops pass the same NL test modules, which run once per loop. On the
+> eval (gpt-4o-mini, 31 cases, 3 runs each) the engine matched the old loop case
+> for case without a database (pattern match 83.9% both), and was not worse
+> with the fixtures seeded (94.6% vs 93.5%).
 
 **Quality baseline (live, 31 cases, both fixtures seeded):**
 
