@@ -18,8 +18,9 @@ from arango_query_core.nl import NLQueryEngine
 from arango_query_core.nl.seams import QueryLanguageAdapter, ValidationResult
 
 from arango_cypher.nl2cypher import _SYSTEM_PROMPT, CypherAdapter, PromptBuilder
-from arango_cypher.nl2cypher._core import _augment_explain_hint
+from arango_cypher.nl2cypher._core import _augment_explain_hint, _build_schema_context
 from arango_cypher.nl2cypher.tenant_guardrail import TenantContext
+from tests.helpers.mapping_fixtures import mapping_bundle_for
 
 
 class FakeProvider:
@@ -101,6 +102,41 @@ class TestFewShotSeam:
 
         index = CypherAdapter().few_shot_index()
         assert index is _core._get_default_fewshot_index()
+
+
+class TestNormalizeSeam:
+    """The engine's optional repair, run on each candidate before validate."""
+
+    def test_prose_before_an_unfenced_query_is_dropped(self) -> None:
+        adapter = CypherAdapter()
+        assert adapter.normalize("Here is the query:\nMATCH (p) RETURN p") == "MATCH (p) RETURN p"
+
+    def test_a_query_that_parses_keeps_its_first_line(self) -> None:
+        # The prose filter keeps lines from the first clause keyword on, so
+        # applied to this it would drop the CALL line.
+        query = "CALL db.labels() YIELD label\nRETURN label"
+        assert CypherAdapter().normalize(query) == query
+
+    def test_a_label_the_mapping_lacks_is_repaired(self) -> None:
+        adapter = CypherAdapter(mapping=mapping_bundle_for("movies_pg"))
+        repaired = adapter.normalize("MATCH (a:Actor)-[:ACTED_IN]->(m:Movie) RETURN a.name")
+        assert repaired == "MATCH (a:Person)-[:ACTED_IN]->(m:Movie) RETURN a.name"
+
+    def test_a_given_schema_context_is_used_without_a_mapping(self) -> None:
+        ctx = _build_schema_context(mapping_bundle_for("movies_pg"))
+        assert (
+            CypherAdapter(schema_ctx=ctx).normalize("MATCH (a:Actor) RETURN a") == "MATCH (a:Person) RETURN a"
+        )
+
+    def test_without_a_mapping_labels_are_left_alone(self) -> None:
+        assert CypherAdapter().normalize("MATCH (a:Actor) RETURN a") == "MATCH (a:Actor) RETURN a"
+
+    def test_the_engine_validates_the_normalized_candidate(self) -> None:
+        provider = FakeProvider(["Sure.\nMATCH (a:Actor) RETURN a"])
+        result = NLQueryEngine(
+            provider=provider, adapter=CypherAdapter(mapping=mapping_bundle_for("movies_pg"))
+        ).generate("actors")
+        assert result.ok and result.query == "MATCH (a:Person) RETURN a" and result.retries == 0
 
 
 class TestValidateSeam:

@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -125,7 +125,7 @@ requires-dist = [
     { name = "antlr4-tools", marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'service'" },
-    { name = "arango-query-core", specifier = ">=0.2.0,<0.3.0" },
+    { name = "arango-query-core", specifier = ">=0.2.4,<0.3.0" },
     { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.14.1,<0.16.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100.0" },
@@ -156,11 +156,11 @@ deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/ar
 
 [[package]]
 name = "arango-query-core"
-version = "0.2.1"
+version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ff/a2/1ee1a32abf9493e95cdae57adcf80d3f0eb0fcd43a4ce54d23b247bba8ef/arango_query_core-0.2.1.tar.gz", hash = "sha256:0c25ddb1469f0c024760c7a5af6a083c73d56e3dcdbe8333051bad402874759e", size = 81641, upload-time = "2026-10-16T17:38:02.091Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/37/a368936b8848c4b95a2fefb1593fa2336b8cdabe036d1e680ba576746efa/arango_query_core-0.2.4.tar.gz", hash = "sha256:9e9026774858e9dff68d6b0860edf19647b98febfa6e9eca4b6fb2bce2c85d02", size = 94021, upload-time = "2026-10-21T17:32:13.087Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/14/97410c37868ccc4aabb6caa38ac54875281da225f1f9429a657c5589c4ba/arango_query_core-0.2.1-py3-none-any.whl", hash = "sha256:9cfeaa1eed3a6bf325d4a4684e3cc87fce328806a882bfeecadd8cf2f52540bb", size = 60844, upload-time = "2026-10-16T17:38:00.721Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/28/7d0482922eeb400311b96c851be51f0d6dd3fbfab5cc21fbbff1fa727c47/arango_query_core-0.2.4-py3-none-any.whl", hash = "sha256:dc558f1a23602d593705269d41b7b6a4c26f2a5640dbc40162b321b6690736cf", size = 63616, upload-time = "2026-10-21T17:32:11.847Z" },
 ]
 
 [[package]]

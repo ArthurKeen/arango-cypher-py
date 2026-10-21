@@ -20,9 +20,6 @@ from arango_cypher.nl2cypher import BM25Retriever, FewShotIndex, nl_to_cypher
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 from tests.test_nl2cypher_prompt_builder import FROZEN_SYSTEM_PROMPT
 
-# The contract for both NL→Cypher loops (issue #24): every test runs on each.
-pytestmark = pytest.mark.usefixtures("nl_engine")
-
 CORPORA_DIR = Path(__file__).resolve().parent.parent / "arango_cypher" / "nl2cypher" / "corpora"
 
 

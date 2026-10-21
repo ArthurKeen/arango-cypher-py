@@ -4,10 +4,10 @@
 :class:`arango_query_core.nl.seams.QueryLanguageAdapter` — the five
 questions the language-agnostic engine
 (:class:`arango_query_core.nl.NLQueryEngine`) cannot answer without
-committing to a target language. Every answer delegates to machinery
-that already exists in :mod:`arango_cypher.nl2cypher._core` and the
-tenant-guardrail modules; this file moves it behind the standard
-interface, it does not add logic.
+committing to a target language, plus the optional ``normalize`` repair.
+Every answer delegates to machinery that already exists in
+:mod:`arango_cypher.nl2cypher._core` and the tenant-guardrail modules; this
+file moves it behind the standard interface, it does not add logic.
 
 Adapters live next to their transpiler (not in ``arango-query-core``)
 because seam 3 needs the ANTLR parser and, when execution-grounded,
@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     # touch the types at runtime. The pin (>=0.2.0) guarantees they exist.
     from arango_query_core.nl.grounding import LabelIndex, PredicateIndex
     from arango_query_core.nl.pathindex import ClassPathIndex
+
+    from ._core import _SchemaCtx
 
 from . import _core
 from ._core import (
@@ -60,6 +62,10 @@ class CypherAdapter:
 
     mapping: MappingBundle | None = None
     db: Any | None = None
+    #: The label lookup :meth:`normalize` repairs against. Built from
+    #: ``mapping`` on first use when not given; ``nl_to_cypher`` passes the
+    #: one it has already built.
+    schema_ctx: _SchemaCtx | None = None
 
     # An instance attribute, as QueryLanguageAdapter declares it (a ClassVar
     # does not satisfy the protocol); fixed, so not a constructor argument.
@@ -69,8 +75,7 @@ class CypherAdapter:
         """Seam 1 — the NL→Cypher system prompt over *schema_context*.
 
         Renders :data:`~arango_cypher.nl2cypher._core._SYSTEM_PROMPT`
-        exactly as the zero-shot :class:`PromptBuilder` does, so prompts
-        stay byte-identical between the legacy pipeline and the engine.
+        exactly as the zero-shot :class:`PromptBuilder` does.
         """
         return _SYSTEM_PROMPT.replace("{schema}", schema_context)
 
@@ -78,10 +83,32 @@ class CypherAdapter:
         """Seam 2 — shipped ``corpora/*.yml`` plus approved NL corrections."""
         return _get_default_fewshot_index()
 
+    def normalize(self, query: str) -> str:
+        """The engine's optional repair seam, run on every candidate before
+        :meth:`validate`: the two repairs ``nl_to_cypher`` has always made.
+
+        * A candidate that does not parse is cut to its Cypher lines
+          (:func:`~arango_cypher.nl2cypher._core._extract_cypher_from_response`),
+          which drops prose a model put before an unfenced query ("Here is the
+          query:"). One that parses is left as it is, so a query whose first
+          line holds no clause keyword (``CALL ... YIELD``, a comment) keeps it.
+        * A label the mapping lacks becomes the closest one it has (``Actor`` →
+          ``Person``, :func:`~arango_cypher.nl2cypher._core._fix_labels`).
+          Without a mapping there is nothing to match against.
+        """
+        cypher = query
+        if not _core._validate_cypher(query)[0]:
+            cypher = _core._extract_cypher_from_response(query)
+        if self.schema_ctx is None and self.mapping is not None:
+            self.schema_ctx = _core._build_schema_context(self.mapping)
+        if self.schema_ctx is None:
+            return cypher
+        return _core._fix_labels(cypher, self.schema_ctx)
+
     def validate(self, query: str) -> ValidationResult:
         """Seam 3 — ANTLR parse, then (mapping+db permitting) EXPLAIN."""
-        # Looked up on the module at call time, so the legacy loop and this
-        # seam always run the same validators (and a test patch reaches both).
+        # Looked up on the module at call time, so a test patch of a
+        # validator reaches this seam.
         ok, err = _core._validate_cypher(query)
         if not ok:
             return ValidationResult(ok=False, error=err, code="E_CYPHER_PARSE")
@@ -97,7 +124,7 @@ class CypherAdapter:
     def repair_hint(self, query: str, failure: ValidationResult) -> str:
         """Seam 4 — augment known EXPLAIN errors with a targeted fix.
 
-        Matches the legacy retry loop. An EXPLAIN failure says so, so the model
+        An EXPLAIN failure says so, so the model
         can tell a hallucinated collection or property from broken Cypher
         ("Translated AQL failed EXPLAIN: ..."), plus the multiple-assignment
         hint when it applies. Otherwise the raw error plus that hint, or the

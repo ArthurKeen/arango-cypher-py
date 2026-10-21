@@ -9,6 +9,8 @@ the schema, and the transpiler converts it to AQL. This preserves the PRD
 | File | Role |
 |---|---|
 | `_core.py` | Schema summarization, `PromptBuilder`, rule-based fallback, `nl_to_cypher()`, `suggest_nl_queries()` |
+| `adapter.py` | `CypherAdapter`: the Cypher seams of arango-query-core's `NLQueryEngine` (grammar prompt, few-shot index, parse + EXPLAIN validation, repair hint, tenant guardrail, and `normalize`: prose stripping + label repair) |
+| `engine_path.py` | `translate_with_engine()`: one `nl_to_cypher` LLM translation on `NLQueryEngine` (issue #24), mapped back to `NL2CypherResult` |
 | `_aql.py` | Direct `nl_to_aql()` (exposes physical mapping — deliberately separate from the Cypher path) |
 | `providers.py` | `LLMProvider` protocol + `OpenAIProvider` / `OpenRouterProvider` / `AnthropicProvider` (Messages API + native prompt caching) |
 | `fewshot.py` | `FewShotIndex` + `BM25Retriever` (WP-25.1) |
@@ -50,7 +52,8 @@ for this feature (pinned by
 
 ## Prompt composition (WP-25.4 prompt caching)
 
-`PromptBuilder.render_system()` assembles the system prompt in this order:
+`NLQueryEngine` assembles the system prompt in this order (sections 1–2
+are `PromptBuilder.render_system()`, through the adapter's grammar seam):
 
 1. **Prelude + rules** — tiny, static.
 2. **Schema summary** — large, static *per mapping*. This is the cache target.

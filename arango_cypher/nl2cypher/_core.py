@@ -18,18 +18,10 @@ from arango_query_core.nl.providers import (
 
 from .postconditions import (
     Postcondition,
-    PostconditionContext,
     postcondition_prompt_sections,
-    run_postconditions,
 )
-from .tenant_guardrail import (
-    TenantContext,
-    check_tenant_scope,
-    multitenancy_physical_enforcement,
-)
-from .tenant_guardrail import (
-    prompt_section as _tenant_prompt_section,
-)
+from .tenant_guardrail import TenantContext
+from .tenant_guardrail import prompt_section as _tenant_prompt_section
 from .tenant_scope import (
     TenantScopeManifest,
     analyze_tenant_scope,
@@ -39,8 +31,6 @@ if TYPE_CHECKING:
     from arango_query_core.nl.fewshot import FewShotIndex
 
     from .entity_resolution import EntityResolver
-    from .postconditions import PostconditionViolation
-    from .tenant_guardrail import TenantScopeViolation
 
 logger = logging.getLogger(__name__)
 
@@ -541,7 +531,11 @@ def _augment_explain_hint(explain_err: str) -> str:
 class PromptBuilder:
     """Composable prompt builder for the NL→Cypher pipeline.
 
-    Renders the ``system`` and ``user`` messages used by :func:`nl_to_cypher`.
+    Renders the ``system`` and ``user`` messages of an NL→Cypher prompt.
+    :func:`nl_to_cypher` uses :meth:`render_system` (tenant scope and graph
+    intent, no examples or entities) as the engine's grammar section; the
+    engine adds the examples, resolved entities and postcondition rules, and
+    the caller's hint in :data:`_RETRY_USER_SUFFIX`'s wording.
     Per PRD §1.2, only *conceptual* schema text ever reaches this builder —
     collection names, type discriminators, and AQL stay out of the prompt.
 
@@ -779,244 +773,6 @@ def _fix_labels(cypher: str, ctx: _SchemaCtx) -> str:
         return prefix + label
 
     return re.sub(r"((?:\(|\[)[a-zA-Z0-9_]*:)([A-Z]\w*)", _replace_label, cypher)
-
-
-def _call_llm_with_retry(
-    question: str,
-    schema_summary: str,
-    provider: LLMProvider,
-    max_retries: int = 2,
-    ctx: _SchemaCtx | None = None,
-    few_shot_examples: list[tuple[str, str]] | None = None,
-    resolved_entities: list[str] | None = None,
-    mapping: MappingBundle | None = None,
-    db: Any | None = None,
-    tenant_context: TenantContext | None = None,
-    tenant_manifest: TenantScopeManifest | None = None,
-    retry_context: str | None = None,
-    graph_intent: bool = False,
-    postconditions: Sequence[Postcondition] | None = None,
-) -> NL2CypherResult | None:
-    """Call the LLM provider with parse + execution-grounded validation and retry.
-
-    After each LLM call the generated Cypher is parsed via the ANTLR
-    grammar.  On ANTLR failure the parse error is fed back.  On ANTLR
-    success, if both *mapping* and *db* are available (WP-25.3), the
-    Cypher is translated to AQL and planned via ``POST /_api/explain``;
-    EXPLAIN errors (missing collections, unknown properties, bad
-    traversals) feed back into the retry prompt the same way parse
-    errors do.  With no *db* the EXPLAIN step is skipped and the
-    behaviour is identical to the pre-WP-25.3 pipeline.
-
-    The prompt is assembled by a :class:`PromptBuilder` shared across
-    attempts; only ``retry_context`` mutates between iterations so the
-    (cacheable) system prefix stays byte-stable.
-
-    The ``max_retries`` budget is shared across both failure kinds —
-    a query that fails ANTLR on attempt 1 and EXPLAIN on attempt 2 with
-    ``max_retries=2`` gets one more try before falling through.
-    """
-    builder = PromptBuilder(
-        schema_summary=schema_summary,
-        few_shot_examples=list(few_shot_examples) if few_shot_examples else [],
-        resolved_entities=list(resolved_entities) if resolved_entities else [],
-        tenant_context=tenant_context,
-        tenant_manifest=tenant_manifest,
-        retry_context=retry_context or "",
-        graph_intent=graph_intent,
-        postconditions=tuple(postconditions or ()),
-    )
-    # Resolve once per call: passed through to every check_tenant_scope
-    # invocation so the resulting violation carries the upstream
-    # ``metadata.multitenancy.physicalEnforcement`` signal (analyzer
-    # >=0.6, upstream PRD §6.2 bullet 4). ``None`` for older mappings —
-    # downstream behaviour is unchanged in that case.
-    physical_enforcement = multitenancy_physical_enforcement(mapping) if mapping is not None else None
-    best_cypher = ""
-    # WP-29 D4: pre-WP-29 we tracked ``best_content`` to leak the
-    # raw LLM response into the fail-through explanation. The
-    # fail-closed branch only echoes ``best_cypher`` back, so
-    # ``best_content`` has no consumer and is removed.
-    total_usage: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-        "cached_tokens": 0,
-    }
-    for attempt in range(1 + max_retries):
-        try:
-            system = builder.render_system()
-            user = builder.render_user(question)
-
-            result = provider.generate(system, user)
-            if isinstance(result, tuple):
-                content, usage = result
-                for k in total_usage:
-                    total_usage[k] += int(usage.get(k, 0) or 0)
-            else:
-                content = result
-
-            cypher = _extract_cypher_from_response(content)
-
-            if ctx:
-                cypher = _fix_labels(cypher, ctx)
-
-            if not best_cypher:
-                best_cypher = cypher
-
-            ok, err_msg = _validate_cypher(cypher)
-            if ok:
-                explain_ok, explain_err = _validate_via_explain(
-                    cypher,
-                    mapping=mapping,
-                    db=db,
-                )
-                if explain_ok:
-                    # Tenant-scoping postcondition: runs after parse +
-                    # EXPLAIN so we only burn retries on a
-                    # semantically-valid Cypher that happens to escape
-                    # tenant isolation. Failure feeds a structured hint
-                    # back into the next attempt; exhaustion falls
-                    # through to the fail-closed path below.
-                    violation: TenantScopeViolation | PostconditionViolation | None = check_tenant_scope(
-                        cypher,
-                        tenant_context=tenant_context,
-                        manifest=tenant_manifest,
-                        physical_enforcement=physical_enforcement,
-                    )
-                    if violation is None and postconditions:
-                        # Caller invariants run after the tenant guardrail: a
-                        # statement violating both reports the tenant failure,
-                        # because a cross-tenant leak is a security problem and
-                        # a domain-correctness one is not. Shares the same
-                        # ``max_retries`` budget as parse and EXPLAIN failures.
-                        violation = run_postconditions(
-                            cypher,
-                            postconditions,
-                            PostconditionContext(
-                                schema_summary=schema_summary,
-                                question=question,
-                                attempt=attempt,
-                                mapping=mapping,
-                            ),
-                        )
-                    if violation is None:
-                        return NL2CypherResult(
-                            cypher=cypher,
-                            explanation=content,
-                            confidence=0.8,
-                            method="llm",
-                            schema_context=schema_summary,
-                            prompt_tokens=total_usage["prompt_tokens"],
-                            completion_tokens=total_usage["completion_tokens"],
-                            total_tokens=total_usage["total_tokens"],
-                            retries=attempt,
-                            cached_tokens=total_usage["cached_tokens"],
-                        )
-                    best_cypher = cypher
-                    builder.retry_context = f"{violation.reason} {violation.suggested_hint}"
-                    logger.warning(
-                        "Postcondition violation [%s] (attempt %d/%d): %s",
-                        getattr(violation, "code", "tenant_scope"),
-                        attempt + 1,
-                        1 + max_retries,
-                        violation.reason,
-                    )
-                    continue
-                best_cypher = cypher
-                builder.retry_context = (
-                    f"Translated AQL failed EXPLAIN: {explain_err}. "
-                    f"The Cypher was: {cypher}. Please revise your Cypher."
-                    + _augment_explain_hint(explain_err)
-                )
-                logger.info(
-                    "LLM attempt %d/%d: EXPLAIN failed: %s",
-                    attempt + 1,
-                    1 + max_retries,
-                    explain_err[:120],
-                )
-                continue
-
-            best_cypher = cypher
-            builder.retry_context = err_msg or "generated text did not parse as Cypher"
-            logger.info(
-                "LLM attempt %d/%d: validation failed for: %s",
-                attempt + 1,
-                1 + max_retries,
-                cypher[:120],
-            )
-        except Exception as e:
-            logger.warning("LLM call failed (attempt %d): %s", attempt + 1, e)
-            builder.retry_context = str(e)
-
-    # Fail closed on tenant-scoping: if the last attempt was a
-    # violation, return an empty-Cypher result with a clear
-    # explanation. The UI treats an empty `cypher` as an error and
-    # surfaces the explanation — never a cross-tenant query.
-    if (
-        tenant_context is not None
-        and best_cypher
-        and check_tenant_scope(
-            best_cypher,
-            tenant_context=tenant_context,
-            manifest=tenant_manifest,
-            physical_enforcement=physical_enforcement,
-        )
-        is not None
-    ):
-        return NL2CypherResult(
-            cypher="",
-            explanation=(
-                "Tenant-scoping guardrail: could not produce a Cypher "
-                f"query scoped to tenant {tenant_context.display_name!r} "
-                f"after {1 + max_retries} attempts. Last attempt was:\n\n"
-                f"{best_cypher}\n\n"
-                "Refusing to emit an unscoped query. Try rephrasing the "
-                "question to reference the entity more concretely, or "
-                "add a few-shot correction that demonstrates the "
-                "tenant traversal path for this schema."
-            ),
-            confidence=0.0,
-            method="tenant_guardrail_blocked",
-            schema_context=schema_summary,
-            prompt_tokens=total_usage["prompt_tokens"],
-            completion_tokens=total_usage["completion_tokens"],
-            total_tokens=total_usage["total_tokens"],
-            retries=max_retries,
-            cached_tokens=total_usage["cached_tokens"],
-        )
-
-    # WP-29 D4: fail closed on retry-budget exhaustion. The pre-WP-29
-    # branch returned ``cypher=best_cypher`` with a WARNING prefix in
-    # ``explanation`` — the UI then wrote that invalid Cypher straight
-    # into the editor. Mirror the tenant-guardrail pattern: empty
-    # ``cypher`` + structured ``method="validation_failed"`` so the UI
-    # renders a red banner and leaves the editor untouched. The last
-    # attempted Cypher is preserved inside ``explanation`` for user
-    # inspection and potential WP-30 retry-with-hint.
-    if best_cypher:
-        logger.warning(
-            "NL2Cypher validation_failed after %d attempts; last error: %s",
-            1 + max_retries,
-            builder.retry_context,
-        )
-        return NL2CypherResult(
-            cypher="",
-            explanation=(
-                f"NL → Cypher validation failed after {1 + max_retries} "
-                f"attempts. Last error: {builder.retry_context}.\n\n"
-                f"Last attempted Cypher was:\n\n{best_cypher}"
-            ),
-            confidence=0.0,
-            method="validation_failed",
-            schema_context=schema_summary,
-            prompt_tokens=total_usage["prompt_tokens"],
-            completion_tokens=total_usage["completion_tokens"],
-            total_tokens=total_usage["total_tokens"],
-            retries=max_retries,
-            cached_tokens=total_usage["cached_tokens"],
-        )
-    return None
 
 
 def _build_schema_context(bundle: MappingBundle) -> _SchemaCtx:
@@ -1635,7 +1391,6 @@ def nl_to_cypher(
     tenant_context: TenantContext | None = None,
     retry_context: str | None = None,
     postconditions: Sequence[Postcondition] | None = None,
-    engine: str | None = None,
 ) -> NL2CypherResult:
     """Translate a natural language question to Cypher.
 
@@ -1664,10 +1419,6 @@ def nl_to_cypher(
         db: Optional python-arango ``StandardDatabase``.  When supplied
             (and ``use_entity_resolution=True``) an :class:`EntityResolver`
             is constructed lazily against this connection.
-        engine: Which generate → validate → repair loop runs: ``"legacy"``
-            (this module's own) or ``"shared"`` (:class:`NLQueryEngine` from
-            arango-query-core, issue #24). ``None`` reads
-            ``ARANGO_CYPHER_NL_ENGINE`` (see :mod:`.engine_path`).
     """
     # NL-side guardrail: questions that merely ask to echo a literal/constant
     # value must never become a database query, regardless of (or absence of)
@@ -1716,20 +1467,6 @@ def nl_to_cypher(
     if use_llm:
         provider = llm_provider or _get_default_provider()
         if provider is not None:
-            from .engine_path import SHARED, nl_engine_choice
-
-            shared_engine = nl_engine_choice(engine) == SHARED
-            few_shot: list[tuple[str, str]] = []
-            # The shared engine retrieves examples itself (adapter seam 2).
-            if use_fewshot and not shared_engine:
-                index = fewshot_index if fewshot_index is not None else _get_default_fewshot_index()
-                if index is not None:
-                    try:
-                        few_shot = index.retrieve(question, k=3)
-                    except Exception as exc:
-                        logger.info("FewShotIndex.retrieve failed: %s", exc)
-                        few_shot = []
-
             resolved_lines: list[str] = []
             index_advisories: list[dict[str, Any]] = []
             if use_entity_resolution:
@@ -1761,43 +1498,27 @@ def nl_to_cypher(
                         logger.info("Reading resolver advisories failed: %s", exc)
                         index_advisories = []
 
-            if shared_engine:
-                from .engine_path import translate_with_engine
+            # Generate → validate → repair on arango-query-core's NLQueryEngine
+            # (issue #24); imported here because engine_path imports this module.
+            from .engine_path import translate_with_engine
 
-                result = translate_with_engine(
-                    question,
-                    provider=provider,
-                    schema_summary=schema_summary,
-                    ctx=ctx,
-                    mapping=bundle,
-                    db=db,
-                    max_retries=max_retries,
-                    use_fewshot=use_fewshot,
-                    fewshot_index=fewshot_index,
-                    resolved_entities=resolved_lines,
-                    tenant_context=tenant_context,
-                    tenant_manifest=tenant_manifest,
-                    retry_context=retry_context,
-                    graph_intent=graph_intent,
-                    postconditions=postconditions,
-                )
-            else:
-                result = _call_llm_with_retry(
-                    question,
-                    schema_summary,
-                    provider,
-                    max_retries=max_retries,
-                    ctx=ctx,
-                    few_shot_examples=few_shot,
-                    resolved_entities=resolved_lines,
-                    mapping=bundle,
-                    db=db,
-                    tenant_context=tenant_context,
-                    tenant_manifest=tenant_manifest,
-                    retry_context=retry_context,
-                    graph_intent=graph_intent,
-                    postconditions=postconditions,
-                )
+            result = translate_with_engine(
+                question,
+                provider=provider,
+                schema_summary=schema_summary,
+                ctx=ctx,
+                mapping=bundle,
+                db=db,
+                max_retries=max_retries,
+                use_fewshot=use_fewshot,
+                fewshot_index=fewshot_index,
+                resolved_entities=resolved_lines,
+                tenant_context=tenant_context,
+                tenant_manifest=tenant_manifest,
+                retry_context=retry_context,
+                graph_intent=graph_intent,
+                postconditions=postconditions,
+            )
             # Fail-closed methods (`tenant_guardrail_blocked` for tenant
             # scope violations, `validation_failed` for retry-budget
             # exhaustion) have empty `cypher` by design; return them
