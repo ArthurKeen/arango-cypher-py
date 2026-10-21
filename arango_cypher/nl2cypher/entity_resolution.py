@@ -71,6 +71,23 @@ type-discriminator value (e.g. each LABEL sharing one collection) is captured in
 one pass. 200 comfortably covers the distinct exact/near matches for a mention
 without materialising a huge cursor."""
 
+_DEFAULT_WORD_FUZZY_THRESHOLD = 0.8
+"""Minimum similarity for the word-level typo pass (see
+:meth:`EntityResolver._scan_words`). Stricter than the whole-value
+``fuzzy_threshold`` (0.7) because a value holds many words a mention can collide
+with: 0.8 lets one edit through in a 5+ letter word ("Matrx" → "Matrix") but not
+in a 4-letter one ("Hanx" / "Hank")."""
+
+_WORD_FUZZY_WEIGHT = 0.8
+"""Down-weight of a word-level match, so it ranks below a whole-value fuzzy
+match (``× 0.9``) and a substring match (0.85) of the same quality."""
+
+_WORD_SPLIT = r"[^\w]+"
+"""What separates words, for the word-level pass: any run of non-word
+characters. The AQL side (``REGEX_SPLIT``) and the Python side (the mention)
+both treat a word character as Unicode-aware, so "Königlich" is one word on
+both."""
+
 _DEFAULT_TOTAL_BUDGET_S = 8.0
 """Wall-clock ceiling for an entire :meth:`EntityResolver.resolve` call. Once
 exceeded, probing stops and the best matches found so far are returned. This
@@ -332,6 +349,7 @@ class EntityResolver:
         max_candidates: int = 5,
         min_score: float = 0.5,
         fuzzy_threshold: float = 0.7,
+        word_fuzzy_threshold: float = _DEFAULT_WORD_FUZZY_THRESHOLD,
         probe_timeout: float | None = None,
         max_value_length: int | None = None,
         max_scan_collection_size: int | None = None,
@@ -357,6 +375,12 @@ class EntityResolver:
                 wholly unrelated strings.  The fuzzy contribution is
                 also down-weighted by ``0.9`` so an exact (1.00) or
                 substring (0.85) hit always wins when both fire.
+            word_fuzzy_threshold: Minimum similarity for the word-level
+                pass, which compares the mention with each run of as many
+                words in a value, so a typo in one word of a longer value
+                still resolves ("Matrx" → "The Matrix"). It runs only when
+                no other strategy matched. Default 0.8 (see
+                :data:`_DEFAULT_WORD_FUZZY_THRESHOLD`); ``0`` disables it.
             probe_timeout: Per-probe AQL ``maxRuntime`` in seconds. A probe
                 that exceeds this is killed server-side and treated as
                 "no match", so a mis-scoped/oversized lookup degrades in
@@ -384,6 +408,7 @@ class EntityResolver:
         self.max_candidates = max_candidates
         self.min_score = min_score
         self.fuzzy_threshold = fuzzy_threshold
+        self.word_fuzzy_threshold = max(0.0, word_fuzzy_threshold)
         self.probe_timeout = (
             _env_float("ARANGO_CYPHER_ER_PROBE_TIMEOUT_S", _DEFAULT_PROBE_TIMEOUT_S)
             if probe_timeout is None
@@ -892,7 +917,15 @@ class EntityResolver:
           the path that catches typos like "Forest Gump" → "Forrest
           Gump" against a live DB.
 
-        The final ``score`` is ``MAX(exact, contains, reverse, fuzzy)``.
+        The final ``score`` is ``MAX(exact, contains, reverse, fuzzy)``. When
+        none of them matches, a fifth strategy runs:
+
+        * **word**    (≤ 0.80) — the same edit distance against each run of
+          as many words in the value as the mention has, gated by
+          :attr:`word_fuzzy_threshold` and down-weighted by ``0.8``. This
+          catches a typo in one word of a longer value ("Matrx" → "The
+          Matrix"), which the whole-value comparison cannot.
+
         We keep the initial implementation pure-AQL to avoid a hard
         dependency on ArangoSearch view creation; the resolver can be
         upgraded to SEARCH/BM25/NGRAM later without changing this
@@ -1028,8 +1061,71 @@ class EntityResolver:
         fuzzy_bind = dict(base_bind)
         fuzzy_bind.update({"fuzzy_threshold": self.fuzzy_threshold, "lv_min": lv_min, "lv_max": lv_max})
         bucket = self._run_scan(fuzzy_aql, fuzzy_bind, collection, field_name, mention)
+        if not bucket:
+            bucket = self._scan_words(base_bind, length_filter, type_return, collection, field_name, mention)
         self._scan_cache[cache_key] = bucket
         return bucket
+
+    def _scan_words(
+        self,
+        base_bind: dict[str, Any],
+        length_filter: str,
+        type_return: str,
+        collection: str,
+        field_name: str,
+        mention: str,
+    ) -> dict[str, tuple[str, float]]:
+        """Pass 3 — a typo in one word of a longer value ("Matrx" → "The Matrix").
+
+        Pass 2 compares the mention with the whole value, so a value holding
+        words the mention lacks is too long to clear the threshold. This pass
+        compares the mention with each run of as many words in the value
+        instead, and keeps the best. It runs only when pass 2 matched nothing,
+        so a mention that resolved before resolves the same, at the same cost.
+        Ties go to the shortest value: "The Matrix" over "The Matrix Reloaded".
+        """
+        if self.word_fuzzy_threshold <= 0:
+            return {}
+        words = re.findall(r"\w+", mention.lower())
+        if not words:
+            return {}
+        phrase = " ".join(words)
+        threshold = self.word_fuzzy_threshold
+        word_aql = (
+            f"FOR d IN @@c\n"
+            f"  FILTER HAS(d, @field) AND IS_STRING(d[@field])\n"
+            f"{length_filter}"
+            f"  LET words = REMOVE_VALUE(REGEX_SPLIT(LOWER(d[@field]), @word_split), '')\n"
+            f"  FILTER LENGTH(words) >= @n\n"
+            f"  LET sim = MAX(\n"
+            f"    FOR i IN 0..(LENGTH(words) - @n)\n"
+            f"      LET part = CONCAT_SEPARATOR(' ', SLICE(words, i, @n))\n"
+            # The same length gate as pass 2: a run can only clear the
+            # threshold when its length is within these bounds of the phrase.
+            f"      FILTER LENGTH(part) >= @w_min AND LENGTH(part) <= @w_max\n"
+            f"      RETURN 1.0 - LEVENSHTEIN_DISTANCE(part, @phrase) * 1.0 / MAX([LENGTH(part), @p_len])\n"
+            f"  )\n"
+            f"  FILTER sim >= @word_threshold\n"
+            f"  SORT sim DESC, LENGTH(d[@field]) ASC\n"
+            f"  LIMIT @k\n"
+            f"  RETURN {{t: {type_return}, value: d[@field], score: sim * @word_weight}}"
+        )
+        # The phrase replaces the raw mention (``@m``): ArangoDB refuses a bind
+        # parameter the query does not use (ERR 1552).
+        word_bind = {key: value for key, value in base_bind.items() if key != "m"}
+        word_bind.update(
+            {
+                "word_split": _WORD_SPLIT,
+                "n": len(words),
+                "phrase": phrase,
+                "p_len": len(phrase),
+                "w_min": max(1, int(len(phrase) * threshold)),
+                "w_max": int(len(phrase) / threshold) + 1,
+                "word_threshold": threshold,
+                "word_weight": _WORD_FUZZY_WEIGHT,
+            }
+        )
+        return self._run_scan(word_aql, word_bind, collection, field_name, mention)
 
     def _run_scan(
         self,
