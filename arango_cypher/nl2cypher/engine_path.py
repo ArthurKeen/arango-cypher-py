@@ -7,10 +7,9 @@ run :class:`arango_query_core.nl.NLQueryEngine`, so a fix to that engine had
 to be made twice. This module runs the same translation on the engine with
 :class:`~arango_cypher.nl2cypher.adapter.CypherAdapter`, behind a switch:
 
-* ``ARANGO_CYPHER_NL_ENGINE=legacy`` (the default until the NL evaluation
-  shows the engine is not worse) keeps the old loop;
-* ``ARANGO_CYPHER_NL_ENGINE=shared`` (or ``nl_to_cypher(engine="shared")``)
-  runs the engine.
+* ``ARANGO_CYPHER_NL_ENGINE=shared`` (the default) runs the engine;
+* ``ARANGO_CYPHER_NL_ENGINE=legacy`` (or ``nl_to_cypher(engine="legacy")``)
+  keeps the old loop, as a rollback until it is removed.
 
 Everything the old loop did is kept, through the engine's own seams where it
 has one: the tenant guardrail runs as the first postcondition (so a violation
@@ -67,7 +66,12 @@ logger = logging.getLogger(__name__)
 ENGINE_ENV = "ARANGO_CYPHER_NL_ENGINE"
 LEGACY = "legacy"
 SHARED = "shared"
-DEFAULT_ENGINE = LEGACY
+#: Switched to the engine on 2026-10-21 (issue #24): on the NL eval
+#: (gpt-4o-mini, 31 cases, 3 runs each) it matched the old loop case for case
+#: without a database (pattern match 0.839 both) and was not worse with the
+#: fixtures seeded (0.946 vs 0.935). ``legacy`` stays selectable until the old
+#: loop is removed.
+DEFAULT_ENGINE = SHARED
 #: ``code`` of the tenant-scope postcondition, distinguishing it from callers'.
 TENANT_SCOPE_CODE = "tenant_scope"
 _USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens")

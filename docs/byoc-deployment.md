@@ -218,6 +218,7 @@ Set these in the Container Manager UI (preferred) or bundle a sanitized `.env`.
 | `UV_BINARY` | pin `uv` when `PATH` is minimal |
 | `ARANGO_CYPHER_ISSUE_REPO`, `ARANGO_CYPHER_ISSUE_TOKEN` | error inbox (above); both or neither |
 | `ARANGO_CYPHER_ISSUE_FLUSH_S` | seconds between issue count updates (default 60) |
+| `ARANGO_CYPHER_NL_ENGINE` | NL → Cypher loop: `shared` (default, arango-query-core's `NLQueryEngine`) or `legacy` (the old loop, a rollback until removed) |
 | `ARANGO_CYPHER_SCHEMA_RECHECK_S` | seconds between background rechecks of a served schema per database (default 300; 0 = off) |
 
 ## Rollback

@@ -54,9 +54,9 @@ def ask(movies: Any, provider: ScriptedProvider, **kwargs: Any) -> Any:
 
 
 class TestSwitch:
-    def test_legacy_is_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_the_shared_engine_is_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(engine_path.ENGINE_ENV, raising=False)
-        assert engine_path.nl_engine_choice() == "legacy"
+        assert engine_path.nl_engine_choice() == "shared"
 
     def test_the_environment_and_an_explicit_choice(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(engine_path.ENGINE_ENV, "Shared")
@@ -68,7 +68,7 @@ class TestSwitch:
     ) -> None:
         monkeypatch.setenv(engine_path.ENGINE_ENV, "turbo")
         with caplog.at_level(logging.WARNING):
-            assert engine_path.nl_engine_choice() == "legacy"
+            assert engine_path.nl_engine_choice() == "shared"
         assert "turbo" in caplog.text
 
     def test_shared_runs_the_engine(self, movies: Any, monkeypatch: pytest.MonkeyPatch) -> None:
