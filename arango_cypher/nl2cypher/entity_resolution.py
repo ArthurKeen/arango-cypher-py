@@ -30,6 +30,8 @@ from typing import Any
 
 from arango_query_core.mapping import MappingBundle, MappingResolver
 
+from ._core import _entity_stem_match
+
 logger = logging.getLogger(__name__)
 
 
@@ -664,6 +666,25 @@ class EntityResolver:
                     seen.add(name)
         return labels
 
+    def _named_labels_first(self, question: str, labels: list[str]) -> list[str]:
+        """*labels* with those the question names ("suppliers" → Supplier)
+        first, in the order the question names them.
+
+        Several labels often hold the same value in a shared kind of field
+        (``Customer.country`` and ``Supplier.country`` both hold "Germany"),
+        and the first label probed wins a tie. The resolution then tells the
+        model which label to use, so "Show suppliers from Germny" must resolve
+        on ``Supplier``, not on whichever label the mapping lists first. A
+        strictly better match on another label still wins.
+        """
+        by_name = {label.lower(): label for label in labels}
+        named: list[str] = []
+        for word in re.findall(r"[^\W\d_]+", question):
+            label = _entity_stem_match(word, by_name)
+            if label is not None and label not in named:
+                named.append(label)
+        return named + [label for label in labels if label not in named]
+
     def resolve(self, question: str) -> list[ResolvedEntity]:
         """Resolve each extracted candidate against the database.
 
@@ -684,7 +705,7 @@ class EntityResolver:
             self._cache[cache_key] = []
             return []
 
-        labels = self._entity_labels()
+        labels = self._named_labels_first(question, self._entity_labels())
         deadline = time.monotonic() + self.total_budget if self.total_budget > 0 else None
         resolved: list[ResolvedEntity] = []
         for mention in candidates:

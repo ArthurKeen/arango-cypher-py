@@ -20,6 +20,7 @@ from arango import ArangoClient
 
 from arango_cypher.nl2cypher import EntityResolver
 from tests.helpers.mapping_fixtures import mapping_bundle_for
+from tests.test_nl2cypher_entity_resolution import shop_mapping
 
 pytestmark = pytest.mark.integration
 
@@ -48,9 +49,30 @@ def db() -> Iterator[Any]:
             sys_db.delete_database(_DB)
 
 
-def resolve(db: Any, question: str, caplog: pytest.LogCaptureFixture) -> list[tuple[str, str, str]]:
+@pytest.fixture(scope="module")
+def shop_db(db: Any) -> Iterator[Any]:
+    """Customers and suppliers in the same database, both with one in Germany,
+    for :func:`shop_mapping`."""
+    db.create_collection("customers").insert_many(
+        [
+            {"companyName": "Alfreds Futterkiste", "country": "Germany"},
+            {"companyName": "Around the Horn", "country": "UK"},
+        ]
+    )
+    db.create_collection("suppliers").insert_many(
+        [
+            {"companyName": "Heli Süßwaren", "country": "Germany"},
+            {"companyName": "Tokyo Traders", "country": "Japan"},
+        ]
+    )
+    return db
+
+
+def resolve(
+    db: Any, question: str, caplog: pytest.LogCaptureFixture, mapping: Any = None
+) -> list[tuple[str, str, str]]:
     with caplog.at_level(logging.INFO, logger="arango_cypher.nl2cypher.entity_resolution"):
-        hits = EntityResolver(db=db, mapping=mapping_bundle_for("movies_pg")).resolve(question)
+        hits = EntityResolver(db=db, mapping=mapping or mapping_bundle_for("movies_pg")).resolve(question)
     failed = [r.getMessage() for r in caplog.records if "scan failed" in r.getMessage()]
     assert not failed, failed
     return [(h.label, h.property, h.value) for h in hits]
@@ -85,3 +107,15 @@ def test_a_short_near_word_does_not_resolve(db: Any, caplog: pytest.LogCaptureFi
 
 def test_an_unrelated_mention_resolves_nothing(db: Any, caplog: pytest.LogCaptureFixture) -> None:
     assert resolve(db, 'Who acted in "Zebra Crossing"?', caplog) == []
+
+
+@pytest.mark.parametrize(
+    ("question", "label"),
+    [("Show suppliers from Germny", "Supplier"), ("Show customers from Germny", "Customer")],
+)
+def test_a_value_two_labels_hold_resolves_on_the_label_the_question_names(
+    shop_db: Any, caplog: pytest.LogCaptureFixture, question: str, label: str
+) -> None:
+    # Both collections hold "Germany", so both match equally; without the
+    # question's label the first label in the mapping (Customer) would win.
+    assert resolve(shop_db, question, caplog, mapping=shop_mapping()) == [(label, "country", "Germany")]

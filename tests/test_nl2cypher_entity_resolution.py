@@ -34,6 +34,33 @@ def movies_mapping():
     return mapping_bundle_for("movies_pg")
 
 
+def shop_mapping() -> Any:
+    """Customers and suppliers, both with a ``country``: the shape where one
+    value ("Germany") is held by more than one label. Customer is listed first,
+    so it wins a tie unless the question says otherwise."""
+    from arango_query_core import MappingBundle, MappingSource
+
+    props = {
+        "companyName": {"field": "companyName", "type": "string"},
+        "country": {"field": "country", "type": "string"},
+    }
+    names = (("Customer", "customers"), ("Supplier", "suppliers"))
+    return MappingBundle(
+        conceptual_schema={
+            "entities": [{"name": n, "labels": [n], "properties": []} for n, _ in names],
+            "relationships": [],
+        },
+        physical_mapping={
+            "entities": {
+                n: {"style": "COLLECTION", "collectionName": c, "properties": dict(props)} for n, c in names
+            },
+            "relationships": {},
+        },
+        metadata={},
+        source=MappingSource(kind="test"),
+    )
+
+
 class _FakeCursor:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = list(rows)
@@ -484,6 +511,56 @@ class TestFuzzyScoring:
             mapping=movies_mapping,
         )
         assert resolver.resolve('find "Totally Unrelated"') == []
+
+
+class TestQuestionNamedLabels:
+    """A value several labels hold resolves on the label the question names."""
+
+    LABELS = ["Customer", "Product", "Order", "Category", "Supplier", "Person"]
+
+    def test_named_labels_come_first_in_question_order(self) -> None:
+        resolver = EntityResolver(db=None, mapping=None)
+        ordered = resolver._named_labels_first("Which categories and products sell in Germny?", self.LABELS)
+        assert ordered == ["Category", "Product", "Customer", "Order", "Supplier", "Person"]
+
+    def test_plural_and_irregular_forms_name_a_label(self) -> None:
+        resolver = EntityResolver(db=None, mapping=None)
+        assert resolver._named_labels_first("Orders for people in Berlin", self.LABELS)[:2] == [
+            "Order",
+            "Person",
+        ]
+
+    def test_a_question_naming_no_label_keeps_the_mapping_order(self) -> None:
+        resolver = EntityResolver(db=None, mapping=None)
+        assert resolver._named_labels_first("What is in Germny?", self.LABELS) == self.LABELS
+
+    @staticmethod
+    def _both_hold_germany(scores: dict[str, float]):
+        def responder(aql: str, bind_vars: dict[str, Any]):
+            if (
+                bind_vars.get("field") == "country"
+                and "LEVENSHTEIN_DISTANCE" in aql
+                and "REGEX_SPLIT" not in aql
+            ):
+                score = scores.get(bind_vars["@c"])
+                return [{"value": "Germany", "score": score}] if score else []
+            return []
+
+        return responder
+
+    @pytest.mark.parametrize(
+        ("question", "label"),
+        [("Show suppliers from Germny", "Supplier"), ("Show customers from Germny", "Customer")],
+    )
+    def test_a_tie_resolves_on_the_label_the_question_names(self, question: str, label: str) -> None:
+        db = _FakeDb(self._both_hold_germany({"customers": 0.77, "suppliers": 0.77}))
+        hits = EntityResolver(db=db, mapping=shop_mapping()).resolve(question)
+        assert [(h.label, h.property, h.value) for h in hits] == [(label, "country", "Germany")]
+
+    def test_a_strictly_better_match_on_another_label_still_wins(self) -> None:
+        db = _FakeDb(self._both_hold_germany({"customers": 0.77, "suppliers": 0.6}))
+        hits = EntityResolver(db=db, mapping=shop_mapping()).resolve("Show suppliers from Germny")
+        assert [h.label for h in hits] == ["Customer"]
 
 
 class TestWordLevelPass:
