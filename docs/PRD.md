@@ -694,7 +694,11 @@ The pipeline implements the SOTA Text2Cypher reference architecture
   `fuzzy_threshold`. When none of those matches, a word-level pass compares the
   mention with each run of as many words in the value (`word_fuzzy_threshold`,
   default 0.8), so a typo in one word of a longer value still resolves ("Matrx"
-  → "The Matrix"; ties go to the shortest value). Role-aware (identifier/name first), exact-first two-pass
+  → "The Matrix"; ties go to the shortest value). When labels tie on a value
+  (`Customer.country` and `Supplier.country` both hold "Germany"), the label the
+  question names wins ("Show suppliers from Germny" → `Supplier`), because the
+  resolution tells the model which label to use; a strictly better match on
+  another label still wins. Role-aware (identifier/name first), exact-first two-pass
   collection scans for performance on large collections, and `alt_labels` guidance
   for ambiguous types.
 - **Execution-grounded validation (WP-25.3)** — translated AQL is run through

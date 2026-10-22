@@ -8,7 +8,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from arango_query_core.mapping import MappingBundle
 from arango_query_core.nl.providers import (
@@ -1109,8 +1109,14 @@ _IRREGULAR_PLURALS: dict[str, str] = {
 }
 
 
-def _match_entity(hint: str, entities: dict[str, dict]) -> dict | None:
-    """Fuzzy-match an entity name from user input."""
+_T = TypeVar("_T")
+
+
+def _entity_stem_match(hint: str, entities: dict[str, _T]) -> _T | None:
+    """The entity whose lowercase name *hint* is, up to a plural ending
+    ("customers" → customer, "categories" → category, "people" → person), else
+    ``None``. Strict enough to test every word of a question, unlike the
+    substring and prefix steps :func:`_match_entity` adds after it."""
     hint = hint.lower()
     hint_singular = _IRREGULAR_PLURALS.get(hint, hint)
     stems = {hint, hint_singular, hint.rstrip("s"), hint.rstrip("es"), re.sub(r"ies$", "y", hint)}
@@ -1118,6 +1124,17 @@ def _match_entity(hint: str, entities: dict[str, dict]) -> dict | None:
         key_stems = {key, key.rstrip("s"), key.rstrip("es"), re.sub(r"ies$", "y", key)}
         if stems & key_stems:
             return val
+    return None
+
+
+def _match_entity(hint: str, entities: dict[str, dict]) -> dict | None:
+    """Fuzzy-match an entity name from user input."""
+    exact = _entity_stem_match(hint, entities)
+    if exact is not None:
+        return exact
+    hint = hint.lower()
+    hint_singular = _IRREGULAR_PLURALS.get(hint, hint)
+    stems = {hint, hint_singular, hint.rstrip("s"), hint.rstrip("es"), re.sub(r"ies$", "y", hint)}
     for key, val in entities.items():
         if hint in key or key in hint:
             return val
