@@ -40,18 +40,51 @@
   },
   "physicalMapping": {
     "entities": {
-      "Customer": {"collectionName": "customers", "style": "COLLECTION"},
-      "Product": {"collectionName": "products", "style": "COLLECTION"},
-      "Order": {"collectionName": "orders", "style": "COLLECTION"},
-      "Category": {"collectionName": "categories", "style": "COLLECTION"},
-      "Supplier": {"collectionName": "suppliers", "style": "COLLECTION"},
-      "Employee": {"collectionName": "employees", "style": "COLLECTION"}
+      "Customer": {"collectionName": "customers", "style": "COLLECTION", "properties": {
+        "companyName": {"field": "companyName", "type": "string", "indexed": true},
+        "contactName": {"field": "contactName", "type": "string"},
+        "city": {"field": "city", "type": "string"},
+        "country": {"field": "country", "type": "string"}
+      }},
+      "Product": {"collectionName": "products", "style": "COLLECTION", "properties": {
+        "productName": {"field": "productName", "type": "string", "indexed": true},
+        "unitPrice": {"field": "unitPrice", "type": "number"},
+        "unitsInStock": {"field": "unitsInStock", "type": "integer"},
+        "discontinued": {"field": "discontinued", "type": "boolean"}
+      }},
+      "Order": {"collectionName": "orders", "style": "COLLECTION", "properties": {
+        "orderDate": {"field": "orderDate", "type": "string", "indexed": true},
+        "shipCity": {"field": "shipCity", "type": "string"},
+        "shipCountry": {"field": "shipCountry", "type": "string"},
+        "freight": {"field": "freight", "type": "number"}
+      }},
+      "Category": {"collectionName": "categories", "style": "COLLECTION", "properties": {
+        "categoryName": {"field": "categoryName", "type": "string", "indexed": true},
+        "description": {"field": "description", "type": "string"}
+      }},
+      "Supplier": {"collectionName": "suppliers", "style": "COLLECTION", "properties": {
+        "companyName": {"field": "companyName", "type": "string"},
+        "contactName": {"field": "contactName", "type": "string"},
+        "city": {"field": "city", "type": "string"},
+        "country": {"field": "country", "type": "string"}
+      }},
+      "Employee": {"collectionName": "employees", "style": "COLLECTION", "properties": {
+        "firstName": {"field": "firstName", "type": "string"},
+        "lastName": {"field": "lastName", "type": "string"},
+        "title": {"field": "title", "type": "string"},
+        "city": {"field": "city", "type": "string"},
+        "country": {"field": "country", "type": "string"}
+      }}
     },
     "relationships": {
       "PURCHASED": {"edgeCollectionName": "purchased", "style": "DEDICATED_COLLECTION",
         "domain": "Customer", "range": "Order"},
       "CONTAINS": {"edgeCollectionName": "contains", "style": "DEDICATED_COLLECTION",
-        "domain": "Order", "range": "Product"},
+        "domain": "Order", "range": "Product", "properties": {
+          "quantity": {"field": "quantity", "type": "integer"},
+          "unitPrice": {"field": "unitPrice", "type": "number"},
+          "discount": {"field": "discount", "type": "number"}
+        }},
       "BELONGS_TO": {"edgeCollectionName": "belongs_to", "style": "DEDICATED_COLLECTION",
         "domain": "Product", "range": "Category"},
       "SUPPLIED_BY": {"edgeCollectionName": "supplied_by", "style": "DEDICATED_COLLECTION",
