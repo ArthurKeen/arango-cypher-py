@@ -608,15 +608,26 @@ pipelines such as `UNWIND … WITH … <write>` and mid-pipeline
 
 **Label hierarchies (supertypes)** — a label whose members live under other
 labels, such as LDBC's `Message` ⊇ `Post`, `Comment` — cannot be expressed in
-the mapping model. Today such a label **translates to wrong AQL instead of
-failing closed**. Under PG it scans a collection named after the supertype.
-Under LPG it compares the type field with the supertype's name, which no
-document holds. A temporal accessor (`n.creationDate.year`) on a stored
-timestamp also translates to attribute access that yields `null`. Both are
-open defects. Until they are fixed, they MUST be made to fail closed. Both were
-found by the LDBC baseline probe; the plan is in
-[`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3.2 (WP-32, WP-35,
-WP-41).
+the mapping model (WP-35).
+- **A mapping that leaves the supertype out** fails closed: a query naming the
+  supertype gets `MAPPING_NOT_FOUND`. The LDBC fixtures (`ldbc_pg`, `ldbc_lpg`)
+  work this way.
+- **A mapping that maps the supertype as if it were a concrete label** makes
+  translation succeed, but the AQL describes the mapping, not the data. Under
+  PG it scans a collection named after the supertype; under LPG it compares the
+  type field with the supertype's name, which no document holds. The result is
+  empty rows.
+
+**Temporal accessors** (`n.creationDate.year`) on a property the mapping
+declares `date`/`datetime`/`time`/`duration` are refused (`UNSUPPORTED`,
+`arango_cypher/_translate_v0/temporal_guard.py`). Copied to AQL as attribute
+access, they read a stored timestamp's attribute and return `null`. A mapping
+that types the property as a number or string (as the analyzer does for
+epoch-ms or ISO data) still gets attribute access, until temporal lowering
+lands (WP-41).
+
+The LDBC baseline probe found both problems
+([`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3.2).
 
 Typeless relationships and leading `WITH`/`UNWIND` computational pipelines
 have constrained support rather than being blanket exclusions. The precise
@@ -1085,7 +1096,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 onward planned. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 part 1 (mapping fixtures `ldbc_pg`/`ldbc_lpg`, temporal-accessor guard) done; the rest is planned. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |

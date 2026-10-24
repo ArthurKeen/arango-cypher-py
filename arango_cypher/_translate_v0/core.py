@@ -45,6 +45,7 @@ from .state import (
     _active_warnings,
     _HopMeta,
 )
+from .temporal_guard import reject_temporal_accessor
 from .unwind import _translate_standalone_unwind
 from .writes import (
     _translate_create_query,
@@ -4984,8 +4985,9 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
     if isinstance(ctx, CypherParser.OC_PropertyOrLabelsExpressionContext):
         atom = _compile_expression(ctx.oC_Atom(), bind_vars)
         lookups = ctx.oC_PropertyLookup()
-        for lk in lookups or []:
-            key = lk.oC_PropertyKeyName().getText().strip()
+        keys = [lk.oC_PropertyKeyName().getText().strip() for lk in lookups or []]
+        reject_temporal_accessor(keys, _active_resolver.get())
+        for key in keys:
             atom = f"{atom}.{key}"
         labels_ctx = ctx.oC_NodeLabels()
         if labels_ctx is not None and not lookups:

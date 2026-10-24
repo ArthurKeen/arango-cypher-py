@@ -1,0 +1,1143 @@
+{
+  "conceptualSchema": {
+    "entities": [
+      {
+        "name": "Person",
+        "labels": [
+          "Person"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "firstName",
+            "type": "string"
+          },
+          {
+            "name": "lastName",
+            "type": "string"
+          },
+          {
+            "name": "gender",
+            "type": "string"
+          },
+          {
+            "name": "birthday",
+            "type": "date"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "speaks",
+            "type": "array"
+          },
+          {
+            "name": "email",
+            "type": "array"
+          }
+        ]
+      },
+      {
+        "name": "Forum",
+        "labels": [
+          "Forum"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Post",
+        "labels": [
+          "Post"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "imageFile",
+            "type": "string"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "language",
+            "type": "string"
+          },
+          {
+            "name": "content",
+            "type": "string"
+          },
+          {
+            "name": "length",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "Comment",
+        "labels": [
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "content",
+            "type": "string"
+          },
+          {
+            "name": "length",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "Tag",
+        "labels": [
+          "Tag"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "TagClass",
+        "labels": [
+          "TagClass"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "City",
+        "labels": [
+          "City"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Country",
+        "labels": [
+          "Country"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Continent",
+        "labels": [
+          "Continent"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "University",
+        "labels": [
+          "University"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Company",
+        "labels": [
+          "Company"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "type": "CONTAINER_OF",
+        "fromEntity": "Forum",
+        "toEntity": "Post",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_CREATOR",
+        "fromEntity": [
+          "Post",
+          "Comment"
+        ],
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_INTEREST",
+        "fromEntity": "Person",
+        "toEntity": "Tag",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_MEMBER",
+        "fromEntity": "Forum",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_MODERATOR",
+        "fromEntity": "Forum",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_TAG",
+        "fromEntity": [
+          "Forum",
+          "Post",
+          "Comment"
+        ],
+        "toEntity": "Tag",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_TYPE",
+        "fromEntity": "Tag",
+        "toEntity": "TagClass",
+        "properties": []
+      },
+      {
+        "type": "IS_LOCATED_IN",
+        "fromEntity": [
+          "Person",
+          "Post",
+          "Comment",
+          "University",
+          "Company"
+        ],
+        "toEntity": [
+          "City",
+          "Country"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "IS_PART_OF",
+        "fromEntity": [
+          "City",
+          "Country"
+        ],
+        "toEntity": [
+          "Country",
+          "Continent"
+        ],
+        "properties": []
+      },
+      {
+        "type": "IS_SUBCLASS_OF",
+        "fromEntity": "TagClass",
+        "toEntity": "TagClass",
+        "properties": []
+      },
+      {
+        "type": "KNOWS",
+        "fromEntity": "Person",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "LIKES",
+        "fromEntity": "Person",
+        "toEntity": [
+          "Post",
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "REPLY_OF",
+        "fromEntity": "Comment",
+        "toEntity": [
+          "Post",
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "STUDY_AT",
+        "fromEntity": "Person",
+        "toEntity": "University",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "classYear",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "type": "WORK_AT",
+        "fromEntity": "Person",
+        "toEntity": "Company",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "workFrom",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "properties": []
+  },
+  "metadata": {
+    "provider": "fixture",
+    "model": null,
+    "timestamp": "2026-10-24T00:00:00Z",
+    "confidence": 1.0,
+    "reviewRequired": false,
+    "warnings": [
+      "Generated by tests/ldbc/mappings.py. LDBC supertypes (Message, Place, Organisation) are not mapped: the mapping model cannot express them yet (PRD \u00a78.4)."
+    ]
+  },
+  "physicalMapping": {
+    "entities": {
+      "Person": {
+        "collectionName": "person",
+        "style": "COLLECTION",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "firstName": {
+            "field": "firstName",
+            "type": "string",
+            "indexed": true
+          },
+          "lastName": {
+            "field": "lastName",
+            "type": "string"
+          },
+          "gender": {
+            "field": "gender",
+            "type": "string"
+          },
+          "birthday": {
+            "field": "birthday",
+            "type": "date"
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "speaks": {
+            "field": "speaks",
+            "type": "array"
+          },
+          "email": {
+            "field": "email",
+            "type": "array"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_person_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_person_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_person_creation_date"
+          }
+        ]
+      },
+      "Forum": {
+        "collectionName": "forum",
+        "style": "COLLECTION",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "title": {
+            "field": "title",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_forum_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_forum_creation_date"
+          }
+        ]
+      },
+      "Post": {
+        "collectionName": "post",
+        "style": "COLLECTION",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "imageFile": {
+            "field": "imageFile",
+            "type": "string"
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "language": {
+            "field": "language",
+            "type": "string"
+          },
+          "content": {
+            "field": "content",
+            "type": "string"
+          },
+          "length": {
+            "field": "length",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_post_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_post_creation_date"
+          }
+        ]
+      },
+      "Comment": {
+        "collectionName": "comment",
+        "style": "COLLECTION",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "content": {
+            "field": "content",
+            "type": "string"
+          },
+          "length": {
+            "field": "length",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_comment_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_comment_creation_date"
+          }
+        ]
+      },
+      "Tag": {
+        "collectionName": "tag",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_tag_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_tag_name"
+          }
+        ]
+      },
+      "TagClass": {
+        "collectionName": "tag_class",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_tag_class_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_tag_class_name"
+          }
+        ]
+      },
+      "City": {
+        "collectionName": "city",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string"
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_city_id"
+          }
+        ]
+      },
+      "Country": {
+        "collectionName": "country",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_country_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_country_name"
+          }
+        ]
+      },
+      "Continent": {
+        "collectionName": "continent",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string"
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_continent_id"
+          }
+        ]
+      },
+      "University": {
+        "collectionName": "university",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string"
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_university_id"
+          }
+        ]
+      },
+      "Company": {
+        "collectionName": "company",
+        "style": "COLLECTION",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string"
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_company_id"
+          }
+        ]
+      }
+    },
+    "relationships": {
+      "CONTAINER_OF": {
+        "edgeCollectionName": "container_of",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Forum",
+        "range": "Post",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_CREATOR": {
+        "edgeCollectionName": "has_creator",
+        "style": "DEDICATED_COLLECTION",
+        "domain": [
+          "Post",
+          "Comment"
+        ],
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_INTEREST": {
+        "edgeCollectionName": "has_interest",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Tag",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_MEMBER": {
+        "edgeCollectionName": "has_member",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Forum",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_MODERATOR": {
+        "edgeCollectionName": "has_moderator",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Forum",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_TAG": {
+        "edgeCollectionName": "has_tag",
+        "style": "DEDICATED_COLLECTION",
+        "domain": [
+          "Forum",
+          "Post",
+          "Comment"
+        ],
+        "range": "Tag",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "HAS_TYPE": {
+        "edgeCollectionName": "has_type",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Tag",
+        "range": "TagClass",
+        "properties": {}
+      },
+      "IS_LOCATED_IN": {
+        "edgeCollectionName": "is_located_in",
+        "style": "DEDICATED_COLLECTION",
+        "domain": [
+          "Person",
+          "Post",
+          "Comment",
+          "University",
+          "Company"
+        ],
+        "range": [
+          "City",
+          "Country"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "IS_PART_OF": {
+        "edgeCollectionName": "is_part_of",
+        "style": "DEDICATED_COLLECTION",
+        "domain": [
+          "City",
+          "Country"
+        ],
+        "range": [
+          "Country",
+          "Continent"
+        ],
+        "properties": {}
+      },
+      "IS_SUBCLASS_OF": {
+        "edgeCollectionName": "is_subclass_of",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "TagClass",
+        "range": "TagClass",
+        "properties": {}
+      },
+      "KNOWS": {
+        "edgeCollectionName": "knows",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "LIKES": {
+        "edgeCollectionName": "likes",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": [
+          "Post",
+          "Comment"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "REPLY_OF": {
+        "edgeCollectionName": "reply_of",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Comment",
+        "range": [
+          "Post",
+          "Comment"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        }
+      },
+      "STUDY_AT": {
+        "edgeCollectionName": "study_at",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "University",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          },
+          "classYear": {
+            "field": "classYear",
+            "type": "number"
+          }
+        }
+      },
+      "WORK_AT": {
+        "edgeCollectionName": "work_at",
+        "style": "DEDICATED_COLLECTION",
+        "domain": "Person",
+        "range": "Company",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          },
+          "workFrom": {
+            "field": "workFrom",
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

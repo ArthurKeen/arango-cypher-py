@@ -1,0 +1,1949 @@
+{
+  "conceptualSchema": {
+    "entities": [
+      {
+        "name": "Person",
+        "labels": [
+          "Person"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "firstName",
+            "type": "string"
+          },
+          {
+            "name": "lastName",
+            "type": "string"
+          },
+          {
+            "name": "gender",
+            "type": "string"
+          },
+          {
+            "name": "birthday",
+            "type": "date"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "speaks",
+            "type": "array"
+          },
+          {
+            "name": "email",
+            "type": "array"
+          }
+        ]
+      },
+      {
+        "name": "Forum",
+        "labels": [
+          "Forum"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Post",
+        "labels": [
+          "Post"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "imageFile",
+            "type": "string"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "language",
+            "type": "string"
+          },
+          {
+            "name": "content",
+            "type": "string"
+          },
+          {
+            "name": "length",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "Comment",
+        "labels": [
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "locationIP",
+            "type": "string"
+          },
+          {
+            "name": "browserUsed",
+            "type": "string"
+          },
+          {
+            "name": "content",
+            "type": "string"
+          },
+          {
+            "name": "length",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "name": "Tag",
+        "labels": [
+          "Tag"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "TagClass",
+        "labels": [
+          "TagClass"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "City",
+        "labels": [
+          "City"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Country",
+        "labels": [
+          "Country"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Continent",
+        "labels": [
+          "Continent"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "University",
+        "labels": [
+          "University"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "Company",
+        "labels": [
+          "Company"
+        ],
+        "properties": [
+          {
+            "name": "id",
+            "type": "number"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "type": "CONTAINER_OF",
+        "fromEntity": "Forum",
+        "toEntity": "Post",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_CREATOR",
+        "fromEntity": [
+          "Post",
+          "Comment"
+        ],
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_INTEREST",
+        "fromEntity": "Person",
+        "toEntity": "Tag",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_MEMBER",
+        "fromEntity": "Forum",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_MODERATOR",
+        "fromEntity": "Forum",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_TAG",
+        "fromEntity": [
+          "Forum",
+          "Post",
+          "Comment"
+        ],
+        "toEntity": "Tag",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "HAS_TYPE",
+        "fromEntity": "Tag",
+        "toEntity": "TagClass",
+        "properties": []
+      },
+      {
+        "type": "IS_LOCATED_IN",
+        "fromEntity": [
+          "Person",
+          "Post",
+          "Comment",
+          "University",
+          "Company"
+        ],
+        "toEntity": [
+          "City",
+          "Country"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "IS_PART_OF",
+        "fromEntity": [
+          "City",
+          "Country"
+        ],
+        "toEntity": [
+          "Country",
+          "Continent"
+        ],
+        "properties": []
+      },
+      {
+        "type": "IS_SUBCLASS_OF",
+        "fromEntity": "TagClass",
+        "toEntity": "TagClass",
+        "properties": []
+      },
+      {
+        "type": "KNOWS",
+        "fromEntity": "Person",
+        "toEntity": "Person",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "LIKES",
+        "fromEntity": "Person",
+        "toEntity": [
+          "Post",
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "REPLY_OF",
+        "fromEntity": "Comment",
+        "toEntity": [
+          "Post",
+          "Comment"
+        ],
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          }
+        ]
+      },
+      {
+        "type": "STUDY_AT",
+        "fromEntity": "Person",
+        "toEntity": "University",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "classYear",
+            "type": "number"
+          }
+        ]
+      },
+      {
+        "type": "WORK_AT",
+        "fromEntity": "Person",
+        "toEntity": "Company",
+        "properties": [
+          {
+            "name": "creationDate",
+            "type": "datetime"
+          },
+          {
+            "name": "workFrom",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "properties": []
+  },
+  "metadata": {
+    "provider": "fixture",
+    "model": null,
+    "timestamp": "2026-10-24T00:00:00Z",
+    "confidence": 1.0,
+    "reviewRequired": false,
+    "warnings": [
+      "Generated by tests/ldbc/mappings.py. LDBC supertypes (Message, Place, Organisation) are not mapped: the mapping model cannot express them yet (PRD \u00a78.4)."
+    ]
+  },
+  "physicalMapping": {
+    "entities": {
+      "Person": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "firstName": {
+            "field": "firstName",
+            "type": "string",
+            "indexed": true
+          },
+          "lastName": {
+            "field": "lastName",
+            "type": "string"
+          },
+          "gender": {
+            "field": "gender",
+            "type": "string"
+          },
+          "birthday": {
+            "field": "birthday",
+            "type": "date"
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "speaks": {
+            "field": "speaks",
+            "type": "array"
+          },
+          "email": {
+            "field": "email",
+            "type": "array"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Forum": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Forum",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "title": {
+            "field": "title",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Post": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Post",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "imageFile": {
+            "field": "imageFile",
+            "type": "string"
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "language": {
+            "field": "language",
+            "type": "string"
+          },
+          "content": {
+            "field": "content",
+            "type": "string"
+          },
+          "length": {
+            "field": "length",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Comment": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Comment",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime",
+            "indexed": true
+          },
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "locationIP": {
+            "field": "locationIP",
+            "type": "string"
+          },
+          "browserUsed": {
+            "field": "browserUsed",
+            "type": "string"
+          },
+          "content": {
+            "field": "content",
+            "type": "string"
+          },
+          "length": {
+            "field": "length",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Tag": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Tag",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "TagClass": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "TagClass",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "City": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "City",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Country": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Country",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Continent": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Continent",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "University": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "University",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      },
+      "Company": {
+        "collectionName": "nodes",
+        "style": "LABEL",
+        "typeField": "type",
+        "typeValue": "Company",
+        "properties": {
+          "id": {
+            "field": "id",
+            "type": "number",
+            "indexed": true
+          },
+          "name": {
+            "field": "name",
+            "type": "string",
+            "indexed": true
+          },
+          "url": {
+            "field": "url",
+            "type": "string"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "id"
+            ],
+            "unique": true,
+            "name": "idx_nodes_type_id"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "labels[*]"
+            ],
+            "unique": false,
+            "name": "idx_nodes_labels"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "name"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "firstName"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_first_name"
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "type",
+              "creationDate"
+            ],
+            "unique": false,
+            "name": "idx_nodes_type_creation_date"
+          }
+        ]
+      }
+    },
+    "relationships": {
+      "CONTAINER_OF": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "CONTAINER_OF",
+        "domain": "Forum",
+        "range": "Post",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_CREATOR": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_CREATOR",
+        "domain": [
+          "Post",
+          "Comment"
+        ],
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_INTEREST": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_INTEREST",
+        "domain": "Person",
+        "range": "Tag",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_MEMBER": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_MEMBER",
+        "domain": "Forum",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_MODERATOR": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_MODERATOR",
+        "domain": "Forum",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_TAG": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_TAG",
+        "domain": [
+          "Forum",
+          "Post",
+          "Comment"
+        ],
+        "range": "Tag",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "HAS_TYPE": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "HAS_TYPE",
+        "domain": "Tag",
+        "range": "TagClass",
+        "properties": {},
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "IS_LOCATED_IN": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "IS_LOCATED_IN",
+        "domain": [
+          "Person",
+          "Post",
+          "Comment",
+          "University",
+          "Company"
+        ],
+        "range": [
+          "City",
+          "Country"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "IS_PART_OF": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "IS_PART_OF",
+        "domain": [
+          "City",
+          "Country"
+        ],
+        "range": [
+          "Country",
+          "Continent"
+        ],
+        "properties": {},
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "IS_SUBCLASS_OF": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "IS_SUBCLASS_OF",
+        "domain": "TagClass",
+        "range": "TagClass",
+        "properties": {},
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "KNOWS": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "KNOWS",
+        "domain": "Person",
+        "range": "Person",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "LIKES": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "LIKES",
+        "domain": "Person",
+        "range": [
+          "Post",
+          "Comment"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "REPLY_OF": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "REPLY_OF",
+        "domain": "Comment",
+        "range": [
+          "Post",
+          "Comment"
+        ],
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "STUDY_AT": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "STUDY_AT",
+        "domain": "Person",
+        "range": "University",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          },
+          "classYear": {
+            "field": "classYear",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      },
+      "WORK_AT": {
+        "edgeCollectionName": "edges",
+        "style": "GENERIC_WITH_TYPE",
+        "typeField": "type",
+        "typeValue": "WORK_AT",
+        "domain": "Person",
+        "range": "Company",
+        "properties": {
+          "creationDate": {
+            "field": "creationDate",
+            "type": "datetime"
+          },
+          "workFrom": {
+            "field": "workFrom",
+            "type": "number"
+          }
+        },
+        "indexes": [
+          {
+            "type": "persistent",
+            "fields": [
+              "_from",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_from_type",
+            "vci": true
+          },
+          {
+            "type": "persistent",
+            "fields": [
+              "_to",
+              "type"
+            ],
+            "unique": false,
+            "name": "idx_edges_to_type",
+            "vci": true
+          }
+        ]
+      }
+    }
+  }
+}

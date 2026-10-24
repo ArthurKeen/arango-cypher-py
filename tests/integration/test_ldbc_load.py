@@ -20,6 +20,7 @@ from arango import ArangoClient
 
 from tests.ldbc.datasets import DATASETS, fetch
 from tests.ldbc.loader import LoadReport, load, lpg_indexes, pg_indexes
+from tests.ldbc.schema import REL_TYPES, rel_domain, rel_range
 
 pytestmark = pytest.mark.integration
 
@@ -141,3 +142,17 @@ def test_timestamps_keep_their_reference_encoding(loaded, dataset, expected_type
     db, _ = loaded[(dataset, "pg")]
     q = "FOR p IN person LIMIT 1 RETURN [TYPENAME(p.creationDate), TYPENAME(p.birthday), TYPENAME(p.speaks)]"
     assert list(db.aql.execute(q)) == [[expected_type, expected_type, "array"]]
+
+
+@pytest.mark.parametrize("rel_type", REL_TYPES)
+def test_loaded_endpoints_stay_within_the_declared_domain_and_range(loaded, rel_type):
+    """The mapping fixtures' union domain/range (schema.py) covers the real data."""
+    db, _ = loaded[("sf0.003-iso", "lpg")]
+    q = (
+        "FOR e IN edges FILTER e.type == @t "
+        "COLLECT s = DOCUMENT(e._from).type, d = DOCUMENT(e._to).type RETURN [s, d]"
+    )
+    pairs = list(db.aql.execute(q, bind_vars={"t": rel_type}))
+    assert pairs, f"no {rel_type} edges loaded"
+    assert {s for s, _ in pairs} <= set(rel_domain(rel_type))
+    assert {d for _, d in pairs} <= set(rel_range(rel_type))

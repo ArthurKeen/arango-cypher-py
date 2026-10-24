@@ -175,25 +175,33 @@ test.
 These are the most valuable findings, and they are why execution against an
 oracle is mandatory (§4, D4):
 
-1. **Supertype labels translate to wrong AQL in both layouts.**
-   - **PG:** `MATCH (m:Message)` scans a `Message` collection, which a
-     per-concrete-type layout does not have. On a correct LDBC PG load the
-     query returns zero rows, or fails.
-   - **LPG:** it emits `FILTER m.type == "Message"`, but a comment's `type` is
-     `Comment`, so it matches nothing. `m:Comment` then compares the same
-     `type` field, so `MATCH (m:Message) RETURN m:Comment` cannot be true for
-     any row.
-   - **Scale:** of the queries that "translate", **15 (PG) and 16 (LPG)
-     reference a supertype label.** At most **13 (PG) and 14 (LPG)** can be
-     correct before execution evidence.
-2. **Temporal accessors on stored timestamps silently return `null`.**
-   `m.creationDate.year` becomes `m.creationDate.year`, which is attribute
-   access on a number or string. BI1 and BI13 "translate" this way.
+1. **Supertype labels.** *Corrected 2026-10-24.* The first probe gave
+   `Message` its own physical mapping. Against that mapping the transpiler
+   emits AQL that matches nothing:
+   - **PG:** `MATCH (m:Message)` scans a `Message` collection.
+   - **LPG:** it emits `FILTER m.type == "Message"`, and no document holds
+     that type.
 
-Both violate the PRD's determinism and safety intent (§1.1): translation should
-fail closed rather than emit plausible-looking wrong AQL. WP-35 and WP-41 fix
-them. Until those land, the ledger records them as `translates_wrong`, not
-`translatable`.
+   The committed fixtures (WP-32) **leave the supertypes out** instead. Against
+   them, every one of the 19 (PG) / 20 (LPG) queries that name a supertype
+   fails closed with `MAPPING_NOT_FOUND`, and none translates. So the
+   transpiler is not at fault here; the hazard is a mapping that misdescribes a
+   label hierarchy. The real fix remains WP-35: let the mapping express the
+   hierarchy.
+
+   Under the fixtures, **13 (PG) and 14 (LPG)** operations translate. That
+   matches the first probe's estimate of the most that could be correct.
+2. **Temporal accessors on stored timestamps silently return `null`.**
+   `m.creationDate.year` became `m.creationDate.year`, which is attribute
+   access on a number or string. BI1 and BI13 would "translate" this way once
+   their supertypes resolve.
+   - **Fixed in WP-32 (fail closed).** An accessor on a property the mapping
+     declares temporal is refused (`_translate_v0/temporal_guard.py`).
+   - **Still open:** a mapping that types the property as a plain number or
+     string keeps attribute access until WP-41.
+
+Silent wrong results violate the PRD's determinism and safety intent (§1.1). An
+oracle mismatch is recorded as `translates_wrong`, never `translatable`.
 
 ### 3.3 Root causes of the explicit failures
 
@@ -208,6 +216,7 @@ them. Until those land, the ledger records them as `translates_wrong`, not
 | Updating clause after `WITH … UNWIND … MATCH` | `Updating clauses are not supported in v0` | INS1 INS4 INS6 INS7 | `core.py:1378`, `:1421` |
 | `DETACH DELETE` of `OPTIONAL MATCH` variables | `DELETE targets 'x', which is not bound by the first MATCH pattern` | DEL1 DEL4 | `writes.py` |
 | Unlabeled start node with an ambiguous PG domain | `A single label is required` | IC5 IC9 (PG only) BI2 | `core.py:3796` |
+| Unlabeled endpoint across a polymorphic edge (PG), e.g. `(c:Comment)-[:REPLY_OF]->(m)`, whose range is a union | `A single label is required` | IS2 IC5 IC9 (PG only, found 2026-10-24) | `core.py:3796`; `MappingResolver.infer_endpoint_label` returns `None` for unions |
 | `datetime()` / `duration()` / `date()` | `Unsupported function in v0: datetime` | IC10 BI2 BI17 … | `core.py:5316` |
 
 Constructs that **already translate** and need only execution evidence:
@@ -396,13 +405,13 @@ on its own (incremental-over-atomic).
 - **Scope:**
   - Vendor the queries with `UPSTREAM.md` and `NOTICE`.
   - Write `manifest.yml`.
-  - Write `ldbc_pg` and `ldbc_lpg` mapping fixtures.
-    - **Pre-WP-35:** supertypes are declared but marked unsupported, so they fail
-      closed instead of translating wrongly. This is the first transpiler-adjacent
-      change. It comes in two parts:
-      - in the fixtures: supertype entities have no physical mapping;
-      - in the translator: a missing physical mapping for a known conceptual
-        entity raises `MAPPING_NOT_FOUND` naming the supertype.
+  - Write `ldbc_pg` and `ldbc_lpg` mapping fixtures, generated from
+    `schema.py` and the loader's index specs (`tests/ldbc/mappings.py`), with
+    union domain/range for polymorphic edges. Supertypes have no mapping, so
+    they fail closed (`MAPPING_NOT_FOUND`); no translator change is needed for
+    that (§3.2).
+  - The translator refuses temporal accessors on properties declared temporal
+    (`_translate_v0/temporal_guard.py`).
   - `ledger.py`, `conformance_ledger.tsv` and `test_ldbc_ratchet.py` (default
     suite, no DB).
   - The INS1 corrected variant, and the upstream issue filed.
@@ -410,6 +419,16 @@ on its own (incremental-over-atomic).
   - The ratchet runs in under 5 s.
   - The ledger reproduces §3.1, minus the silent-wrong cells, which now show
     `fails_closed`.
+- **Status (2026-10-24): part 1 implemented** (the fixtures and the temporal
+  guard).
+  - `tests/ldbc/test_ldbc_mappings_unit.py` checks that the committed fixtures
+    equal the generated ones, and that supertypes fail closed.
+  - `tests/test_translate_temporal_guard.py` covers the guard. A mutation
+    check (guard removed) fails 10 of its cases.
+  - The integration suite checks that every loaded edge's endpoint labels fall
+    within the declared domain and range.
+  - **Part 2 is next:** vendoring the queries, the manifest, and the ledger
+    with its ratchet.
 
 #### WP-33: Oracle snapshots and execution tier ⚡ (M)
 - **Scope:**

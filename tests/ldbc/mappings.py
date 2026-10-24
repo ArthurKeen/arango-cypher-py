@@ -1,0 +1,222 @@
+"""Generate the ``ldbc_pg`` / ``ldbc_lpg`` mapping fixtures (WP-32).
+
+The fixtures are the contract for what the loader builds (``loader.py``), so
+they are generated from the same sources — :mod:`tests.ldbc.schema` for labels,
+properties and endpoints, :func:`loader.pg_indexes` / :func:`loader.lpg_indexes`
+for indexes — rather than written by hand. ``test_ldbc_mappings_unit.py`` fails
+if a committed fixture differs from what this module builds.
+
+Regenerate with::
+
+    .venv/bin/python -m tests.ldbc.mappings --write
+
+**Supertypes are deliberately absent.** ``Message``, ``Place`` and
+``Organisation`` have no physical mapping because the mapping model cannot
+express a label whose members live under other labels (PRD §8.4,
+docs/ldbc_benchmark_plan.md D8/WP-35). Leaving them out makes every query that
+names one fail closed with ``MAPPING_NOT_FOUND`` instead of translating against
+a mapping that misdescribes the data. Polymorphic relationships declare union
+``domain``/``range`` lists of concrete labels, which the resolver supports.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+from tests.ldbc.loader import (
+    LPG_EDGES,
+    LPG_NODES,
+    TYPE_FIELD,
+    IndexSpec,
+    Layout,
+    lpg_indexes,
+    pg_collection,
+    pg_edge_collection,
+    pg_indexes,
+)
+from tests.ldbc.schema import (
+    CONCRETE_LABELS,
+    EDGE_FILES,
+    NODE_FILES,
+    REL_TYPES,
+    Column,
+    rel_domain,
+    rel_range,
+)
+
+FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "mappings"
+
+#: Column kind → mapping property type (the vocabulary the OWL round-trip uses).
+_PROP_TYPE = {
+    "id": "number",
+    "int": "number",
+    "str": "string",
+    "str_list": "array",
+    "datetime": "datetime",
+    "date": "date",
+}
+
+
+def fixture_path(layout: Layout) -> Path:
+    return FIXTURE_DIR / f"ldbc_{layout}.export.json"
+
+
+def _label_properties(label: str) -> list[Column]:
+    for nf in NODE_FILES:
+        if nf.label == label or (nf.label is None and label in _MEMBERS[nf.name]):
+            return [c for c in nf.columns if c.kind in _PROP_TYPE]
+    raise ValueError(f"no node file holds label {label!r}")
+
+
+_MEMBERS = {"Place": ("City", "Country", "Continent"), "Organisation": ("University", "Company")}
+
+
+def _rel_properties(rel_type: str) -> list[Column]:
+    cols: dict[str, Column] = {}
+    for ef in EDGE_FILES:
+        if ef.rel_type == rel_type:
+            for c in ef.columns:
+                if c.kind in _PROP_TYPE:
+                    cols.setdefault(c.name, c)
+    return list(cols.values())
+
+
+def _index_json(spec: IndexSpec, *, vci: bool = False) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "type": "persistent",
+        "fields": list(spec.fields),
+        "unique": spec.unique,
+        "name": spec.name,
+    }
+    if vci:
+        out["vci"] = True
+    return out
+
+
+def _physical_props(cols: list[Column], indexed: set[str]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for c in cols:
+        prop: dict[str, Any] = {"field": c.name, "type": _PROP_TYPE[c.kind]}
+        if c.name in indexed:
+            prop["indexed"] = True
+        out[c.name] = prop
+    return out
+
+
+def _endpoint(labels: list[str]) -> str | list[str]:
+    return labels[0] if len(labels) == 1 else labels
+
+
+def build(layout: Layout) -> dict[str, Any]:
+    """The mapping export for *layout*, in the analyzer's ``export`` contract shape."""
+    if layout not in ("pg", "lpg"):
+        raise ValueError(f"unknown layout {layout!r}")
+
+    specs = pg_indexes() if layout == "pg" else lpg_indexes()
+    entities_cs: list[dict[str, Any]] = []
+    entities_pm: dict[str, Any] = {}
+    for label in CONCRETE_LABELS:
+        cols = _label_properties(label)
+        entities_cs.append(
+            {
+                "name": label,
+                "labels": [label],
+                "properties": [{"name": c.name, "type": _PROP_TYPE[c.kind]} for c in cols],
+            }
+        )
+        if layout == "pg":
+            coll = pg_collection(label)
+            mine = [s for s in specs if s.collection == coll]
+            indexed = {s.fields[0] for s in mine}
+            entities_pm[label] = {
+                "collectionName": coll,
+                "style": "COLLECTION",
+                "properties": _physical_props(cols, indexed),
+                "indexes": [_index_json(s) for s in mine],
+            }
+        else:
+            node_specs = [s for s in specs if s.collection == LPG_NODES]
+            indexed = {f for s in node_specs for f in s.fields if f != TYPE_FIELD}
+            entities_pm[label] = {
+                "collectionName": LPG_NODES,
+                "style": "LABEL",
+                "typeField": TYPE_FIELD,
+                "typeValue": label,
+                "properties": _physical_props(cols, indexed),
+                "indexes": [_index_json(s) for s in node_specs],
+            }
+
+    rels_cs: list[dict[str, Any]] = []
+    rels_pm: dict[str, Any] = {}
+    for rel_type in REL_TYPES:
+        cols = _rel_properties(rel_type)
+        domain, range_ = _endpoint(rel_domain(rel_type)), _endpoint(rel_range(rel_type))
+        rels_cs.append(
+            {
+                "type": rel_type,
+                "fromEntity": domain,
+                "toEntity": range_,
+                "properties": [{"name": c.name, "type": _PROP_TYPE[c.kind]} for c in cols],
+            }
+        )
+        rel: dict[str, Any] = {"domain": domain, "range": range_, "properties": _physical_props(cols, set())}
+        if layout == "pg":
+            rel = {"edgeCollectionName": pg_edge_collection(rel_type), "style": "DEDICATED_COLLECTION", **rel}
+        else:
+            edge_specs = [s for s in specs if s.collection == LPG_EDGES]
+            rel = {
+                "edgeCollectionName": LPG_EDGES,
+                "style": "GENERIC_WITH_TYPE",
+                "typeField": TYPE_FIELD,
+                "typeValue": rel_type,
+                **rel,
+                "indexes": [_index_json(s, vci=True) for s in edge_specs],
+            }
+        rels_pm[rel_type] = rel
+
+    return {
+        "conceptualSchema": {"entities": entities_cs, "relationships": rels_cs, "properties": []},
+        "metadata": {
+            "provider": "fixture",
+            "model": None,
+            "timestamp": "2026-10-24T00:00:00Z",
+            "confidence": 1.0,
+            "reviewRequired": False,
+            "warnings": [
+                "Generated by tests/ldbc/mappings.py. LDBC supertypes (Message, Place, Organisation) "
+                "are not mapped: the mapping model cannot express them yet (PRD §8.4)."
+            ],
+        },
+        "physicalMapping": {"entities": entities_pm, "relationships": rels_pm},
+    }
+
+
+def render(layout: Layout) -> str:
+    return json.dumps(build(layout), indent=2, sort_keys=False) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--write", action="store_true", help="write the fixtures instead of checking them")
+    args = ap.parse_args(argv)
+    stale = []
+    for layout in ("pg", "lpg"):
+        path = fixture_path(layout)  # type: ignore[arg-type]
+        text = render(layout)  # type: ignore[arg-type]
+        if args.write:
+            path.write_text(text, encoding="utf-8")
+            print(f"wrote {path}")
+        elif not path.exists() or path.read_text(encoding="utf-8") != text:
+            stale.append(str(path))
+    if stale:
+        print("stale LDBC mapping fixtures (run with --write):\n  " + "\n  ".join(stale), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
