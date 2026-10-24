@@ -1,7 +1,7 @@
 # arango-cypher-py — Product Requirements Document (Consolidated)
 
 **Status:** Active development · **v0.2.0**
-**Last updated:** 2026-08-06
+**Last updated:** 2026-10-23
 **Owner:** arango-cypher-py maintainers
 
 > **This is the single, all-encompassing PRD for the project.** It consolidates the
@@ -18,6 +18,7 @@
 > | Feature-level compatibility contract | [`cypher_capability_matrix.md`](./cypher_capability_matrix.md) |
 > | Multi-tenant defense-in-depth | [`multitenant_prd.md`](./multitenant_prd.md) |
 > | Work-package execution plan | [`implementation_plan.md`](./implementation_plan.md) |
+> | LDBC SNB benchmark (validation + performance) | [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) |
 > | Schema-inference bug fixes | [`schema_inference_bugfix_prd.md`](./schema_inference_bugfix_prd.md) |
 > | Project assessment (outside-in critique) | [`2026-05-26-project-assessment.md`](./2026-05-26-project-assessment.md) |
 > | Platform packaging / deployment | [`arango_packaging_service/`](./arango_packaging_service/) |
@@ -605,6 +606,18 @@ procedures; temporal values and functions; native `shortestPath()` syntax
 pipelines such as `UNWIND … WITH … <write>` and mid-pipeline
 `DELETE`/`SET` before a following `WITH`.
 
+**Label hierarchies (supertypes)** — a label whose members live under other
+labels, such as LDBC's `Message` ⊇ `Post`, `Comment` — cannot be expressed in
+the mapping model. Today such a label **translates to wrong AQL instead of
+failing closed**. Under PG it scans a collection named after the supertype.
+Under LPG it compares the type field with the supertype's name, which no
+document holds. A temporal accessor (`n.creationDate.year`) on a stored
+timestamp also translates to attribute access that yields `null`. Both are
+open defects. Until they are fixed, they MUST be made to fail closed. Both were
+found by the LDBC baseline probe; the plan is in
+[`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3.2 (WP-32, WP-35,
+WP-41).
+
 Typeless relationships and leading `WITH`/`UNWIND` computational pipelines
 have constrained support rather than being blanket exclusions. The precise
 mapping, semantics, and performance limits are maintained in
@@ -892,6 +905,69 @@ test-what-you-touch, verify-before-done, incremental-over-atomic,
 comprehensiveness-over-simplification, wiring-over-deletion, modularity (source
 files ≤ 1500 lines), and checkpoint-regularly.
 
+### 12.1 LDBC SNB benchmark (validation + performance)
+
+The LDBC Social Network Benchmark's reference Cypher queries, run on its
+generated data, form a third evidence tier between the TCK (language coverage on
+tiny graphs) and the Movies and Northwind cross-validation (small hand-built
+corpora). The plan, research and baseline are in
+[`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md).
+
+- **LDBC-1 Corpus.** All SNB Interactive v2 operations (IC1–14, IS1–7,
+  INS1–8, DEL1–8) and BI queries (BI1–20) are vendored **verbatim** from the
+  LDBC reference repositories, pinned to an upstream commit, with Apache-2.0
+  attribution.
+  - Verbatim files are never edited.
+  - Any adaptation (for example, replacing a GDS procedure, or correcting an
+    upstream bug) is a separately labelled variant.
+  - Verbatim and variant outcomes are reported separately.
+- **LDBC-2 Layouts.** Every operation is measured on a **PG** and an **LPG**
+  physical layout.
+  - Both are loaded from the same LDBC data generator output by one
+    deterministic, idempotent loader.
+  - Each load verifies that per-entity counts are identical across the CSV, PG
+    and LPG.
+  - Both layouts have committed mapping fixtures (`ldbc_pg`, `ldbc_lpg`).
+  - The bundle acquired live from each loaded layout is diffed against its
+    fixture. This is §7 live-database coverage.
+- **LDBC-3 Outcome ledger.** Each operation × layout records `parses`,
+  `translates`, `executes` and `matches_oracle`, or a terminal state with a
+  reason:
+  - `fails_closed`
+  - `translates_wrong`
+  - `out_of_subset` (GDS or APOC)
+
+  A per-cell ratchet in the default suite (translation tier, no database) fails
+  CI when any cell leaves a passing state, or an improvement goes unrecorded.
+- **LDBC-4 Oracle.** Expected results come from a pinned Neo4j 5.x running the
+  verbatim reference queries on the same data and parameters.
+  - Results are recorded as committed snapshots, so the integration tier needs
+    no Neo4j.
+  - `RUN_CROSS` re-verifies the snapshots against live Neo4j.
+  - Write operations are compared by post-state.
+  - Ordered comparison applies only when the query's ordering is total.
+- **LDBC-5 Fail closed.** `translates_wrong` is a defect, and it takes priority
+  over unsupported features. A construct the transpiler cannot lower correctly
+  MUST raise, not emit plausible AQL.
+- **LDBC-6 Performance.**
+  - **What is timed:** translation time is reported separately from execution
+    time. For each operation × layout × scale factor, the harness reports
+    p50/p95/p99 over several parameter bindings after warm-up.
+  - **What is recorded with each run:** server-side execution time, an
+    `EXPLAIN` plan digest, and the environment (versions, hardware, scale
+    factor, data checksum, git SHA).
+  - **Where results go:** they are emitted as JSON. Published prose is
+    generated from them and conformance-checked, never hand-copied.
+- **LDBC-7 Fair use.** Every published number carries "These are not LDBC
+  Benchmark Results" and attribution. The harness is never described as an
+  implementation of an LDBC Benchmark.
+- **LDBC-8 Scale.**
+  - CI uses SF0.003, downloaded on demand with a pinned SHA-256 and cached.
+  - Performance runs use SF0.1 (nightly, non-blocking) and SF1 or larger
+    (manual).
+  - Each workload is loaded in its reference timestamp encoding: epoch-ms for
+    Interactive, ISO-8601 for BI.
+
 ---
 
 ## 13. Packaging & deployment
@@ -1004,6 +1080,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
+| LDBC SNB benchmark (§12.1) | **Planned**: dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |
@@ -1030,7 +1107,10 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 multi-statement/transaction execution model (the single-`AqlQuery` output can't
 represent it) — adopt one, or keep failing closed? Should the leading-`MATCH`
 constraint be relaxed (large TCK lever, non-trivial grammar/renderer work)?
-Index-hint emission from `PropertyInfo.indexed` — when?
+Index-hint emission from `PropertyInfo.indexed` — when? How should label
+hierarchies (supertypes) be modeled? The options are a labels-array field for
+LPG plus a member-collection union for PG, in arango-query-core, or making them
+LPG- or hybrid-only with PG failing closed. See `ldbc_benchmark_plan.md` D8.
 
 **NL pipeline.** Default fuzzy matching to portable `CONTAINS`/`=~` vs. invest
 further in the ArangoSearch `arango.*` path as primary? Task decomposition /
