@@ -73,7 +73,11 @@ class NodeFile:
 
 @dataclass(frozen=True)
 class EdgeFile:
-    """An edge directory. Endpoint id spaces come from ``START_ID``/``END_ID``."""
+    """An edge directory. Endpoint id spaces come from ``START_ID``/``END_ID``.
+
+    ``src_labels``/``dst_labels`` are the concrete labels an endpoint can have
+    (the LDBC specification's per-file endpoint types).
+    """
 
     name: str
     part: Literal["static", "dynamic"]
@@ -81,6 +85,8 @@ class EdgeFile:
     src_space: str
     dst_space: str
     columns: tuple[Column, ...]
+    src_labels: tuple[str, ...]
+    dst_labels: tuple[str, ...]
 
 
 def _cols(spec: str) -> tuple[Column, ...]:
@@ -137,11 +143,29 @@ def _edge(name: str, part: Literal["static", "dynamic"], extra: str = "") -> Edg
     src, verb, dst = name.split("_")
     rel_type = re.sub(r"(?<!^)(?=[A-Z])", "_", verb).upper()
     spec = (_DYN_EDGE if part == "dynamic" else _STATIC_EDGE) + (f" {extra}" if extra else "")
-    return EdgeFile(name, part, rel_type, _ID_SPACE.get(src, src), _ID_SPACE.get(dst, dst), _cols(spec))
+    src_labels, dst_labels = _ENDPOINT_LABELS.get(name, ((src,), (dst,)))
+    return EdgeFile(
+        name,
+        part,
+        rel_type,
+        _ID_SPACE.get(src, src),
+        _ID_SPACE.get(dst, dst),
+        _cols(spec),
+        src_labels,
+        dst_labels,
+    )
 
 
 #: File-name endpoint → the ``ID(<space>)`` it references in the headers.
 _ID_SPACE = {"City": "Place", "Country": "Place", "University": "Organisation", "Company": "Organisation"}
+
+#: The two files whose names use a supertype: their concrete endpoints per the
+#: LDBC SNB specification (a university is in a city, a company in a country;
+#: a city is part of a country, a country part of a continent).
+_ENDPOINT_LABELS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "Organisation_isLocatedIn_Place": (("University", "Company"), ("City", "Country")),
+    "Place_isPartOf_Place": (("City", "Country"), ("Country", "Continent")),
+}
 
 EDGE_FILES: tuple[EdgeFile, ...] = (
     _edge("Organisation_isLocatedIn_Place", "static"),
@@ -170,6 +194,20 @@ EDGE_FILES: tuple[EdgeFile, ...] = (
 )
 
 REL_TYPES: tuple[str, ...] = tuple(sorted({e.rel_type for e in EDGE_FILES}))
+
+
+def _ordered(labels: set[str]) -> list[str]:
+    return [lbl for lbl in CONCRETE_LABELS if lbl in labels]
+
+
+def rel_domain(rel_type: str) -> list[str]:
+    """Concrete labels a *rel_type* edge can start at, across all its files."""
+    return _ordered({lbl for e in EDGE_FILES if e.rel_type == rel_type for lbl in e.src_labels})
+
+
+def rel_range(rel_type: str) -> list[str]:
+    """Concrete labels a *rel_type* edge can end at, across all its files."""
+    return _ordered({lbl for e in EDGE_FILES if e.rel_type == rel_type for lbl in e.dst_labels})
 
 
 def labels_of(concrete: str) -> list[str]:
