@@ -1,4 +1,5 @@
 {
+ "kind": "read",
  "operation": "IC7",
  "file": "interactive_v2/interactive-complex-7.cypher",
  "sha256": "0ebb7d2a1357092bfb57278c36b08e0f165482f8c81f4dfaed670b3e7f102758",

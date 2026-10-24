@@ -100,6 +100,7 @@ def record(driver: Any, scale: str = "sf0.003") -> dict[str, dict[str, Any]]:
                         }
                     )
                 out[op_id] = {
+                    "kind": "read",
                     "operation": op_id,
                     "file": op.file,
                     "sha256": op.sha256,
@@ -108,6 +109,37 @@ def record(driver: Any, scale: str = "sf0.003") -> dict[str, dict[str, Any]]:
                     "ordered": has_order_by(op.text()),
                     "bindings": recorded,
                 }
+    out.update(record_writes(driver, scale))
+    return out
+
+
+def record_writes(driver: Any, scale: str = "sf0.003") -> dict[str, dict[str, Any]]:
+    """The Neo4j post-state delta of every write binding, each run in a rolled-back transaction."""
+    from tests.ldbc.datasets import DATASETS, fetch
+    from tests.ldbc.neo4j_loader import load_neo4j
+    from tests.ldbc.writes import dump_neo4j, neo4j_write_delta
+
+    dataset = P._WORKLOAD_DATASET["interactive_v2"]
+    load_neo4j(driver, fetch(dataset), encoding=DATASETS[dataset].encoding)
+    with driver.session() as session:
+        before = session.execute_read(dump_neo4j)
+    version = driver.get_server_info().agent
+    ops = {op.id: op for op in load()}
+    out: dict[str, dict[str, Any]] = {}
+    for op_id, binding in sorted(P.read_writes(scale).items()):
+        op = ops[op_id]
+        d = neo4j_write_delta(driver, op.text(), {k: P.to_neo4j(v) for k, v in binding.items()}, before)
+        if not any(d.values()):
+            raise RuntimeError(f"{op_id}: the write binding changes nothing on the oracle; choose another")
+        out[op_id] = {
+            "kind": "write",
+            "operation": op_id,
+            "file": op.file,
+            "sha256": op.sha256,
+            "dataset": dataset,
+            "oracle": version,
+            "bindings": [{"binding": {k: P._dump_value(v) for k, v in binding.items()}, "delta": d}],
+        }
     return out
 
 

@@ -31,12 +31,14 @@ def recorded():
 
 
 def test_live_oracle_matches_the_committed_snapshots(recorded):
+    """Reads and writes alike: the live recording renders to the committed file, byte for byte."""
+    import json
+
     drifted = []
     for op_id, live in recorded.items():
-        committed = oracle.read(op_id)
-        live_bindings = [{**b, "binding": b["binding"]} for b in live["bindings"]]
-        committed_rows = [(b["columns"], b["rows"]) for b in committed["bindings"]] if committed else None
-        if committed_rows != [(b["columns"], b["rows"]) for b in live_bindings]:
+        path = oracle.snapshot_path(op_id)
+        rendered = json.dumps(live, indent=1, ensure_ascii=False, sort_keys=False) + "\n"
+        if not path.exists() or path.read_text(encoding="utf-8") != rendered:
             drifted.append(op_id)
     assert not drifted, (
         f"the oracle's answers changed for {drifted}. If intended (e.g. a Neo4j upgrade), re-record with "

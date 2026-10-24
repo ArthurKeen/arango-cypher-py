@@ -1,0 +1,37 @@
+{
+ "kind": "write",
+ "operation": "DEL6",
+ "file": "interactive_v2/interactive-delete-6.cypher",
+ "sha256": "6d4357090f16240dd9e89ae569eb20d0d2baa864c3518d999f14d5aba9f5486a",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "postId": 824633724068
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [
+     "[\"Comment\", {\"browserUsed\": \"Internet Explorer\", \"content\": \"yes\", \"creationDate\": 1349256799968, \"id\": 1099511631015, \"length\": 3, \"locationIP\": \"91.223.132.248\"}]",
+     "[\"Post\", {\"browserUsed\": \"Firefox\", \"content\": \"About Paradorn Srichaphan, er from Thailand. HeAbout Spain, rians, which produceAbout Wales, rganised by over fifAbout\", \"creationDate\": 1329837115998, \"id\": 824633724068, \"language\": \"de\", \"length\": 118, \"locationIP\": \"31.24.100.159\"}]"
+    ],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"CONTAINER_OF\", \"Forum\", 824633721137, \"Post\", 824633724068, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_CREATOR\", \"Comment\", 1099511631015, \"Person\", 10995116277761, {\"creationDate\": 1349256799968}]",
+     "[\"HAS_CREATOR\", \"Post\", 824633724068, \"Person\", 26388279066655, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 12122, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 12648, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 1934, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 6424, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 6426, {\"creationDate\": 1329837115998}]",
+     "[\"HAS_TAG\", \"Post\", 824633724068, \"Tag\", 7525, {\"creationDate\": 1329837115998}]",
+     "[\"IS_LOCATED_IN\", \"Comment\", 1099511631015, \"Country\", 78, {\"creationDate\": 1349256799968}]",
+     "[\"IS_LOCATED_IN\", \"Post\", 824633724068, \"Country\", 50, {\"creationDate\": 1329837115998}]",
+     "[\"REPLY_OF\", \"Comment\", 1099511631015, \"Post\", 824633724068, {\"creationDate\": 1349256799968}]"
+    ]
+   }
+  }
+ ]
+}

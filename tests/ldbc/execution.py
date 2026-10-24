@@ -10,7 +10,7 @@ oracle's recorded rows (``expected/<scale>/<op>.json``). A cell's outcome:
 * ``execution_error`` — ArangoDB rejected the AQL;
 * ``fails_closed`` / ``syntax_error`` / ``out_of_subset`` — as in the
   translation ledger;
-* ``no_oracle`` — no snapshot: writes, compared by post-state in part 3;
+* ``no_oracle`` — no snapshot (an operation the oracle cannot run);
 * ``crash`` — the harness or translator raised something unexpected.
 
 Results go to ``execution_ledger.tsv``; ``tests/integration/test_ldbc_execution.py``
@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from arango.exceptions import AQLQueryExecuteError
+from arango.exceptions import AQLQueryExecuteError, TransactionInitError
 
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
@@ -33,6 +33,7 @@ from tests.ldbc import oracle
 from tests.ldbc import params as P
 from tests.ldbc.corpus import LDBC_DIR, Operation, load
 from tests.ldbc.ledger import LAYOUTS, Cell, _detail, classify_error, load_ledger, write_cells
+from tests.ldbc.writes import arango_write_delta, delta_difference, dump_arango
 
 EXEC_LEDGER_PATH = LDBC_DIR / "execution_ledger.tsv"
 
@@ -58,15 +59,18 @@ def dataset_for(op: Operation) -> str:
     return P._WORKLOAD_DATASET[op.workload]
 
 
-def run_cell(db: Any, op: Operation, layout: str, snapshot: dict[str, Any] | None) -> Cell:
-    """Translate, execute and compare every binding of *op*; the first failure decides."""
+def run_cell(
+    db: Any, op: Operation, layout: str, snapshot: dict[str, Any] | None, before: Any = None
+) -> Cell:
+    """Translate, execute and compare every binding of *op*; the first failure decides.
+
+    Reads compare rows; writes compare their post-state delta, taken inside a
+    rolled-back transaction against *before* (the layout's initial dump).
+    """
     if op.out_of_subset:
         return "out_of_subset", _detail(op.out_of_subset)
     if snapshot is None:
-        why = (
-            "writes are compared by post-state (WP-33 part 3)" if op.kind != "read" else "no oracle snapshot"
-        )
-        return "no_oracle", why
+        return "no_oracle", "no oracle snapshot"
     if snapshot["sha256"] != op.sha256:
         return "crash", f"stale snapshot: recorded for {snapshot['sha256'][:12]}, query is {op.sha256[:12]}"
 
@@ -77,6 +81,15 @@ def run_cell(db: Any, op: Operation, layout: str, snapshot: dict[str, Any] | Non
             tq = translate(op.text(), mapping=mapping, params=values)
         except Exception as e:  # noqa: BLE001 — classified like the translation ledger
             return classify_error(e)
+        if snapshot.get("kind") == "write":
+            try:
+                actual = arango_write_delta(db, layout, tq.aql, tq.bind_vars, before)
+            except (AQLQueryExecuteError, TransactionInitError) as e:
+                return "execution_error", _detail(f"ERR {e.error_code}: {e.error_message}")
+            diff = delta_difference(b["delta"], actual)
+            if diff is not None:
+                return "translates_wrong", _detail(f"[{op.id}@{layout}] {diff}")
+            continue
         try:
             rows = list(db.aql.execute(tq.aql, bind_vars=tq.bind_vars, max_runtime=MAX_RUNTIME_S))
         except AQLQueryExecuteError as e:
@@ -98,11 +111,15 @@ def run_cell(db: Any, op: Operation, layout: str, snapshot: dict[str, Any] | Non
 def build_execution_ledger(dbs: dict[tuple[str, str], Any], scale: str = "sf0.003") -> dict[str, Cell]:
     """``{"<op>@<layout>": (outcome, detail)}``; *dbs* maps (data set, layout) to a loaded database."""
     out: dict[str, Cell] = {}
+    befores: dict[tuple[str, str], Any] = {}
     for op in load():
-        snapshot = oracle.read(op.id, scale) if op.kind == "read" and not op.variant_of else None
+        snapshot = oracle.read(op.id, scale)
         for layout in LAYOUTS:
+            key = (dataset_for(op), layout)
+            if snapshot is not None and snapshot.get("kind") == "write" and key not in befores:
+                befores[key] = dump_arango(dbs[key], layout)
             try:
-                out[f"{op.id}@{layout}"] = run_cell(dbs[(dataset_for(op), layout)], op, layout, snapshot)
+                out[f"{op.id}@{layout}"] = run_cell(dbs[key], op, layout, snapshot, befores.get(key))
             except Exception as e:  # noqa: BLE001 — a harness failure is recorded, then fails the ratchet
                 out[f"{op.id}@{layout}"] = ("crash", _detail(f"{type(e).__name__}: {e}"))
     return out

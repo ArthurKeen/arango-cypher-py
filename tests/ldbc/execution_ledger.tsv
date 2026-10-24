@@ -2,8 +2,8 @@
 #   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: fails_closed 28, matches_oracle 4, no_oracle 17, out_of_subset 5, syntax_error 4
-# lpg: execution_error 1, fails_closed 27, matches_oracle 4, no_oracle 17, out_of_subset 5, syntax_error 4
+# pg: execution_error 5, fails_closed 36, matches_oracle 8, out_of_subset 5, syntax_error 4
+# lpg: execution_error 5, fails_closed 35, matches_oracle 8, out_of_subset 5, syntax_error 4, translates_wrong 1
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
@@ -44,22 +44,22 @@ fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-no_oracle	DEL1@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL1@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL2@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL2@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL3@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL3@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL4@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL4@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL5@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL5@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL6@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL6@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL7@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL7@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL8@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	DEL8@pg	writes are compared by post-state (WP-33 part 3)
+fails_closed	DEL1@lpg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
+fails_closed	DEL1@pg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
+execution_error	DEL2@lpg	ERR 1552: AQL: bind parameter 'postId' was not declared in the query (while parsing)
+execution_error	DEL2@pg	ERR 1552: AQL: bind parameter 'postId' was not declared in the query (while parsing)
+execution_error	DEL3@lpg	ERR 1552: AQL: bind parameter 'commentId' was not declared in the query (while parsing)
+execution_error	DEL3@pg	ERR 1552: AQL: bind parameter 'commentId' was not declared in the query (while parsing)
+fails_closed	DEL4@lpg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
+fails_closed	DEL4@pg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
+execution_error	DEL5@lpg	ERR 1552: AQL: bind parameter 'personId' was not declared in the query (while parsing)
+execution_error	DEL5@pg	ERR 1552: AQL: bind parameter 'personId' was not declared in the query (while parsing)
+fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translates_wrong	DEL7@lpg	[DEL7@lpg] nodes_removed: 1 missing, 0 unexpected; missing ['["Comment", {"browserUsed": "Firefox", "content": "right", "creationDate": 130…
+execution_error	DEL7@pg	ERR 1579: AQL: access after data-modification by traversal (while optimizing ast)
+execution_error	DEL8@lpg	ERR 1552: AQL: bind parameter 'person2Id' was not declared in the query (while parsing)
+execution_error	DEL8@pg	ERR 1552: AQL: bind parameter 'person2Id' was not declared in the query (while parsing)
 fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
 fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
 matches_oracle	IC11@lpg	4 binding(s)
@@ -88,24 +88,24 @@ fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
-no_oracle	INS1@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS1@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS1~schema-fix@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS1~schema-fix@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS2@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS2@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS3@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS3@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS4@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS4@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS5@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS5@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS6@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS6@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS7@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS7@pg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS8@lpg	writes are compared by post-state (WP-33 part 3)
-no_oracle	INS8@pg	writes are compared by post-state (WP-33 part 3)
+fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1~schema-fix@pg	UNSUPPORTED: Updating clauses are not supported in v0
+matches_oracle	INS2@lpg	1 binding(s)
+matches_oracle	INS2@pg	1 binding(s)
+matches_oracle	INS3@lpg	1 binding(s)
+matches_oracle	INS3@pg	1 binding(s)
+fails_closed	INS4@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS4@pg	UNSUPPORTED: Updating clauses are not supported in v0
+matches_oracle	INS5@lpg	1 binding(s)
+matches_oracle	INS5@pg	1 binding(s)
+fails_closed	INS6@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS6@pg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS7@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS7@pg	UNSUPPORTED: Updating clauses are not supported in v0
+matches_oracle	INS8@lpg	1 binding(s)
+matches_oracle	INS8@pg	1 binding(s)
 matches_oracle	IS1@lpg	3 binding(s)
 matches_oracle	IS1@pg	3 binding(s)
 fails_closed	IS2@lpg	UNSUPPORTED: Only a single pattern part is supported in v0

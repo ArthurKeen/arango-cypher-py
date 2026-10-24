@@ -257,6 +257,25 @@ Neo4j oracle's snapshots. Its first run:
   the aggregation boundaries are stacked. PG refuses the same query
   (`fails_closed`), and LPG should too.
 
+**Writes (WP-33 part 3, 2026-10-24).** Each write's post-state delta is
+compared with the oracle's:
+
+- **INS2, INS3, INS5 and INS8 match on both layouts.**
+- **DEL2, DEL3, DEL5 and DEL8 lose the end node of the pattern, which
+  destroys data.**
+  - For example, `MATCH (:Person {id: $personId})-[likes:LIKES]->(:Post {id:
+    $postId}) DELETE likes` drops both the `{id: $postId}` filter and the
+    `:Post` label.
+  - The AQL then removes *every* LIKES edge of the person, to posts and
+    comments.
+  - It surfaced only as `ERR 1552`, because the harness passes `postId` as a
+    bind variable that the AQL never declares. Without that tripwire the
+    delete "succeeds".
+- **DEL7 is wrong in two ways.**
+  - The unbounded `*0..` is silently capped at `0..10`.
+  - The `REMOVE` after the traversal then fails with ERR 1579 on PG, and on
+    LPG it leaves the comment in place (`translates_wrong`).
+
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 
 **INS1** (`interactive-update-1.cypher`) creates
@@ -518,11 +537,24 @@ on its own (incremental-over-atomic).
   - The comparison moved to `tests/helpers/result_equivalence.py`, shared with
     the Movies and Northwind suites, which still pass 34/34.
   - The first findings are in §3.5.
-  - **Part 3, writes:** bindings from the update streams, post-state
-    comparison.
-  - **Local runs.** Neo4j and ArangoDB each need about 1.1 GB. On a Docker VM
-    shared with many other containers, both were OOM-killed (exit 137) during
-    runs. That was host contention, not a query: Neo4j peaked at 1.1 GB.
+- **Status (2026-10-24): part 3 implemented** (writes, compared by
+  post-state).
+  - **Bindings.** `tests/ldbc/writes.py` picks one binding per insert and
+    delete over the initial snapshot: existing endpoints, and fresh ids for
+    new entities. They are chosen on the oracle so that each one changes the
+    graph. The update streams are not replayed: at SF0.003 several deletes
+    target entities only the insert stream creates.
+  - **Comparison.** Each write runs in a rolled-back transaction on both
+    engines. The canonical delta (nodes and edges added or removed) is
+    recorded for Neo4j and compared for ArangoDB.
+  - **Findings** are in §3.5.
+  - **Local runs.** Neo4j and ArangoDB each need about 1.1 GB with the repo's
+    settings. On a Docker VM shared with many other containers, both were
+    OOM-killed (exit 137) during runs. That was host contention, not a query.
+    For SF0.003 it is enough to start them with a compose override:
+    - Neo4j: `NEO4J_server_memory_heap_max__size=512m` and
+      `..._pagecache_size=128m`;
+    - ArangoDB: `ARANGODB_OVERRIDE_DETECTED_TOTAL_MEMORY=1536M`.
 
 #### WP-34: Substitution parameters (S)
 - **Scope:**

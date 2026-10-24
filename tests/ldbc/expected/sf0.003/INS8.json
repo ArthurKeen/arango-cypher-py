@@ -1,0 +1,25 @@
+{
+ "kind": "write",
+ "operation": "INS8",
+ "file": "interactive_v2/interactive-update-8.cypher",
+ "sha256": "2af5bc3f2efb7ab200a5161c451e355c2b8fcd8e5612f8cc91d9bc530cd87f46",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "person1Id": 14,
+    "person2Id": 16,
+    "creationDate": 1354131438085
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"KNOWS\", \"Person\", 14, \"Person\", 16, {\"creationDate\": 1354131438085}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

@@ -1,4 +1,5 @@
 {
+ "kind": "read",
  "operation": "BI5",
  "file": "bi/bi-5.cypher",
  "sha256": "d044ed9780c54065b018a52b79ba779eb2b9bfc633327f2aad285f1bc7b00970",

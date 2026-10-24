@@ -1,0 +1,25 @@
+{
+ "kind": "write",
+ "operation": "INS2",
+ "file": "interactive_v2/interactive-update-2.cypher",
+ "sha256": "713f88b3b913125c3a37d3eaa08bcb6ea82e2b50c514ec0cea1d141e30eec0d6",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "personId": 14,
+    "postId": 371,
+    "creationDate": 1354131438085
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"LIKES\", \"Person\", 14, \"Post\", 371, {\"creationDate\": 1354131438085}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

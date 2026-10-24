@@ -1,0 +1,24 @@
+{
+ "kind": "write",
+ "operation": "DEL3",
+ "file": "interactive_v2/interactive-delete-3.cypher",
+ "sha256": "be8f7caed10073aec18bf533f11382fb7f3e7da7cb7161f87e6fb1992276347f",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "personId": 14,
+    "commentId": 1030792154027
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"LIKES\", \"Person\", 14, \"Comment\", 1030792154027, {\"creationDate\": 1346396955332}]"
+    ]
+   }
+  }
+ ]
+}

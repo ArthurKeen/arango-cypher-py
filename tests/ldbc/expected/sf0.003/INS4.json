@@ -1,0 +1,34 @@
+{
+ "kind": "write",
+ "operation": "INS4",
+ "file": "interactive_v2/interactive-update-4.cypher",
+ "sha256": "e7af9b991a8c6bad671ce3c9a8bc581c366fd5968cce8715f2e681ff3a362071",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "forumId": 90000000000004,
+    "forumTitle": "Group for LDBC",
+    "creationDate": 1354131438085,
+    "moderatorPersonId": 24189255811081,
+    "tagIds": [
+     60,
+     470
+    ]
+   },
+   "delta": {
+    "nodes_added": [
+     "[\"Forum\", {\"creationDate\": 1354131438085, \"id\": 90000000000004, \"title\": \"Group for LDBC\"}]"
+    ],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"HAS_MODERATOR\", \"Forum\", 90000000000004, \"Person\", 24189255811081, {}]",
+     "[\"HAS_TAG\", \"Forum\", 90000000000004, \"Tag\", 470, {}]",
+     "[\"HAS_TAG\", \"Forum\", 90000000000004, \"Tag\", 60, {}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

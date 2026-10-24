@@ -17,6 +17,7 @@ _READS = P.read_operations()
 @pytest.mark.parametrize("op", _READS, ids=lambda op: op.id)
 def test_every_bound_read_has_a_current_snapshot(op):
     snap = oracle.read(op.id)
+    assert snap is None or snap["kind"] == "read"
     assert snap is not None, (
         f"no snapshot for {op.id}: RUN_CROSS=1 .venv/bin/python -m tests.ldbc.oracle --record"
     )

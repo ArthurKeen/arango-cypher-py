@@ -1,0 +1,24 @@
+{
+ "kind": "write",
+ "operation": "DEL8",
+ "file": "interactive_v2/interactive-delete-8.cypher",
+ "sha256": "e610a9aaf5de10c85b4be12517c5190cf6450d676740d6cbdb2504a066927743",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "person1Id": 14,
+    "person2Id": 10995116277782
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"KNOWS\", \"Person\", 14, \"Person\", 10995116277782, {\"creationDate\": 1349551480381}]"
+    ]
+   }
+  }
+ ]
+}

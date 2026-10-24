@@ -1,0 +1,27 @@
+{
+ "kind": "write",
+ "operation": "DEL7",
+ "file": "interactive_v2/interactive-delete-7.cypher",
+ "sha256": "7d25ce67e260fe48e1db9f7401e30c87a1e9ffe0a0fc87cc362473963f5e880c",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "commentId": 481036339217
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [
+     "[\"Comment\", {\"browserUsed\": \"Firefox\", \"content\": \"right\", \"creationDate\": 1301195519958, \"id\": 481036339217, \"length\": 5, \"locationIP\": \"196.29.42.107\"}]"
+    ],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"HAS_CREATOR\", \"Comment\", 481036339217, \"Person\", 2199023255594, {\"creationDate\": 1301195519958}]",
+     "[\"IS_LOCATED_IN\", \"Comment\", 481036339217, \"Country\", 60, {\"creationDate\": 1301195519958}]",
+     "[\"REPLY_OF\", \"Comment\", 481036339217, \"Post\", 481036339210, {\"creationDate\": 1301195519958}]"
+    ]
+   }
+  }
+ ]
+}
