@@ -2,8 +2,8 @@
 #   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: fails_closed 28, matches_oracle 3, no_oracle 17, out_of_subset 5, syntax_error 4, translates_wrong 1
-# lpg: execution_error 1, fails_closed 27, matches_oracle 3, no_oracle 17, out_of_subset 5, syntax_error 4, translates_wrong 1
+# pg: fails_closed 28, matches_oracle 4, no_oracle 17, out_of_subset 5, syntax_error 4
+# lpg: execution_error 1, fails_closed 27, matches_oracle 4, no_oracle 17, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
@@ -20,8 +20,8 @@ syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at inpu
 syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
 fails_closed	BI17@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI17@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-translates_wrong	BI18@lpg	[BI18@lpg binding 0] column-count mismatch: neo4j widths=[3] vs aql widths=[] neo4j columns: ['<scalar>'] aql columns: []
-translates_wrong	BI18@pg	[BI18@pg binding 0] column-count mismatch: neo4j widths=[3] vs aql widths=[] neo4j columns: ['<scalar>'] aql columns: []
+matches_oracle	BI18@lpg	4 binding(s)
+matches_oracle	BI18@pg	4 binding(s)
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
 out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
 fails_closed	BI1@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message

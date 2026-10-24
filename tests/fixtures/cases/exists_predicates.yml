@@ -10,11 +10,12 @@ cases:
       aql: |
         WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection
         FOR u IN @@collection
-          FILTER (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge LIMIT 1 RETURN 1) > 0)
+          FILTER (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge FILTER (IS_SAME_COLLECTION(@_pp_vLabelColl, _pp_v)) LIMIT 1 RETURN 1) > 0)
           RETURN u.name
       bind_vars:
         "@collection": users
         "@ppEdge": follows
+        _pp_vLabelColl: users
 
         '@withCollection0': docs
         '@withCollection1': persons
@@ -29,11 +30,12 @@ cases:
       aql: |
         WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection
         FOR u IN @@collection
-          FILTER (NOT (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge LIMIT 1 RETURN 1) > 0))
+          FILTER (NOT (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND u @@ppEdge FILTER (IS_SAME_COLLECTION(@_pp_vLabelColl, _pp_v)) LIMIT 1 RETURN 1) > 0))
           RETURN u.name
       bind_vars:
         "@collection": users
         "@ppEdge": follows
+        _pp_vLabelColl: users
 
         '@withCollection0': docs
         '@withCollection1': persons

@@ -242,7 +242,15 @@ Neo4j oracle's snapshots. Its first run:
   - The same function also ignores every relationship after the first, a PG
     target label, and properties on the target node.
   - This is a silent wrong result of the kind the translation tier cannot see.
-    A fix follows the harness PR.
+  - **Fixed 2026-10-24.** `_compile_pattern_predicate` now compiles every
+    hop, correlates a bound end node, checks end and start labels in both
+    styles, and filters node and relationship properties. BI18 now matches the
+    oracle on both layouts. Seven TCK negative scenarios
+    (`Pattern1/[10]`, `List6/[6]`) moved from `translatable` to
+    `correct_rejection`.
+  - **Open:** the EXISTS/COUNT subquery compiler (`_compile_subquery_body`)
+    shares the first-hop-only shape, and ignores a labelled or propertied
+    named target's properties. It is not exercised by an LDBC read yet.
 - **IC5 on LPG emits AQL that ArangoDB rejects (`execution_error`, ERR 1511:
   `forum` assigned twice).** The `WITH DISTINCT … collect() … OPTIONAL MATCH`
   pipeline is mis-lowered: the `OPTIONAL MATCH` becomes an inner `FOR`, and
