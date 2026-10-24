@@ -482,6 +482,18 @@ on its own (incremental-over-atomic).
   - Commit `params/sf0.003/*.yml`.
   - Document how to drive LDBC `paramgen` for SF ≥ 1 (consumed by WP-43).
 - **Acceptance:** at least 3 bindings per read; regeneration is byte-identical.
+- **Status (2026-10-24): reads implemented** (`tests/ldbc/params.py`,
+  `params/sf0.003.yml`).
+  - The 36 reads the oracle can run each have their bindings: 35 have 3
+    non-empty bindings, plus an empty one where one exists.
+  - **BI17 is empty for every binding at SF0.003.** All 422 comment tags were
+    tried. That is recorded, with how it was established, in `EMPTY_AT_SCALE`.
+  - Generic sources missed IC3 and BI16, so they get grouped sources:
+    - IC3: a friend who posted from two foreign countries;
+    - BI16: one person's two tag/day pairs.
+  - Regeneration is byte-identical.
+  - **Write bindings** come from the `inserts/` and `deletes/` streams, and
+    land with the post-state comparison (WP-33 part 3).
 
 **Milestone M1 (end of Phase 0).** We have a reproducible, ratcheted baseline for
 57 operations × 2 layouts at SF0.003, with every failure filed as an issue tagged
