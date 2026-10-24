@@ -1,0 +1,91 @@
+{
+ "operation": "IS1",
+ "file": "interactive_v2/interactive-short-1.cypher",
+ "sha256": "112a496d938a1e0ef638cdd285cd4e969ac020b5dd6c8e5233bfe78f990adcad",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "personId": 24189255811081
+   },
+   "columns": [
+    "firstName",
+    "lastName",
+    "birthday",
+    "locationIP",
+    "browserUsed",
+    "cityId",
+    "gender",
+    "creationDate"
+   ],
+   "rows": [
+    [
+     "Alim",
+     "Guliyev",
+     465955200000,
+     "91.191.192.127",
+     "Firefox",
+     510,
+     "female",
+     1325145399032
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 2199023255594
+   },
+   "columns": [
+    "firstName",
+    "lastName",
+    "birthday",
+    "locationIP",
+    "browserUsed",
+    "cityId",
+    "gender",
+    "creationDate"
+   ],
+   "rows": [
+    [
+     "Ali",
+     "Achiou",
+     353116800000,
+     "196.29.42.107",
+     "Firefox",
+     966,
+     "female",
+     1269174342685
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 26388279066658
+   },
+   "columns": [
+    "firstName",
+    "lastName",
+    "birthday",
+    "locationIP",
+    "browserUsed",
+    "cityId",
+    "gender",
+    "creationDate"
+   ],
+   "rows": [
+    [
+     "Roberto",
+     "Diaz",
+     331862400000,
+     "186.64.7.5",
+     "Firefox",
+     972,
+     "female",
+     1326672580120
+    ]
+   ]
+  }
+ ]
+}

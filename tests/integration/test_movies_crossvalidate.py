@@ -33,6 +33,7 @@ from arango_query_core.exec import AqlExecutor
 
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
+from tests.helpers.result_equivalence import assert_result_equivalent
 from tests.integration.datasets import seed_movies_lpg_dataset
 
 # ---------------------------------------------------------------------------
@@ -93,134 +94,6 @@ def _get_neo4j_driver() -> Any:
     # a different dataset into the shared Neo4j instance.
     ensure_dataset(_neo4j_driver, "movies", seed_neo4j_movies)
     return _neo4j_driver
-
-
-# ---------------------------------------------------------------------------
-# Result-set equivalence
-# ---------------------------------------------------------------------------
-
-
-def _normalize_scalar(v: Any) -> Any:
-    """Normalize Neo4j vs AQL scalar differences.
-
-    - Integers and floats with zero fractional part are treated as equal
-      to their integer form (Neo4j returns int, AQL may return float for
-      SUM/AVG/COUNT, etc.).
-    - ``None`` and missing-key both compare equal to ``None``.
-    - Nested dicts/lists are normalized recursively.
-    """
-    if v is None:
-        return None
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, float):
-        if v == int(v) and not (v != v):  # finite, integral
-            return int(v)
-        return v
-    if isinstance(v, list):
-        return [_normalize_scalar(x) for x in v]
-    if isinstance(v, dict):
-        return {k: _normalize_scalar(val) for k, val in v.items()}
-    return v
-
-
-def _row_values(row: Any) -> list[Any]:
-    """Return row values in RETURN-clause order, normalized.
-
-    We compare positionally (not by column name) because Neo4j keeps the
-    raw dotted expression as the column name (``p.name``) while AQL must
-    rename it (dots aren't legal identifiers).  This eliminates spurious
-    naming diffs while still catching genuine projection-order mismatches.
-
-    Accepts:
-    - ``dict`` (Neo4j ``Record`` post-coercion, or AQL multi-projection):
-      values in insertion order, which both engines preserve from RETURN.
-    - ``list``: passed through (each element is one column value).
-    - scalar: single-column row from AQL ``RETURN expr`` (no object
-      wrapper), wrapped as a single-element list to match Neo4j's
-      always-record behavior.
-    """
-    if isinstance(row, dict):
-        return [_normalize_scalar(v) for v in row.values()]
-    if isinstance(row, list):
-        return [_normalize_scalar(v) for v in row]
-    return [_normalize_scalar(row)]
-
-
-def _row_names(row: Any) -> list[str]:
-    if isinstance(row, dict):
-        return list(row.keys())
-    return ["<scalar>"]
-
-
-def _has_order_by(cypher: str) -> bool:
-    return "ORDER BY" in cypher.upper()
-
-
-def _sort_key(values: list[Any]) -> str:
-    """Produce a deterministic comparable key for a result row.
-
-    Used only when the query does not specify ``ORDER BY``, so the two
-    engines are free to return rows in any order.
-    """
-    import json as _json
-
-    return _json.dumps(values, sort_keys=True, default=str)
-
-
-def assert_result_equivalent(
-    neo4j_rows: list[dict[str, Any]],
-    aql_rows: list[dict[str, Any]],
-    query: dict[str, Any],
-) -> None:
-    """Assert two result sets are equivalent.
-
-    - Column **count** must match (column names need not — see ``_row_values``).
-    - Row count must match exactly.
-    - If the query has ``ORDER BY``, compare rows position-wise.
-    - Otherwise, compare as multisets (sorted by a deterministic key over values).
-    - Scalars are normalized via ``_normalize_scalar`` (int↔float, etc.).
-    """
-    qid = query.get("id", "<unknown>")
-    cypher = query.get("cypher", "")
-
-    neo_vals = [_row_values(r) for r in neo4j_rows]
-    aql_vals = [_row_values(r) for r in aql_rows]
-    neo_names = _row_names(neo4j_rows[0]) if neo4j_rows else []
-    aql_names = _row_names(aql_rows[0]) if aql_rows else []
-
-    neo_widths = {len(r) for r in neo_vals}
-    aql_widths = {len(r) for r in aql_vals}
-    assert neo_widths == aql_widths, (
-        f"[{qid}] column-count mismatch: neo4j widths={sorted(neo_widths)} "
-        f"vs aql widths={sorted(aql_widths)}\n"
-        f"  neo4j columns: {neo_names}\n"
-        f"  aql columns:   {aql_names}"
-    )
-
-    assert len(neo_vals) == len(aql_vals), (
-        f"[{qid}] row-count mismatch: neo4j={len(neo_vals)} vs aql={len(aql_vals)}\n"
-        f"  cypher: {cypher!r}\n"
-        f"  neo4j columns: {neo_names}; sample: {neo_vals[:3]!r}\n"
-        f"  aql   columns: {aql_names}; sample: {aql_vals[:3]!r}"
-    )
-
-    if _has_order_by(cypher):
-        for i, (a, b) in enumerate(zip(neo_vals, aql_vals, strict=True)):
-            assert a == b, (
-                f"[{qid}] row #{i} differs (ordered, position-wise):\n"
-                f"  neo4j ({neo_names}): {a!r}\n"
-                f"  aql   ({aql_names}): {b!r}"
-            )
-    else:
-        neo_sorted = sorted(neo_vals, key=_sort_key)
-        aql_sorted = sorted(aql_vals, key=_sort_key)
-        for i, (a, b) in enumerate(zip(neo_sorted, aql_sorted, strict=True)):
-            assert a == b, (
-                f"[{qid}] row #{i} differs (unordered, position-wise):\n"
-                f"  neo4j ({neo_names}): {a!r}\n"
-                f"  aql   ({aql_names}): {b!r}"
-            )
 
 
 # ---------------------------------------------------------------------------

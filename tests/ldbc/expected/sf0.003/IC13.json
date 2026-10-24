@@ -1,0 +1,52 @@
+{
+ "operation": "IC13",
+ "file": "interactive_v2/interactive-complex-13.cypher",
+ "sha256": "1a2399c20e7307d87a7a518ebd0d76e8c40a51615140f28043b8f1d000a4b300",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "person1Id": 14,
+    "person2Id": 16
+   },
+   "columns": [
+    "shortestPathLength"
+   ],
+   "rows": [
+    [
+     3
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "person1Id": 14,
+    "person2Id": 32
+   },
+   "columns": [
+    "shortestPathLength"
+   ],
+   "rows": [
+    [
+     3
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "person1Id": 14,
+    "person2Id": 2199023255557
+   },
+   "columns": [
+    "shortestPathLength"
+   ],
+   "rows": [
+    [
+     2
+    ]
+   ]
+  }
+ ]
+}

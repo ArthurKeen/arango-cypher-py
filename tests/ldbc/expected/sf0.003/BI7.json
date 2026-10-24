@@ -1,0 +1,257 @@
+{
+ "operation": "BI7",
+ "file": "bi/bi-7.cypher",
+ "sha256": "e1d1f3f5f78f14e4de5e76f43f425c25c93b953f326298b23027d23939c1d687",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "tag": "Franz_Kafka"
+   },
+   "columns": [
+    "relatedTag.name",
+    "count"
+   ],
+   "rows": [
+    [
+     "Gaetano_Donizetti",
+     2
+    ],
+    [
+     "Igor_Stravinsky",
+     2
+    ],
+    [
+     "Simón_Bolívar",
+     2
+    ],
+    [
+     "Achaemenid_Empire",
+     1
+    ],
+    [
+     "Alan_Moore",
+     1
+    ],
+    [
+     "Anne,_Queen_of_Great_Britain",
+     1
+    ],
+    [
+     "Clint_Eastwood",
+     1
+    ],
+    [
+     "John_Kerry",
+     1
+    ],
+    [
+     "Leander_Paes",
+     1
+    ],
+    [
+     "Lil_Jon",
+     1
+    ],
+    [
+     "Livy",
+     1
+    ],
+    [
+     "Mughal_Empire",
+     1
+    ],
+    [
+     "Nicholas_II_of_Russia",
+     1
+    ],
+    [
+     "Portrait_in_Jazz",
+     1
+    ],
+    [
+     "Rafael_Nadal",
+     1
+    ],
+    [
+     "Robert_F._Kennedy",
+     1
+    ],
+    [
+     "Second_Spanish_Republic",
+     1
+    ],
+    [
+     "Take_Five",
+     1
+    ],
+    [
+     "Woodrow_Wilson",
+     1
+    ],
+    [
+     "You_Are_Not_Alone",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "John_F._Kennedy"
+   },
+   "columns": [
+    "relatedTag.name",
+    "count"
+   ],
+   "rows": [
+    [
+     "Uruguay",
+     3
+    ],
+    [
+     "Drop_the_World",
+     2
+    ],
+    [
+     "Albert_Einstein",
+     1
+    ],
+    [
+     "Alicia_Keys",
+     1
+    ],
+    [
+     "David_Lloyd_George",
+     1
+    ],
+    [
+     "Estonia",
+     1
+    ],
+    [
+     "Every_Little_Bit_Hurts",
+     1
+    ],
+    [
+     "Free_City_of_Danzig",
+     1
+    ],
+    [
+     "Girls_Just_Want_to_Have_Fun",
+     1
+    ],
+    [
+     "Having_a_Rave_Up",
+     1
+    ],
+    [
+     "Humphrey_Bogart",
+     1
+    ],
+    [
+     "If_I_Had_a_Hammer",
+     1
+    ],
+    [
+     "Images_and_Words",
+     1
+    ],
+    [
+     "Love_Today",
+     1
+    ],
+    [
+     "Making_Love_Out_of_Nothing_at_All",
+     1
+    ],
+    [
+     "Moods_of_Marvin_Gaye",
+     1
+    ],
+    [
+     "New_Netherland",
+     1
+    ],
+    [
+     "Nigeria",
+     1
+    ],
+    [
+     "Sanath_Jayasuriya",
+     1
+    ],
+    [
+     "Shop_Around",
+     1
+    ],
+    [
+     "Stray_Cat_Strut",
+     1
+    ],
+    [
+     "The_Meanest_of_Times",
+     1
+    ],
+    [
+     "With_the_Lights_Out",
+     1
+    ],
+    [
+     "Wolfgang_Amadeus_Mozart",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "Fidel_Castro"
+   },
+   "columns": [
+    "relatedTag.name",
+    "count"
+   ],
+   "rows": [
+    [
+     "Mao_Zedong",
+     2
+    ],
+    [
+     "Duchy_of_Warsaw",
+     1
+    ],
+    [
+     "Guatemala",
+     1
+    ],
+    [
+     "New_France",
+     1
+    ],
+    [
+     "Pope_John_XXIII",
+     1
+    ],
+    [
+     "United_States",
+     1
+    ],
+    [
+     "Whitney_Houston",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "Lleyton_Hewitt"
+   },
+   "columns": [
+    "relatedTag.name",
+    "count"
+   ],
+   "rows": []
+  }
+ ]
+}

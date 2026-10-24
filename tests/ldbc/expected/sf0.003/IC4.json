@@ -1,0 +1,149 @@
+{
+ "operation": "IC4",
+ "file": "interactive_v2/interactive-complex-4.cypher",
+ "sha256": "0ddeb16ecd06f9e3d041756a388c865b2bf47321589d685686355b5745295508",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "startDate": 1322575554993,
+    "endDate": 1338238517912,
+    "personId": 24189255811081
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Fidel_Castro",
+     1
+    ],
+    [
+     "Mao_Zedong",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1322575554993,
+    "endDate": 1338238517912,
+    "personId": 2199023255594
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Alexander_Hamilton",
+     2
+    ],
+    [
+     "Judy_Davis",
+     2
+    ],
+    [
+     "Daniel_Nestor",
+     1
+    ],
+    [
+     "Fidel_Castro",
+     1
+    ],
+    [
+     "George_Lucas",
+     1
+    ],
+    [
+     "Howard_Stern",
+     1
+    ],
+    [
+     "J._K._Rowling",
+     1
+    ],
+    [
+     "Jim_Carrey",
+     1
+    ],
+    [
+     "Mao_Zedong",
+     1
+    ],
+    [
+     "Martin_Luther",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1322575554993,
+    "endDate": 1338238517912,
+    "personId": 26388279066658
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Alexander_Hamilton",
+     2
+    ],
+    [
+     "Judy_Davis",
+     2
+    ],
+    [
+     "Daniel_Nestor",
+     1
+    ],
+    [
+     "George_Lucas",
+     1
+    ],
+    [
+     "Howard_Stern",
+     1
+    ],
+    [
+     "J._K._Rowling",
+     1
+    ],
+    [
+     "Jim_Carrey",
+     1
+    ],
+    [
+     "Leander_Paes",
+     1
+    ],
+    [
+     "Lil_Jon",
+     1
+    ],
+    [
+     "Martin_Luther",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1338238517912,
+    "endDate": 1348598834622,
+    "personId": 2199023255594
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": []
+  }
+ ]
+}

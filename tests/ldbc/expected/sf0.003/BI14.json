@@ -1,0 +1,83 @@
+{
+ "operation": "BI14",
+ "file": "bi/bi-14.cypher",
+ "sha256": "d37afff37a136cffa37c7650dcec2e6952a1b169d7134f479a4b6dc7f88c50f6",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "country1": "Mexico",
+    "country2": "Algeria"
+   },
+   "columns": [
+    "top.person1Id",
+    "top.person2Id",
+    "city1.name",
+    "top.score"
+   ],
+   "rows": [
+    [
+     32,
+     2199023255594,
+     "Tlatelolco",
+     15
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country1": "Mexico",
+    "country2": "Niger"
+   },
+   "columns": [
+    "top.person1Id",
+    "top.person2Id",
+    "city1.name",
+    "top.score"
+   ],
+   "rows": [
+    [
+     32,
+     17592186044461,
+     "Tlatelolco",
+     11
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country1": "Algeria",
+    "country2": "Mexico"
+   },
+   "columns": [
+    "top.person1Id",
+    "top.person2Id",
+    "city1.name",
+    "top.score"
+   ],
+   "rows": [
+    [
+     2199023255594,
+     32,
+     "Chief",
+     6
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country1": "Pakistan",
+    "country2": "China"
+   },
+   "columns": [
+    "top.person1Id",
+    "top.person2Id",
+    "city1.name",
+    "top.score"
+   ],
+   "rows": []
+  }
+ ]
+}

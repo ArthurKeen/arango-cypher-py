@@ -27,8 +27,8 @@ from arango_query_core.exec import AqlExecutor
 
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
+from tests.helpers.result_equivalence import assert_result_equivalent
 from tests.integration.datasets import seed_northwind_dataset
-from tests.integration.test_movies_crossvalidate import assert_result_equivalent
 
 
 def _cross_enabled() -> bool:

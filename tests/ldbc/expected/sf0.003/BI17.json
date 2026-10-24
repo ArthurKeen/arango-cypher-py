@@ -1,0 +1,21 @@
+{
+ "operation": "BI17",
+ "file": "bi/bi-17.cypher",
+ "sha256": "0d2187fd021e4570c602124ee367bf2392f48870474187045eee27dd908539c7",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "delta": 4,
+    "tag": "Lleyton_Hewitt"
+   },
+   "columns": [
+    "person1.id",
+    "messageCount"
+   ],
+   "rows": []
+  }
+ ]
+}

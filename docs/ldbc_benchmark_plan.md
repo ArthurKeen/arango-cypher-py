@@ -227,6 +227,28 @@ Constructs that **already translate** and need only execution evidence:
 - list comprehension over `nodes(path)`
 - disconnected comma patterns in the *first* `MATCH`
 
+### 3.5 Defects found by execution against the oracle (2026-10-24)
+
+The execution tier (WP-33) runs every read the transpiler accepts against the
+Neo4j oracle's snapshots. Its first run:
+
+- **IS1, IS3 and IC11 match** the oracle on both layouts, for every binding.
+- **BI18 returns wrong rows on both layouts (`translates_wrong`).** The
+  pattern predicate `NOT (person1)-[:KNOWS]-(person2)` was lowered to
+  "person1 has *any* KNOWS edge":
+  - `_compile_pattern_predicate` (`_translate_v0/core.py`) discards the end
+    node's variable, so a bound `person2` never constrains the existence
+    subquery. Every `person1` has friends, so the result is empty.
+  - The same function also ignores every relationship after the first, a PG
+    target label, and properties on the target node.
+  - This is a silent wrong result of the kind the translation tier cannot see.
+    A fix follows the harness PR.
+- **IC5 on LPG emits AQL that ArangoDB rejects (`execution_error`, ERR 1511:
+  `forum` assigned twice).** The `WITH DISTINCT … collect() … OPTIONAL MATCH`
+  pipeline is mis-lowered: the `OPTIONAL MATCH` becomes an inner `FOR`, and
+  the aggregation boundaries are stacked. PG refuses the same query
+  (`fails_closed`), and LPG should too.
+
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 
 **INS1** (`interactive-update-1.cypher`) creates
@@ -472,6 +494,27 @@ on its own (incremental-over-atomic).
     `DATETIME`/`DATE`. It checks Neo4j's write counters on every batch and the
     per-label totals at the end.
   - SF0.003 loads in 3–4 s.
+- **Status (2026-10-24): part 2 implemented** (the oracle snapshots and the
+  read execution tier).
+  - `tests/ldbc/oracle.py` records the oracle's rows for all 120 read
+    bindings into `expected/sf0.003/<op>.json`, together with each query's
+    SHA-256. Recording is deterministic.
+  - `collect()`-built columns (IC1, IC12) are declared `unordered_columns` in
+    the manifest and compared as multisets. Their element order is undefined
+    in Cypher; Neo4j's varied between runs.
+  - `tests/ldbc/execution.py` and `execution_ledger.tsv` hold the per-cell
+    outcomes. They are ratcheted by `tests/integration/test_ldbc_execution.py`,
+    which needs ArangoDB only.
+  - `tests/integration/test_ldbc_crossvalidate.py` (`RUN_CROSS`) re-records
+    from live Neo4j and fails on drift.
+  - The comparison moved to `tests/helpers/result_equivalence.py`, shared with
+    the Movies and Northwind suites, which still pass 34/34.
+  - The first findings are in §3.5.
+  - **Part 3, writes:** bindings from the update streams, post-state
+    comparison.
+  - **Local runs.** Neo4j and ArangoDB each need about 1.1 GB. On a Docker VM
+    shared with many other containers, both were OOM-killed (exit 137) during
+    runs. That was host contention, not a query: Neo4j peaked at 1.1 GB.
 
 #### WP-34: Substitution parameters (S)
 - **Scope:**

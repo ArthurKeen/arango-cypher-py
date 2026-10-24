@@ -1,0 +1,121 @@
+{
+ "operation": "IC10",
+ "file": "interactive_v2/interactive-complex-10.cypher",
+ "sha256": "5d96bde2db754e91cecf7c8fe0636ff9b9dbca5f7e0cfbb70bbcc52c95352090",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "month": 5,
+    "personId": 24189255811081
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commonInterestScore",
+    "personGender",
+    "personCityName"
+   ],
+   "rows": [
+    [
+     26388279066641,
+     "Almira",
+     "Patras",
+     0,
+     "female",
+     "Soroca"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     -167,
+     "male",
+     "Agadez"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "month": 5,
+    "personId": 2199023255594
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commonInterestScore",
+    "personGender",
+    "personCityName"
+   ],
+   "rows": [
+    [
+     26388279066641,
+     "Almira",
+     "Patras",
+     0,
+     "female",
+     "Soroca"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "month": 5,
+    "personId": 26388279066658
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commonInterestScore",
+    "personGender",
+    "personCityName"
+   ],
+   "rows": [
+    [
+     26388279066641,
+     "Almira",
+     "Patras",
+     0,
+     "female",
+     "Soroca"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     -81,
+     "male",
+     "Swansea"
+    ],
+    [
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     -90,
+     "female",
+     "Barnaul"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "month": 5,
+    "personId": 28587302322204
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commonInterestScore",
+    "personGender",
+    "personCityName"
+   ],
+   "rows": []
+  }
+ ]
+}

@@ -1,0 +1,109 @@
+{
+ "operation": "BI6",
+ "file": "bi/bi-6.cypher",
+ "sha256": "cbe935ef1e48d99010417de1026ad418eb27f5d9627555a1d28e42e8ab530e48",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "tag": "Franz_Kafka"
+   },
+   "columns": [
+    "person1.id",
+    "authorityScore"
+   ],
+   "rows": [
+    [
+     14,
+     0
+    ],
+    [
+     10995116277782,
+     0
+    ],
+    [
+     26388279066641,
+     0
+    ],
+    [
+     26388279066658,
+     0
+    ],
+    [
+     28587302322180,
+     0
+    ],
+    [
+     28587302322204,
+     0
+    ],
+    [
+     35184372088856,
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "John_F._Kennedy"
+   },
+   "columns": [
+    "person1.id",
+    "authorityScore"
+   ],
+   "rows": [
+    [
+     28587302322180,
+     167
+    ],
+    [
+     2199023255594,
+     0
+    ],
+    [
+     13194139533352,
+     0
+    ],
+    [
+     26388279066641,
+     0
+    ],
+    [
+     26388279066658,
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "Muammar_Gaddafi"
+   },
+   "columns": [
+    "person1.id",
+    "authorityScore"
+   ],
+   "rows": [
+    [
+     14,
+     0
+    ],
+    [
+     10995116277782,
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "tag": "Lleyton_Hewitt"
+   },
+   "columns": [
+    "person1.id",
+    "authorityScore"
+   ],
+   "rows": []
+  }
+ ]
+}

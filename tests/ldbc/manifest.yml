@@ -45,6 +45,8 @@ operations:
     kind: read
     file: interactive_v2/interactive-complex-1.cypher
     sha256: d32722e5656f47cc5220ec77348012eb64beb2d8c5ff7eeb80005d027546d1a6
+    # collect() order is undefined in Cypher: compared as multisets.
+    unordered_columns: [friendUniversities, friendCompanies]
   - id: IC2
     workload: interactive_v2
     kind: read
@@ -100,6 +102,8 @@ operations:
     kind: read
     file: interactive_v2/interactive-complex-12.cypher
     sha256: e26f302761b68d9c9491cdba62ab6344351fd0cd91c49e57de0efc594e5ed0ca
+    # collect() order is undefined in Cypher: compared as multisets.
+    unordered_columns: [tagNames]
   - id: IC13
     workload: interactive_v2
     kind: read

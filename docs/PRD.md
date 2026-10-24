@@ -1096,7 +1096,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 (mapping fixtures, temporal-accessor guard, vendored corpus, translation ratchet) done; WP-33 part 1 (Neo4j oracle loader, Neo4j pinned 5.26.27) and WP-34 read bindings done; oracle snapshots and the execution tier next. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Current translation figures are in `tests/ldbc/translation_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 (mapping fixtures, temporal-accessor guard, vendored corpus, translation ratchet) done; WP-33 parts 1–2 (Neo4j oracle loader and snapshots, Neo4j pinned 5.26.27, read execution ratchet in `tests/ldbc/execution_ledger.tsv`) and WP-34 read bindings done; write post-state comparison next. Defects execution found so far are listed in the plan §3.5. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Current translation figures are in `tests/ldbc/translation_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |

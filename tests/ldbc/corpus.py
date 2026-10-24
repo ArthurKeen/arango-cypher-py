@@ -39,6 +39,9 @@ class Operation:
     workload: str
     kind: Kind
     out_of_subset: str | None = None
+    #: Output columns built by ``collect()``, whose element order Cypher leaves
+    #: undefined; compared as multisets.
+    unordered_columns: tuple[str, ...] = ()
     #: For a variant, the operation it adapts and why.
     variant_of: str | None = None
     reason: str | None = None
@@ -70,6 +73,7 @@ def load(manifest: Path = MANIFEST_PATH) -> list[Operation]:
             workload=entry["workload"],
             kind=entry["kind"],
             out_of_subset=entry.get("out_of_subset"),
+            unordered_columns=tuple(entry.get("unordered_columns") or ()),
         )
         ops.append(op)
         by_id[op.id] = op
@@ -85,6 +89,7 @@ def load(manifest: Path = MANIFEST_PATH) -> list[Operation]:
                 workload=base.workload,
                 kind=base.kind,
                 out_of_subset=base.out_of_subset,
+                unordered_columns=base.unordered_columns,
                 variant_of=base.id,
                 reason=entry["reason"],
             )
