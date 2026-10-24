@@ -10,7 +10,11 @@
 #
 services:
   neo4j:
-    image: neo4j:5-community
+    # Pinned (2026-10-24) to the 5.26 LTS build the floating 5-community tag
+    # resolved to. The Movies and Northwind cross-validation suites were
+    # re-verified on it, and the LDBC oracle snapshots (tests/ldbc) are recorded
+    # against it. Changing it means re-verifying both.
+    image: neo4j:5.26.27-community
     environment:
       - NEO4J_AUTH=neo4j/openSesame
       - NEO4J_PLUGINS=[]
