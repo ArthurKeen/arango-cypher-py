@@ -1,0 +1,123 @@
+# LDBC SNB translation ledger — regenerate with:
+#   .venv/bin/python -m tests.ldbc.ledger --write
+# Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
+# Passing outcomes: translatable. Translatable is not correct;
+# the execution ledger (WP-33) records which translations return the oracle's rows.
+# pg: fails_closed 36, out_of_subset 5, syntax_error 4, translatable 13
+# lpg: fails_closed 35, out_of_subset 5, syntax_error 4, translatable 14
+out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
+out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
+fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI11@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI14@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI14@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
+out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
+syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
+syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
+fails_closed	BI17@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI17@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI18@lpg	
+translatable	BI18@pg	
+out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
+out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
+fails_closed	BI1@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI1@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
+out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
+fails_closed	BI2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI3@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI3@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
+syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
+fails_closed	BI5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	DEL1@lpg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
+fails_closed	DEL1@pg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
+translatable	DEL2@lpg	
+translatable	DEL2@pg	
+translatable	DEL3@lpg	
+translatable	DEL3@pg	
+fails_closed	DEL4@lpg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
+fails_closed	DEL4@pg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
+translatable	DEL5@lpg	
+translatable	DEL5@pg	
+fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	DEL7@lpg	
+translatable	DEL7@pg	
+translatable	DEL8@lpg	
+translatable	DEL8@pg	
+fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	IC11@lpg	
+translatable	IC11@pg	
+fails_closed	IC12@lpg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
+fails_closed	IC12@pg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
+syntax_error	IC13@lpg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+syntax_error	IC13@pg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
+out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
+syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC3@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC3@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC4@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC4@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	IC5@lpg	
+fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	IC6@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC6@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1~schema-fix@pg	UNSUPPORTED: Updating clauses are not supported in v0
+translatable	INS2@lpg	
+translatable	INS2@pg	
+translatable	INS3@lpg	
+translatable	INS3@pg	
+fails_closed	INS4@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS4@pg	UNSUPPORTED: Updating clauses are not supported in v0
+translatable	INS5@lpg	
+translatable	INS5@pg	
+fails_closed	INS6@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS6@pg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS7@lpg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS7@pg	UNSUPPORTED: Updating clauses are not supported in v0
+translatable	INS8@lpg	
+translatable	INS8@pg	
+translatable	IS1@lpg	
+translatable	IS1@pg	
+fails_closed	IS2@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IS3@lpg	
+translatable	IS3@pg	
+fails_closed	IS4@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS4@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message

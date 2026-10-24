@@ -1,0 +1,26 @@
+This directory contains Cypher queries copied verbatim from the Linked Data
+Benchmark Council (LDBC) reference implementations:
+
+  ldbc/ldbc_snb_interactive_v2_impls  cypher/queries/   commit d05cc7620c295362ef7b0cfd32d5ac1dfde5feb3
+  ldbc/ldbc_snb_bi                    neo4j/queries/    commit 47dd38b40844ecdb0e42e5a610c369535304786d
+
+   Copyright [2020-]2026 Linked Data Benchmark Council
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+Files under variants/ are modified copies; each states its change in a
+header comment.
+
+"LDBC BENCHMARK" is a registered trademark. arango-cypher uses these queries
+as a validation and performance corpus. This is not an implementation of an
+LDBC Benchmark, and results derived from it are not LDBC Benchmark Results.

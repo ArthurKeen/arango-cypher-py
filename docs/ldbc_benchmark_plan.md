@@ -260,13 +260,14 @@ verbatim file, add a corrected variant, and file an issue upstream (WP-32).
 
 ```
 tests/ldbc/
-  UPSTREAM.md              # repo URLs, pinned commits, license, refresh procedure
-  NOTICE                   # Apache-2.0 attribution for vendored queries
   queries/
+    UPSTREAM.md            # repo URLs, pinned commits, refresh procedure
+    LICENSE, NOTICE        # Apache-2.0 text and attribution, with the queries
     interactive_v2/        # verbatim *.cypher (37)
     bi/                    # verbatim *.cypher (20)
     variants/              # adapted copies: <op>.<reason>.cypher, each with a header comment
-  manifest.yml             # op id → file, workload, writes?, oracle mode, ordering contract
+  manifest.yml             # op id → file, workload, kind, sha256 pin, out_of_subset
+  corpus.py                # manifest loader, hash check, --rehash
   schema.py                # LDBC labels, supertypes, CSV files and column orders (single source)
   datasets.py              # fetch + content-digest verification + cache
   loader.py                # LDBC CSV → Arango PG | LPG (the Neo4j loader is WP-33)
@@ -274,8 +275,9 @@ tests/ldbc/
     generate.py            # deterministic picker for SF ≤ 0.1
     sf0.003/<op>.yml       # committed bindings (several per op)
   expected/sf0.003/<layout-independent>/<op>/<binding>.json   # Neo4j snapshots
-  ledger.py                # computes outcomes → conformance_ledger.tsv
-  conformance_ledger.tsv   # op × layout × {parse, translate, execute, oracle}
+  ledger.py                # translation tier → translation_ledger.tsv (reuses the TCK diff)
+  translation_ledger.tsv   # op × layout: translatable | fails_closed | syntax_error | out_of_subset
+  execution_ledger.tsv     # WP-33: op × layout: executes | matches_oracle | translates_wrong …
   test_ldbc_*_unit.py      # default suite, no DB (loader, ratchet, …)
   bench.py                 # perf runner CLI: python -m tests.ldbc.bench --sf 0.1 --layout pg,lpg
   report.py                # results JSON → docs/ldbc_results.md (with disclaimer)
@@ -303,6 +305,11 @@ There are three non-passing terminal states. Each must state its reason:
 - `fails_closed` (an explicit `UNSUPPORTED`, the acceptable failure)
 - `translates_wrong` (an oracle mismatch, which is a **defect**)
 - `out_of_subset` (GDS or APOC)
+
+The two tiers are kept in two ledgers, as the TCK keeps its dry run apart from
+its execution run:
+- **The translation ledger** needs no database. It runs in the default suite.
+- **The execution ledger** runs in the integration tier.
 
 As in the TCK, the ratchet fails CI if any cell **leaves** a passing state or an
 improvement goes unrecorded. A `translates_wrong` cell can never be grandfathered
@@ -427,8 +434,17 @@ on its own (incremental-over-atomic).
     check (guard removed) fails 10 of its cases.
   - The integration suite checks that every loaded edge's endpoint labels fall
     within the declared domain and range.
-  - **Part 2 is next:** vendoring the queries, the manifest, and the ledger
-    with its ratchet.
+  - **Part 2 (2026-10-24): implemented.**
+    - The 57 operations are vendored verbatim with LICENSE and NOTICE, and
+      pinned by SHA-256 in `manifest.yml`.
+    - Out of subset: IC14, BI10, BI15, BI19, BI20.
+    - The INS1 `schema-fix` variant is added.
+    - `translation_ledger.tsv` and `test_ldbc_ratchet.py` reuse the TCK diff
+      (`diff_ledger(passing=…)`). The ledger builds in under a second.
+    - Mutation checks: an edited vendored file and a fabricated regression
+      both fail the suite.
+  - **Not done:** the upstream LDBC issue for INS1 is drafted, but awaits
+    approval before filing.
 
 #### WP-33: Oracle snapshots and execution tier ⚡ (M)
 - **Scope:**

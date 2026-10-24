@@ -117,8 +117,17 @@ def load_ledger(path: Path = LEDGER_PATH) -> dict[str, str]:
     return ledger
 
 
-def diff_ledger(baseline: dict[str, str], current: dict[str, str]) -> LedgerDiff:
-    """Compare a committed ledger against a fresh measurement."""
+def diff_ledger(
+    baseline: dict[str, str],
+    current: dict[str, str],
+    *,
+    passing: frozenset[str] = PASSING_OUTCOMES,
+) -> LedgerDiff:
+    """Compare a committed ledger against a fresh measurement.
+
+    *passing* is the set of conformant outcomes; other ledgers (the LDBC
+    translation ledger) reuse this diff with their own.
+    """
     regressions: dict[str, tuple[str, str]] = {}
     improvements: dict[str, tuple[str, str]] = {}
     changed: dict[str, tuple[str, str]] = {}
@@ -127,8 +136,8 @@ def diff_ledger(baseline: dict[str, str], current: dict[str, str]) -> LedgerDiff
         was = baseline.get(sid)
         if was is None or was == now:
             continue
-        was_ok = was in PASSING_OUTCOMES
-        now_ok = now in PASSING_OUTCOMES
+        was_ok = was in passing
+        now_ok = now in passing
         if was_ok and not now_ok:
             regressions[sid] = (was, now)
         elif now_ok and not was_ok:
