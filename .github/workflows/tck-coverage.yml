@@ -23,7 +23,7 @@ jobs:
           --health-timeout 2s
           --health-retries 40
       neo4j:
-        image: neo4j:5-community
+        image: neo4j:5.26.27-community  # keep in step with docker-compose.neo4j.yml
         env:
           NEO4J_AUTH: neo4j/openSesame
         ports:
@@ -54,6 +54,11 @@ jobs:
       - run: pip install -e ".[dev,neo4j]"
       - run: python tests/tck/analyze_coverage.py --json > tck-translation.json
       - run: python tests/tck/analyze_execution.py > tck-execution.json
+      # LDBC SNB samples for the cross suites (tests/ldbc/datasets.py); same key as ci.yml.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/arango-cypher/ldbc
+          key: ldbc-${{ hashFiles('tests/ldbc/datasets.py') }}
       - run: pytest -m cross --tb=short -q
       - uses: actions/upload-artifact@v4
         with:

@@ -244,7 +244,7 @@ verbatim file, add a corrected variant, and file an issue upstream (WP-32).
 | D1 | Workloads | **Interactive v2 (all 37 ops) first, then BI (20).** Interactive v1 is skipped. | BI first (more aggregation coverage, but blocked on temporal and `CALL {}`). |
 | D2 | Physical layouts | **PG and LPG, both mandatory** (as requested). Hybrid is optional, in Phase 3 (§9). | Add hybrid now. It mirrors LDBC's CSV split: `Place`/`Organisation` as typed collections, `Post`/`Comment` separate. |
 | D3 | Query text | **Vendor the reference Cypher verbatim**, pinned to the upstream commit. Never edit it. Adaptations (GDS replacements, upstream-bug corrections) go in separate `variants/` files with a stated reason. The ledger reports verbatim and variant outcomes separately. | Rewrite into a portable subset. Rejected: it hides exactly the gaps we want to find. |
-| D4 | Oracle | **Neo4j 5.x, pinned to the reference version (5.20)**, runs the verbatim queries on the same data and parameters. Results are **recorded as committed snapshots** for SF0.003, so the integration tier needs no Neo4j. A `RUN_CROSS` job re-verifies them against live Neo4j. | (a) LDBC driver validation mode: Java, heavy, and still needs a reference run. (b) PostgreSQL reference: an independent second oracle, worth adding for disputed cases (§9). |
+| D4 | Oracle | **Neo4j 5.x, pinned to `5.26.27-community`**, runs the verbatim queries on the same data and parameters. Results are **recorded as committed snapshots** for SF0.003, so the integration tier needs no Neo4j. A `RUN_CROSS` job re-verifies them against live Neo4j. | (a) LDBC driver validation mode: Java, heavy, and still needs a reference run. (b) PostgreSQL reference: an independent second oracle, worth adding for disputed cases (§9). |
 | D5 | Timestamp encoding | **Load each workload in its reference encoding.** Interactive uses epoch-ms numbers; BI uses ISO-8601 strings, declared temporal in the mapping. Neo4j gets the same encoding the reference expects. | One encoding for both. Rejected: the Interactive queries do arithmetic on timestamps and the BI queries use temporal accessors. |
 | D6 | Data in repo | **Download on demand, verified against pinned content digests** (SHA-256 over each entity's sorted, decompressed rows; LDBC republishes the archives with new part-file names, so archive hashes are not stable), cached under `~/.cache/arango-cypher/ldbc/` and `actions/cache` in CI. Only mappings, parameters and snapshots are committed. | Vendor the 2.4 MB sample. Smaller CI surface, but it is a generated artifact with its own provenance. |
 | D7 | Scale factors | **SF0.003 in CI** (integration tier). **SF0.1 nightly and SF1 manual** for performance. SF10 runs ad hoc on dedicated hardware. | SF0.1 in CI (~30 MB; slower to load). |
@@ -448,9 +448,7 @@ on its own (incremental-over-atomic).
 
 #### WP-33: Oracle snapshots and execution tier ⚡ (M)
 - **Scope:**
-  - Pin Neo4j to `5.20-community` in `docker-compose.neo4j.yml`. It currently
-    floats on `5-community`; the existing suites need re-verification after the
-    pin.
+  - **Part 1:** pin Neo4j, and load the oracle (`tests/ldbc/neo4j_loader.py`).
   - A snapshot recorder (`python -m tests.ldbc.record --sf 0.003`).
   - `test_ldbc_execution.py`: Arango PG and LPG versus the snapshots.
   - `test_ldbc_crossvalidate.py`: live Neo4j re-verification.
@@ -461,6 +459,19 @@ on its own (incremental-over-atomic).
   - All four outcome columns are populated for every operation × layout.
   - A deliberately corrupted snapshot makes the test fail. This is a
     mutation check, so the gate is shown not to be vacuous.
+- **Status (2026-10-24): part 1 implemented.**
+  - **Neo4j is pinned to `5.26.27-community`.** That is the 5.26 LTS build the
+    floating `5-community` tag already resolved to, locally and in CI. The plan
+    had said 5.20, the reference implementations' version. Pinning down to it
+    would have downgraded the engine the existing suites run on. Cypher is
+    backward compatible within 5.x, and Movies plus Northwind cross-validation
+    pass 34/34 on the pinned build.
+  - **The Neo4j loader** reads the same rows as the ArangoDB loader
+    (`loader.iter_graph`). It applies the reference's supertype labels and DDL,
+    and keeps epoch-ms timestamps as integers but ISO ones as
+    `DATETIME`/`DATE`. It checks Neo4j's write counters on every batch and the
+    per-label totals at the end.
+  - SF0.003 loads in 3–4 s.
 
 #### WP-34: Substitution parameters (S)
 - **Scope:**

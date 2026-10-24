@@ -122,7 +122,8 @@ def lpg_indexes() -> list[IndexSpec]:
 
 @dataclass
 class LoadReport:
-    layout: Layout
+    #: "pg" or "lpg" for ArangoDB, "neo4j" for the oracle.
+    layout: str
     encoding: Encoding
     nodes_by_label: Counter[str] = field(default_factory=Counter)
     edges_by_type: Counter[str] = field(default_factory=Counter)
@@ -246,6 +247,49 @@ class _LabelIndex:
         return label
 
 
+@dataclass(frozen=True)
+class NodeRow:
+    file: NodeFile
+    label: str
+    #: Parsed values; the ``:LABEL`` column has been consumed into ``label``.
+    rec: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class EdgeRow:
+    file: EdgeFile
+    src_label: str
+    dst_label: str
+    #: Parsed values, including the ``src``/``dst`` ids.
+    rec: dict[str, Any]
+
+
+def iter_graph(data_dir: Path, encoding: Encoding) -> Iterator[NodeRow | EdgeRow]:
+    """Every node row, then every edge row with its endpoints' concrete labels.
+
+    The single reader of the ``initial_snapshot`` CSVs, shared by the ArangoDB
+    loader and the Neo4j oracle loader so both engines receive the same graph.
+    """
+    snapshot = data_dir / "initial_snapshot"
+    if not snapshot.is_dir():
+        raise LdbcLoadError(f"{data_dir}: no initial_snapshot directory")
+    labels = _LabelIndex()
+    for nf in NODE_FILES:
+        for fname, line, row in read_rows(snapshot / nf.part / nf.name):
+            where = f"{nf.part}/{nf.name}/{fname}:{line}"
+            rec = _parse(row, nf.columns, encoding, where)
+            label = _node_label(nf, rec, where)
+            labels.add(nf.id_space, rec["id"], label)
+            yield NodeRow(nf, label, rec)
+    for ef in EDGE_FILES:
+        for fname, line, row in read_rows(snapshot / ef.part / ef.name):
+            where = f"{ef.part}/{ef.name}/{fname}:{line}"
+            rec = _parse(row, ef.columns, encoding, where)
+            src_label = labels.resolve(ef.src_space, rec["src"], where)
+            dst_label = labels.resolve(ef.dst_space, rec["dst"], where)
+            yield EdgeRow(ef, src_label, dst_label, rec)
+
+
 # ---------------------------------------------------------------------------
 # Database side
 # ---------------------------------------------------------------------------
@@ -346,8 +390,7 @@ def load(
         raise ValueError(f"unknown layout {layout!r}; expected 'pg' or 'lpg'")
     if batch_size < 1:
         raise ValueError(f"batch_size must be positive, got {batch_size}")
-    snapshot = data_dir / "initial_snapshot"
-    if not snapshot.is_dir():
+    if not (data_dir / "initial_snapshot").is_dir():
         raise LdbcLoadError(f"{data_dir}: no initial_snapshot directory")
 
     started = time.monotonic()
@@ -358,27 +401,14 @@ def load(
         _reset_collection(_ensure_edge_collection(db, name))
 
     report = LoadReport(layout=layout, encoding=encoding)
-    labels = _LabelIndex()
     writer = _BulkWriter(db, batch_size)
-
-    for nf in NODE_FILES:
-        for fname, line, row in read_rows(snapshot / nf.part / nf.name):
-            where = f"{nf.part}/{nf.name}/{fname}:{line}"
-            rec = _parse(row, nf.columns, encoding, where)
-            label = _node_label(nf, rec, where)
-            labels.add(nf.id_space, rec["id"], label)
-            writer.add(*node_doc(nf, rec, label, layout))
-            report.nodes_by_label[label] += 1
-    writer.flush_all()
-
-    for ef in EDGE_FILES:
-        for fname, line, row in read_rows(snapshot / ef.part / ef.name):
-            where = f"{ef.part}/{ef.name}/{fname}:{line}"
-            rec = _parse(row, ef.columns, encoding, where)
-            src_label = labels.resolve(ef.src_space, rec["src"], where)
-            dst_label = labels.resolve(ef.dst_space, rec["dst"], where)
-            writer.add(*edge_doc(ef, rec, src_label, dst_label, layout))
-            report.edges_by_type[ef.rel_type] += 1
+    for item in iter_graph(data_dir, encoding):
+        if isinstance(item, NodeRow):
+            writer.add(*node_doc(item.file, item.rec, item.label, layout))
+            report.nodes_by_label[item.label] += 1
+        else:
+            writer.add(*edge_doc(item.file, item.rec, item.src_label, item.dst_label, layout))
+            report.edges_by_type[item.file.rel_type] += 1
     writer.flush_all()
 
     for spec in pg_indexes() if layout == "pg" else lpg_indexes():
