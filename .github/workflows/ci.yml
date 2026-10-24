@@ -107,4 +107,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      # LDBC SNB samples (tests/ldbc/datasets.py). Keyed on the catalog, so a
+      # changed pin re-downloads; the loader re-verifies the content digest anyway.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/arango-cypher/ldbc
+          key: ldbc-${{ hashFiles('tests/ldbc/datasets.py') }}
       - run: pytest -m integration --tb=short -q
