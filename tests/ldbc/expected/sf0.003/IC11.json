@@ -1,0 +1,185 @@
+{
+ "operation": "IC11",
+ "file": "interactive_v2/interactive-complex-11.cypher",
+ "sha256": "5e2d7b2677eb2b3a1c695cb3896bed307d9bcac5f349e6788b4c38f73449236d",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "countryName": "China",
+    "personId": 24189255811081,
+    "workFromYear": 2006
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "organizationName",
+    "organizationWorkFromYear"
+   ],
+   "rows": [
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "Okay_Airways",
+     2001
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "East_Star_Airlines",
+     2002
+    ],
+    [
+     24189255811109,
+     "Wei",
+     "Wei",
+     "Shenzhen_Donghai_Airlines",
+     2003
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Shanxi_Airlines",
+     2005
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "countryName": "China",
+    "personId": 24189255811081,
+    "workFromYear": 2007
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "organizationName",
+    "organizationWorkFromYear"
+   ],
+   "rows": [
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "Okay_Airways",
+     2001
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "East_Star_Airlines",
+     2002
+    ],
+    [
+     24189255811109,
+     "Wei",
+     "Wei",
+     "Shenzhen_Donghai_Airlines",
+     2003
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Shanxi_Airlines",
+     2005
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Tibet_Airlines",
+     2006
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Shenzhen_Airlines",
+     2006
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "countryName": "China",
+    "personId": 24189255811081,
+    "workFromYear": 2008
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "organizationName",
+    "organizationWorkFromYear"
+   ],
+   "rows": [
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "Okay_Airways",
+     2001
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     "East_Star_Airlines",
+     2002
+    ],
+    [
+     24189255811109,
+     "Wei",
+     "Wei",
+     "Shenzhen_Donghai_Airlines",
+     2003
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Shanxi_Airlines",
+     2005
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Tibet_Airlines",
+     2006
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     "Shenzhen_Airlines",
+     2006
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "countryName": "Pakistan",
+    "personId": 24189255811081,
+    "workFromYear": 2006
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "organizationName",
+    "organizationWorkFromYear"
+   ],
+   "rows": []
+  }
+ ]
+}

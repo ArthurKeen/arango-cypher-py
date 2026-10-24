@@ -1,0 +1,119 @@
+{
+ "operation": "BI8",
+ "file": "bi/bi-8.cypher",
+ "sha256": "dc4c117b58fbe671ae4d2dbb846d3f5227d652e851ca4b127d8794b9cf10d77b",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "tag": "Lleyton_Hewitt"
+   },
+   "columns": [
+    "person.id",
+    "score",
+    "friendsScore"
+   ],
+   "rows": [
+    [
+     4398046511139,
+     100,
+     0
+    ],
+    [
+     37383395344394,
+     100,
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "tag": "Franz_Kafka"
+   },
+   "columns": [
+    "person.id",
+    "score",
+    "friendsScore"
+   ],
+   "rows": [
+    [
+     10995116277782,
+     101,
+     2
+    ],
+    [
+     26388279066658,
+     2,
+     101
+    ],
+    [
+     17592186044443,
+     100,
+     0
+    ],
+    [
+     32985348833329,
+     100,
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "tag": "John_F._Kennedy"
+   },
+   "columns": [
+    "person.id",
+    "score",
+    "friendsScore"
+   ],
+   "rows": [
+    [
+     13194139533352,
+     100,
+     102
+    ],
+    [
+     2199023255594,
+     101,
+     100
+    ],
+    [
+     26388279066641,
+     1,
+     100
+    ],
+    [
+     2199023255573,
+     100,
+     0
+    ],
+    [
+     17592186044443,
+     100,
+     0
+    ]
+   ]
+  }
+ ]
+}

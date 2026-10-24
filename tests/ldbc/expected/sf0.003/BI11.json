@@ -1,0 +1,67 @@
+{
+ "operation": "BI11",
+ "file": "bi/bi-11.cypher",
+ "sha256": "55eaa5ddfae1f09d741d281c9913d1f2de84369eba37f4da068c80633cf17189",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "country": "Pakistan"
+   },
+   "columns": [
+    "count"
+   ],
+   "rows": [
+    [
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "country": "China"
+   },
+   "columns": [
+    "count"
+   ],
+   "rows": [
+    [
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": {
+     "datetime": "2011-11-29T00:00:00.000+00:00"
+    },
+    "endDate": {
+     "datetime": "2012-05-28T00:00:00.000+00:00"
+    },
+    "country": "Iran"
+   },
+   "columns": [
+    "count"
+   ],
+   "rows": [
+    [
+     0
+    ]
+   ]
+  }
+ ]
+}

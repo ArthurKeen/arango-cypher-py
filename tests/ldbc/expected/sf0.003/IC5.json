@@ -1,0 +1,286 @@
+{
+ "operation": "IC5",
+ "file": "interactive_v2/interactive-complex-5.cypher",
+ "sha256": "c60c620f23a3213162006dbd756dfedbd4e6600d997299ff03e243731cd9b076",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "minDate": 1331289114639,
+    "personId": 24189255811081
+   },
+   "columns": [
+    "forumName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Group for Hannibal in Changyi",
+     4
+    ],
+    [
+     "Group for Nat_King_Cole in Cooch_Behar",
+     4
+    ],
+    [
+     "Group for Saint_George in Changyi",
+     1
+    ],
+    [
+     "Group for Cardinal_Richelieu in Changyi",
+     1
+    ],
+    [
+     "Wall of Hossein Forouhar",
+     0
+    ],
+    [
+     "Wall of Jan Zakrzewski",
+     0
+    ],
+    [
+     "Wall of Miguel Gonzalez",
+     0
+    ],
+    [
+     "Wall of Arbaaz Ali",
+     0
+    ],
+    [
+     "Wall of Ali Achiou",
+     0
+    ],
+    [
+     "Album 5 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 23 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 8 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 13 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 16 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 19 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 24 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 20 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 28 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 29 of Ali Achiou",
+     0
+    ],
+    [
+     "Wall of Alejandro Garcia",
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "minDate": 1331289114639,
+    "personId": 2199023255594
+   },
+   "columns": [
+    "forumName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Group for Hannibal in Changyi",
+     5
+    ],
+    [
+     "Group for Nat_King_Cole in Cooch_Behar",
+     4
+    ],
+    [
+     "Group for Saint_George in Changyi",
+     1
+    ],
+    [
+     "Group for Cardinal_Richelieu in Changyi",
+     1
+    ],
+    [
+     "Wall of Hossein Forouhar",
+     0
+    ],
+    [
+     "Wall of Jan Zakrzewski",
+     0
+    ],
+    [
+     "Wall of Miguel Gonzalez",
+     0
+    ],
+    [
+     "Wall of Arbaaz Ali",
+     0
+    ],
+    [
+     "Wall of Ali Achiou",
+     0
+    ],
+    [
+     "Album 5 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 23 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 8 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 13 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 16 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 19 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 24 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 20 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 28 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 29 of Ali Achiou",
+     0
+    ],
+    [
+     "Wall of Alejandro Garcia",
+     0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "minDate": 1331289114639,
+    "personId": 26388279066658
+   },
+   "columns": [
+    "forumName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Group for Hannibal in Changyi",
+     4
+    ],
+    [
+     "Group for Nat_King_Cole in Cooch_Behar",
+     4
+    ],
+    [
+     "Group for Saint_George in Changyi",
+     1
+    ],
+    [
+     "Group for Cardinal_Richelieu in Changyi",
+     1
+    ],
+    [
+     "Wall of Hossein Forouhar",
+     0
+    ],
+    [
+     "Wall of Jan Zakrzewski",
+     0
+    ],
+    [
+     "Wall of Miguel Gonzalez",
+     0
+    ],
+    [
+     "Wall of Arbaaz Ali",
+     0
+    ],
+    [
+     "Wall of Ali Achiou",
+     0
+    ],
+    [
+     "Album 5 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 23 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 8 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 13 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 16 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 19 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 24 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 20 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 28 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 29 of Ali Achiou",
+     0
+    ],
+    [
+     "Album 11 of Ali Achiou",
+     0
+    ]
+   ]
+  }
+ ]
+}

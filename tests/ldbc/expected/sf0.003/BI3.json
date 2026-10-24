@@ -1,0 +1,111 @@
+{
+ "operation": "BI3",
+ "file": "bi/bi-3.cypher",
+ "sha256": "4fc05066885b85e0defafeea0f78eaea54a24434b80961b045c0d59cdca77da1",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "country": "China",
+    "tagClass": "OfficeHolder"
+   },
+   "columns": [
+    "forum.id",
+    "forum.title",
+    "forum.creationDate",
+    "person.id",
+    "messageCount"
+   ],
+   "rows": [
+    [
+     1030792151326,
+     "Group for Hannibal in Changyi",
+     "2012-07-28T06:43:41.648+00:00",
+     24189255811109,
+     5
+    ],
+    [
+     962072674592,
+     "Group for Cardinal_Richelieu in Changyi",
+     "2012-05-29T15:02:46.284+00:00",
+     24189255811109,
+     2
+    ],
+    [
+     274877907114,
+     "Wall of Lei Zhang",
+     "2010-10-28T05:49:39.470+00:00",
+     8796093022237,
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "China",
+    "tagClass": "Writer"
+   },
+   "columns": [
+    "forum.id",
+    "forum.title",
+    "forum.creationDate",
+    "person.id",
+    "messageCount"
+   ],
+   "rows": [
+    [
+     1030792151326,
+     "Group for Hannibal in Changyi",
+     "2012-07-28T06:43:41.648+00:00",
+     24189255811109,
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "China",
+    "tagClass": "MusicalArtist"
+   },
+   "columns": [
+    "forum.id",
+    "forum.title",
+    "forum.creationDate",
+    "person.id",
+    "messageCount"
+   ],
+   "rows": [
+    [
+     274877907114,
+     "Wall of Lei Zhang",
+     "2010-10-28T05:49:39.470+00:00",
+     8796093022237,
+     1
+    ],
+    [
+     1030792151326,
+     "Group for Hannibal in Changyi",
+     "2012-07-28T06:43:41.648+00:00",
+     24189255811109,
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "Pakistan",
+    "tagClass": "Person"
+   },
+   "columns": [
+    "forum.id",
+    "forum.title",
+    "forum.creationDate",
+    "person.id",
+    "messageCount"
+   ],
+   "rows": []
+  }
+ ]
+}

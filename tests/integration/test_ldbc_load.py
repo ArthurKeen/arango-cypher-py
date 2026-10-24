@@ -12,12 +12,11 @@ into ``$LDBC_CACHE_DIR`` (default ``~/.cache/arango-cypher/ldbc``).
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import pytest
-from arango import ArangoClient
 
+from tests.ldbc.arango_dbs import load_fresh
 from tests.ldbc.datasets import DATASETS, fetch
 from tests.ldbc.loader import LoadReport, load, lpg_indexes, pg_indexes
 from tests.ldbc.schema import REL_TYPES, rel_domain, rel_range
@@ -61,31 +60,9 @@ SF0003_EDGES = {
 _CASES = [(name, layout) for name in sorted(DATASETS) for layout in ("pg", "lpg")]
 
 
-def _env(name: str, default: str) -> str:
-    v = os.environ.get(name)
-    return v if v else default
-
-
-def _db(name: str) -> Any:
-    client = ArangoClient(hosts=_env("ARANGO_URL", "http://localhost:8529"))
-    user, pw = _env("ARANGO_USER", "root"), _env("ARANGO_PASS", "openSesame")
-    sys_db = client.db("_system", username=user, password=pw)
-    if not sys_db.has_database(name):
-        sys_db.create_database(name)
-    return client.db(name, username=user, password=pw)
-
-
-def _db_name(dataset: str, layout: str) -> str:
-    return f"ldbc_{dataset.replace('.', '_').replace('-', '_')}_{layout}"
-
-
 @pytest.fixture(scope="module")
 def loaded() -> dict[tuple[str, str], tuple[Any, LoadReport]]:
-    out = {}
-    for name, layout in _CASES:
-        db = _db(_db_name(name, layout))
-        out[(name, layout)] = (db, load(db, fetch(name), layout=layout, encoding=DATASETS[name].encoding))
-    return out
+    return {(name, layout): load_fresh(name, layout) for name, layout in _CASES}
 
 
 @pytest.mark.parametrize("dataset,layout", _CASES)

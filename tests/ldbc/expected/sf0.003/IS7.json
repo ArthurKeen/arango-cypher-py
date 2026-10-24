@@ -1,0 +1,319 @@
+{
+ "operation": "IS7",
+ "file": "interactive_v2/interactive-short-7.cypher",
+ "sha256": "87f83f573f9a42e8dae3c41b041ba5305d219e7f9fa05eb13a843664c93fe54b",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "messageId": 687194769577
+   },
+   "columns": [
+    "commentId",
+    "commentContent",
+    "commentCreationDate",
+    "replyAuthorId",
+    "replyAuthorFirstName",
+    "replyAuthorLastName",
+    "replyAuthorKnowsOriginalMessageAuthor"
+   ],
+   "rows": [
+    [
+     1030792153263,
+     "ok",
+     1344572471395,
+     32985348833329,
+     "Ashok",
+     "Singh",
+     true
+    ],
+    [
+     1030792153266,
+     "right",
+     1344566392704,
+     32985348833329,
+     "Ashok",
+     "Singh",
+     true
+    ],
+    [
+     1030792153258,
+     "thx",
+     1344563668335,
+     32985348833329,
+     "Ashok",
+     "Singh",
+     true
+    ],
+    [
+     1030792153269,
+     "thanks",
+     1344557173698,
+     32985348833329,
+     "Ashok",
+     "Singh",
+     true
+    ],
+    [
+     1030792153259,
+     "cool",
+     1344552466307,
+     32985348833329,
+     "Ashok",
+     "Singh",
+     true
+    ],
+    [
+     824633723053,
+     "thx",
+     1328334572801,
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     true
+    ],
+    [
+     824633723052,
+     "ok",
+     1328293215037,
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     true
+    ],
+    [
+     824633723056,
+     "fine",
+     1328266395238,
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     true
+    ],
+    [
+     687194769585,
+     "About Mariano Rivera, rts as one of the mostAbout Salvador Dalí, nded from the Moors. DAbout Henry Wadswo",
+     1318412740359,
+     8796093022249,
+     "John",
+     "Kumar",
+     true
+    ],
+    [
+     687194769587,
+     "About Caliphate of Córdoba, descendants of the last legitimate Caliph Hisham II and the successors oAbout Song Dynasty, er money, and the first",
+     1318396662358,
+     8796093022249,
+     "John",
+     "Kumar",
+     true
+    ],
+    [
+     687194769582,
+     "LOL",
+     1318386810199,
+     8796093022249,
+     "John",
+     "Kumar",
+     true
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 1030792151881
+   },
+   "columns": [
+    "commentId",
+    "commentContent",
+    "commentCreationDate",
+    "replyAuthorId",
+    "replyAuthorFirstName",
+    "replyAuthorLastName",
+    "replyAuthorKnowsOriginalMessageAuthor"
+   ],
+   "rows": [
+    [
+     1030792151885,
+     "maybe",
+     1346515959080,
+     8796093022244,
+     "John",
+     "Reddy",
+     true
+    ],
+    [
+     1030792151882,
+     "ok",
+     1346492131642,
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     true
+    ],
+    [
+     1030792151887,
+     "no way!",
+     1346491593286,
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     true
+    ],
+    [
+     1030792151897,
+     "great",
+     1346475648567,
+     15393162788877,
+     "Mehmet",
+     "Koksal",
+     true
+    ],
+    [
+     1030792151894,
+     "About Fidel Castro,  Cuba from 1About Benjamin Franklin, pment of posAbout Bette",
+     1346460594625,
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     true
+    ],
+    [
+     1030792151886,
+     "duh",
+     1346456803624,
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     true
+    ],
+    [
+     1030792151888,
+     "About Fidel Castro, d he led a failedAbout Mohammad Reza Pahlavi,  his father Re",
+     1346448510518,
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     true
+    ],
+    [
+     1030792151889,
+     "no way!",
+     1346440886120,
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     true
+    ],
+    [
+     1030792151895,
+     "thanks",
+     1346435433117,
+     13194139533342,
+     "Joakim",
+     "Larsson",
+     true
+    ],
+    [
+     1030792151883,
+     "great",
+     1346433601482,
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     true
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 68719477171
+   },
+   "columns": [
+    "commentId",
+    "commentContent",
+    "commentCreationDate",
+    "replyAuthorId",
+    "replyAuthorFirstName",
+    "replyAuthorLastName",
+    "replyAuthorKnowsOriginalMessageAuthor"
+   ],
+   "rows": [
+    [
+     1168231104949,
+     "cool",
+     1352718177431,
+     17592186044461,
+     "Ali",
+     "Abouba",
+     true
+    ],
+    [
+     1168231104960,
+     "right",
+     1352689199020,
+     17592186044461,
+     "Ali",
+     "Abouba",
+     true
+    ],
+    [
+     1030792151484,
+     "thx",
+     1345288492097,
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     true
+    ],
+    [
+     824633721275,
+     "thanks",
+     1328795969934,
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     true
+    ],
+    [
+     824633721268,
+     "no way!",
+     1328787147472,
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     true
+    ],
+    [
+     549755814333,
+     "About Edvard Munch, of psycholAbout Al Pacino, ino has haAbout The Wall, irst con",
+     1308940380933,
+     2199023255594,
+     "Ali",
+     "Achiou",
+     true
+    ],
+    [
+     549755814326,
+     "About Haile Selassie I, ans. Haile SeAbout Edvard Munch,  of the main About Cambodia,",
+     1308892802120,
+     2199023255594,
+     "Ali",
+     "Achiou",
+     true
+    ],
+    [
+     549755814328,
+     "About Diana, Princess of Wales, edding to CharAbout Iceland, high latitude About S",
+     1308883359979,
+     2199023255594,
+     "Ali",
+     "Achiou",
+     true
+    ]
+   ]
+  }
+ ]
+}

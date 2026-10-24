@@ -1,0 +1,157 @@
+{
+ "operation": "IC6",
+ "file": "interactive_v2/interactive-complex-6.cypher",
+ "sha256": "67df75daebdbc533bad6edc464f4b16e97a8b32f90bf0431b664e82f913d3e9b",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "personId": 24189255811081,
+    "tagName": "Franz_Kafka"
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Anne,_Queen_of_Great_Britain",
+     2
+    ],
+    [
+     "Alexander_Pushkin",
+     1
+    ],
+    [
+     "Friedrich_Schiller",
+     1
+    ],
+    [
+     "GodWeenSatan:_The_Oneness",
+     1
+    ],
+    [
+     "John_Lennon",
+     1
+    ],
+    [
+     "Leander_Paes",
+     1
+    ],
+    [
+     "Lil_Jon",
+     1
+    ],
+    [
+     "Rafael_Nadal",
+     1
+    ],
+    [
+     "Simón_Bolívar",
+     1
+    ],
+    [
+     "Woodrow_Wilson",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 24189255811081,
+    "tagName": "John_F._Kennedy"
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Barack_Obama",
+     1
+    ],
+    [
+     "Bob_Dylan",
+     1
+    ],
+    [
+     "Drop_the_World",
+     1
+    ],
+    [
+     "Having_a_Rave_Up",
+     1
+    ],
+    [
+     "Humphrey_Bogart",
+     1
+    ],
+    [
+     "Jacqueline_Kennedy_Onassis",
+     1
+    ],
+    [
+     "Moods_of_Marvin_Gaye",
+     1
+    ],
+    [
+     "Sanath_Jayasuriya",
+     1
+    ],
+    [
+     "Uruguay",
+     1
+    ],
+    [
+     "Wolfgang_Amadeus_Mozart",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 24189255811081,
+    "tagName": "Muammar_Gaddafi"
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": [
+    [
+     "Confederation_of_the_Rhine",
+     1
+    ],
+    [
+     "Ernest_Hemingway",
+     1
+    ],
+    [
+     "International_Energy_Agency",
+     1
+    ],
+    [
+     "Simón_Bolívar",
+     1
+    ],
+    [
+     "Surrealistic_Pillow",
+     1
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 24189255811081,
+    "tagName": "Lleyton_Hewitt"
+   },
+   "columns": [
+    "tagName",
+    "postCount"
+   ],
+   "rows": []
+  }
+ ]
+}

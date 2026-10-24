@@ -1,0 +1,535 @@
+{
+ "operation": "IC8",
+ "file": "interactive_v2/interactive-complex-8.cypher",
+ "sha256": "01c852d5314a186c2fec689ccd2e872dfa1b59f6774949d3e25571865ec13352",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "personId": 24189255811081
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commentCreationDate",
+    "commentId",
+    "commentContent"
+   ],
+   "rows": [
+    [
+     10995116277808,
+     "Adje van den Berg",
+     "Vries",
+     1353196517497,
+     1168231107485,
+     "yes"
+    ],
+    [
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     1352243697316,
+     1099511631153,
+     "I see"
+    ],
+    [
+     13194139533342,
+     "Joakim",
+     "Larsson",
+     1351628828729,
+     1099511630621,
+     "ok"
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     1351452294729,
+     1099511630636,
+     "good"
+    ],
+    [
+     21990232555527,
+     "Jun",
+     "Li",
+     1351447385324,
+     1099511630640,
+     "About Little Richard, rom rock and roll to the ministry, until he was able to reconcile the two roles in later life. Penniman was among the first group of inductees into"
+    ],
+    [
+     19791209299968,
+     "John",
+     "Khan",
+     1351425649562,
+     1099511630638,
+     "maybe"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     1351418568161,
+     1099511630637,
+     "maybe"
+    ],
+    [
+     19791209299968,
+     "John",
+     "Khan",
+     1351414409044,
+     1099511630639,
+     "right"
+    ],
+    [
+     28587302322196,
+     "Yahya Ould Ahmed El",
+     "Abdallahi",
+     1351414179241,
+     1099511630635,
+     "I see"
+    ],
+    [
+     24189255811109,
+     "Wei",
+     "Wei",
+     1351337377395,
+     1099511629581,
+     "About Desiderius Erasmus, ese raised questions that would be inflAbout Meat"
+    ],
+    [
+     24189255811109,
+     "Wei",
+     "Wei",
+     1351304902227,
+     1099511629592,
+     "duh"
+    ],
+    [
+     19791209299968,
+     "John",
+     "Khan",
+     1350666273146,
+     1099511630628,
+     "duh"
+    ],
+    [
+     35184372088871,
+     "Alexei",
+     "Feltsman",
+     1350292983188,
+     1099511630644,
+     "About Cambodia,  Khmer Empire. Successive kings flourished which marked the Khmer emp"
+    ],
+    [
+     2199023255557,
+     "Eric",
+     "Mettacara",
+     1350254200560,
+     1099511629587,
+     "About Desiderius Erasmus, a Christian Knight, On Civility in ChilAbout Anhalt"
+    ],
+    [
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     1350246075632,
+     1099511629588,
+     "maybe"
+    ],
+    [
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     1350245942499,
+     1099511629585,
+     "About Pope Pius IX, During his pontificate, he convened the FiAbout Desiderius Era"
+    ],
+    [
+     26388279066632,
+     "Djelaludin",
+     "Zaland",
+     1350244051773,
+     1099511630648,
+     "thx"
+    ],
+    [
+     2199023255557,
+     "Eric",
+     "Mettacara",
+     1350165304886,
+     1099511629589,
+     "thanks"
+    ],
+    [
+     16,
+     "Jan",
+     "Zakrzewski",
+     1349501547147,
+     1099511628667,
+     "About Pope John XXIII, ompletion of his final encyclical, Pacem in Terris. He was beatifiedAbout Clark Gable, s (1961), which paired Ga"
+    ],
+    [
+     32,
+     "Miguel",
+     "Gonzalez",
+     1349467699525,
+     1099511628658,
+     "About Clement Attlee, on to hold the office of Deputy Prime Minister, under Winston Ch"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 2199023255594
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commentCreationDate",
+    "commentId",
+    "commentContent"
+   ],
+   "rows": [
+    [
+     35184372088850,
+     "Neil",
+     "Murray",
+     1353360359791,
+     1168231106676,
+     "About Albert Einstein, {1}}} (which About David Lloyd George, Prime MinisteAbout Urug"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     1352774880661,
+     1168231104954,
+     "About Diana, Princess of Wales, tention and public mourning were consAbout Frank Zappa, s such as Edgard Varèse and 1950s rhyAbout Paraguay, speaking Guaraní. Though it remains oAbout"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     1352739862257,
+     1168231104927,
+     "maybe"
+    ],
+    [
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     1352295637125,
+     1099511629934,
+     "About Ban Ki-moon, , accepting hiAbout Sanath Jayasuriya, d as one of thAbout Anne, Queen of Great Britain, ose friendshipAbout Barack Obama, nting"
+    ],
+    [
+     19791209299968,
+     "John",
+     "Khan",
+     1350652957308,
+     1099511630632,
+     "cool"
+    ],
+    [
+     19791209299987,
+     "Jimmy",
+     "Burak",
+     1349532100030,
+     1099511629936,
+     "great"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     1349484181683,
+     1099511628659,
+     "thanks"
+    ],
+    [
+     32,
+     "Miguel",
+     "Gonzalez",
+     1349473352485,
+     1099511628660,
+     "About New France, lishment of the colony of Île Royale (Cape Breton Island)"
+    ],
+    [
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     1349431344692,
+     1099511628654,
+     "About Pope John XXIII, d Vatican City from 1958 until his death. Pope John was"
+    ],
+    [
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     1349428533433,
+     1099511628652,
+     "thanks"
+    ],
+    [
+     8796093022244,
+     "John",
+     "Reddy",
+     1349427498412,
+     1099511628657,
+     "fine"
+    ],
+    [
+     30786325577740,
+     "Jose",
+     "Alonso",
+     1349426891821,
+     1099511628653,
+     "right"
+    ],
+    [
+     8796093022244,
+     "John",
+     "Reddy",
+     1346515959080,
+     1030792151885,
+     "maybe"
+    ],
+    [
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     1346492131642,
+     1030792151882,
+     "ok"
+    ],
+    [
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     1346491593286,
+     1030792151887,
+     "no way!"
+    ],
+    [
+     15393162788877,
+     "Mehmet",
+     "Koksal",
+     1346475648567,
+     1030792151897,
+     "great"
+    ],
+    [
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     1346460594625,
+     1030792151894,
+     "About Fidel Castro,  Cuba from 1About Benjamin Franklin, pment of posAbout Bette"
+    ],
+    [
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     1346456803624,
+     1030792151886,
+     "duh"
+    ],
+    [
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     1346448510518,
+     1030792151888,
+     "About Fidel Castro, d he led a failedAbout Mohammad Reza Pahlavi,  his father Re"
+    ],
+    [
+     26388279066668,
+     "Alexei",
+     "Kahnovich",
+     1346440886120,
+     1030792151889,
+     "no way!"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "personId": 26388279066658
+   },
+   "columns": [
+    "personId",
+    "personFirstName",
+    "personLastName",
+    "commentCreationDate",
+    "commentId",
+    "commentContent"
+   ],
+   "rows": [
+    [
+     35184372088850,
+     "Neil",
+     "Murray",
+     1353310127857,
+     1168231106674,
+     "About Kate Bush, nger-songwriAbout Nazi Germany, e Nazi leadeAbout Animalize, become mor"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     1352957429243,
+     1168231106641,
+     "ok"
+    ],
+    [
+     26388279066658,
+     "Roberto",
+     "Diaz",
+     1352897025468,
+     1168231106638,
+     "cool"
+    ],
+    [
+     16,
+     "Jan",
+     "Zakrzewski",
+     1352889835985,
+     1168231107392,
+     "LOL"
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     1352873750018,
+     1168231106624,
+     "yes"
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     1352844427212,
+     1168231106593,
+     "About Franz Kafka,  become part ofAbout Alexander Pushkin, novel in verse,About Robert"
+    ],
+    [
+     35184372088856,
+     "Jie",
+     "Yang",
+     1352831412360,
+     1168231106623,
+     "About Livy, n 753 BC througAbout Gaetano Donizetti, ncenzo Bellini About Simón Bolívar"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     1352712578820,
+     1168231104972,
+     "thx"
+    ],
+    [
+     19791209299987,
+     "Jimmy",
+     "Burak",
+     1352370722995,
+     1099511629944,
+     "I see"
+    ],
+    [
+     28587302322204,
+     "Hans",
+     "Johansson",
+     1352287071696,
+     1099511629939,
+     "thanks"
+    ],
+    [
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     1352281871579,
+     1099511631139,
+     "About Duchy of Warsaw, n I in 1807 from the Polish lands ceded by the Kingdom of Prussia under the terms"
+    ],
+    [
+     28587302322196,
+     "Yahya Ould Ahmed El",
+     "Abdallahi",
+     1352277893942,
+     1099511629913,
+     "no way!"
+    ],
+    [
+     28587302322196,
+     "Yahya Ould Ahmed El",
+     "Abdallahi",
+     1352276455881,
+     1099511629912,
+     "About David Foster, nd short About Martin Luther,  stoppingAbout H. P. Lovecraft, e in the"
+    ],
+    [
+     13194139533352,
+     "Celso",
+     "Oliveira",
+     1352245348922,
+     1099511631151,
+     "no"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     1351125840062,
+     1099511630657,
+     "duh"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     1350508535110,
+     1099511631141,
+     "About Guatemala, Asunción; locally known as Guatemala or GuaAbout Mao Zedong,  As a r"
+    ],
+    [
+     17592186044461,
+     "Ali",
+     "Abouba",
+     1350489494913,
+     1099511631152,
+     "roflol"
+    ],
+    [
+     14,
+     "Hossein",
+     "Forouhar",
+     1349589874010,
+     1099511629885,
+     "About Gaetano Donizetti, Vincenzo Bellini About Igor Stravinsky, ared traits with A"
+    ],
+    [
+     28587302322180,
+     "Bryn",
+     "Davies",
+     1342593507058,
+     1030792153119,
+     "maybe"
+    ],
+    [
+     24189255811081,
+     "Alim",
+     "Guliyev",
+     1339346075068,
+     962072677674,
+     "About Fidel Castro, dent Fulgencio Batista, who was widely sAbout Un-Break My"
+    ]
+   ]
+  }
+ ]
+}

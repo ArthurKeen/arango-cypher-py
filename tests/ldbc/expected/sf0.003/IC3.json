@@ -1,0 +1,109 @@
+{
+ "operation": "IC3",
+ "file": "interactive_v2/interactive-complex-3.cypher",
+ "sha256": "6c97d08ec97380174821c674e7ad5095c611fd83891940e0c52c66f57a3d7e32",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "startDate": 1305917789004,
+    "endDate": 1346070832155,
+    "personId": 26388279066658,
+    "countryXName": "Mauritius",
+    "countryYName": "Senegal"
+   },
+   "columns": [
+    "friendId",
+    "friendFirstName",
+    "friendLastName",
+    "xCount",
+    "yCount",
+    "xyCount"
+   ],
+   "rows": [
+    [
+     2199023255594,
+     "Ali",
+     "Achiou",
+     2,
+     1,
+     3
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1305917789004,
+    "endDate": 1346070832155,
+    "personId": 26388279066658,
+    "countryXName": "Mauritius",
+    "countryYName": "Ukraine"
+   },
+   "columns": [
+    "friendId",
+    "friendFirstName",
+    "friendLastName",
+    "xCount",
+    "yCount",
+    "xyCount"
+   ],
+   "rows": [
+    [
+     2199023255594,
+     "Ali",
+     "Achiou",
+     2,
+     2,
+     4
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1284336366816,
+    "endDate": 1351650661001,
+    "personId": 26388279066658,
+    "countryXName": "El_Salvador",
+    "countryYName": "Mauritius"
+   },
+   "columns": [
+    "friendId",
+    "friendFirstName",
+    "friendLastName",
+    "xCount",
+    "yCount",
+    "xyCount"
+   ],
+   "rows": [
+    [
+     2199023255594,
+     "Ali",
+     "Achiou",
+     1,
+     2,
+     3
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "startDate": 1322575554993,
+    "endDate": 1338238517912,
+    "personId": 26388279066658,
+    "countryXName": "El_Salvador",
+    "countryYName": "Mauritius"
+   },
+   "columns": [
+    "friendId",
+    "friendFirstName",
+    "friendLastName",
+    "xCount",
+    "yCount",
+    "xyCount"
+   ],
+   "rows": []
+  }
+ ]
+}

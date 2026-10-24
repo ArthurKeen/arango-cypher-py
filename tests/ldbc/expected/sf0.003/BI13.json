@@ -1,0 +1,97 @@
+{
+ "operation": "BI13",
+ "file": "bi/bi-13.cypher",
+ "sha256": "36e006b05fca5446d924c11a228e7ee082152f0b6c4b6c906e30ccc6cddf1da1",
+ "dataset": "sf0.003-iso",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": true,
+ "bindings": [
+  {
+   "binding": {
+    "country": "China",
+    "endDate": {
+     "datetime": "2012-08-27T00:00:00.000+00:00"
+    }
+   },
+   "columns": [
+    "zombie.id",
+    "zombieLikeCount",
+    "totalLikeCount",
+    "zombieScore"
+   ],
+   "rows": [
+    [
+     28587302322191,
+     0,
+     0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "China",
+    "endDate": {
+     "datetime": "2012-10-31T00:00:00.000+00:00"
+    }
+   },
+   "columns": [
+    "zombie.id",
+    "zombieLikeCount",
+    "totalLikeCount",
+    "zombieScore"
+   ],
+   "rows": [
+    [
+     28587302322191,
+     0,
+     0,
+     0.0
+    ],
+    [
+     32985348833291,
+     0,
+     0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "Mexico",
+    "endDate": {
+     "datetime": "2012-03-09T00:00:00.000+00:00"
+    }
+   },
+   "columns": [
+    "zombie.id",
+    "zombieLikeCount",
+    "totalLikeCount",
+    "zombieScore"
+   ],
+   "rows": [
+    [
+     32,
+     0,
+     0,
+     0.0
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "country": "Pakistan",
+    "endDate": {
+     "datetime": "2012-03-09T00:00:00.000+00:00"
+    }
+   },
+   "columns": [
+    "zombie.id",
+    "zombieLikeCount",
+    "totalLikeCount",
+    "zombieScore"
+   ],
+   "rows": []
+  }
+ ]
+}

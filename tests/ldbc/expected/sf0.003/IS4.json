@@ -1,0 +1,55 @@
+{
+ "operation": "IS4",
+ "file": "interactive_v2/interactive-short-4.cypher",
+ "sha256": "f17e793ce74175a96a271c8682d0f3b71751aeee7146c998da7011412ddcdd0b",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "messageId": 687194769577
+   },
+   "columns": [
+    "messageCreationDate",
+    "messageContent"
+   ],
+   "rows": [
+    [
+     1318386787087,
+     "About Mariano Rivera, story. Pitching with a longAbout Salvador Dalí, es drew more attention thanAbout Henr"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 1030792151881
+   },
+   "columns": [
+    "messageCreationDate",
+    "messageContent"
+   ],
+   "rows": [
+    [
+     1346432367515,
+     "About Fidel Castro, war against Batista'About George Washington, ent to American repuAbout Kath"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 68719477171
+   },
+   "columns": [
+    "messageCreationDate",
+    "messageContent"
+   ],
+   "rows": [
+    [
+     1272446883379,
+     "About Edvard Munch, ely evocative tAbout Al Pacino, ss. Oscar nominAbout Iceland, litically stablAb"
+    ]
+   ]
+  }
+ ]
+}

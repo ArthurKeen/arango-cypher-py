@@ -1,0 +1,73 @@
+{
+ "operation": "IS6",
+ "file": "interactive_v2/interactive-short-6.cypher",
+ "sha256": "60504a35ab88810bd841ae86c76ebb37b25fcf5eafcd0920805bfa16aa1a4a62",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "messageId": 687194769577
+   },
+   "columns": [
+    "forumId",
+    "forumTitle",
+    "moderatorId",
+    "moderatorFirstName",
+    "moderatorLastName"
+   ],
+   "rows": [
+    [
+     412316860621,
+     "Wall of Rahul Khan",
+     13194139533355,
+     "Rahul",
+     "Khan"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 1030792151881
+   },
+   "columns": [
+    "forumId",
+    "forumTitle",
+    "moderatorId",
+    "moderatorFirstName",
+    "moderatorLastName"
+   ],
+   "rows": [
+    [
+     68719476809,
+     "Wall of Ali Achiou",
+     2199023255594,
+     "Ali",
+     "Achiou"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 68719477171
+   },
+   "columns": [
+    "forumId",
+    "forumTitle",
+    "moderatorId",
+    "moderatorFirstName",
+    "moderatorLastName"
+   ],
+   "rows": [
+    [
+     38,
+     "Wall of Miguel Gonzalez",
+     32,
+     "Miguel",
+     "Gonzalez"
+    ]
+   ]
+  }
+ ]
+}

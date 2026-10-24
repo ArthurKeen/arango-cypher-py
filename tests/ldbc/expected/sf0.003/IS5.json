@@ -1,0 +1,61 @@
+{
+ "operation": "IS5",
+ "file": "interactive_v2/interactive-short-5.cypher",
+ "sha256": "ecb719558a8adb3273db0a34cdc9d4d80356d13ba13754ea97ce1c7415845c54",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "ordered": false,
+ "bindings": [
+  {
+   "binding": {
+    "messageId": 687194769577
+   },
+   "columns": [
+    "personId",
+    "firstName",
+    "lastName"
+   ],
+   "rows": [
+    [
+     13194139533355,
+     "Rahul",
+     "Khan"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 1030792151881
+   },
+   "columns": [
+    "personId",
+    "firstName",
+    "lastName"
+   ],
+   "rows": [
+    [
+     2199023255594,
+     "Ali",
+     "Achiou"
+    ]
+   ]
+  },
+  {
+   "binding": {
+    "messageId": 68719477171
+   },
+   "columns": [
+    "personId",
+    "firstName",
+    "lastName"
+   ],
+   "rows": [
+    [
+     32,
+     "Miguel",
+     "Gonzalez"
+    ]
+   ]
+  }
+ ]
+}

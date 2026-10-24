@@ -1,0 +1,122 @@
+# LDBC SNB execution ledger: translated AQL vs the Neo4j oracle's snapshots — regenerate with:
+#   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
+# Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
+# Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
+# pg: fails_closed 28, matches_oracle 3, no_oracle 17, out_of_subset 5, syntax_error 4, translates_wrong 1
+# lpg: execution_error 1, fails_closed 27, matches_oracle 3, no_oracle 17, out_of_subset 5, syntax_error 4, translates_wrong 1
+out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
+out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
+fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI11@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI14@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI14@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
+out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
+syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
+syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
+fails_closed	BI17@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI17@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translates_wrong	BI18@lpg	[BI18@lpg binding 0] column-count mismatch: neo4j widths=[3] vs aql widths=[] neo4j columns: ['<scalar>'] aql columns: []
+translates_wrong	BI18@pg	[BI18@pg binding 0] column-count mismatch: neo4j widths=[3] vs aql widths=[] neo4j columns: ['<scalar>'] aql columns: []
+out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
+out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
+fails_closed	BI1@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI1@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
+out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
+fails_closed	BI2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI3@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI3@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
+syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
+fails_closed	BI5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+no_oracle	DEL1@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL1@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL2@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL2@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL3@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL3@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL4@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL4@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL5@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL5@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL6@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL6@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL7@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL7@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL8@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	DEL8@pg	writes are compared by post-state (WP-33 part 3)
+fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+matches_oracle	IC11@lpg	4 binding(s)
+matches_oracle	IC11@pg	4 binding(s)
+fails_closed	IC12@lpg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
+fails_closed	IC12@pg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
+syntax_error	IC13@lpg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+syntax_error	IC13@pg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
+out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
+syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC3@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC3@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC4@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC4@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+execution_error	IC5@lpg	ERR 1511: AQL: variable 'forum' is assigned multiple times (while parsing)
+fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	IC6@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC6@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
+no_oracle	INS1@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS1@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS1~schema-fix@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS1~schema-fix@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS2@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS2@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS3@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS3@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS4@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS4@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS5@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS5@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS6@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS6@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS7@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS7@pg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS8@lpg	writes are compared by post-state (WP-33 part 3)
+no_oracle	INS8@pg	writes are compared by post-state (WP-33 part 3)
+matches_oracle	IS1@lpg	3 binding(s)
+matches_oracle	IS1@pg	3 binding(s)
+fails_closed	IS2@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
+matches_oracle	IS3@lpg	3 binding(s)
+matches_oracle	IS3@pg	3 binding(s)
+fails_closed	IS4@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS4@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IS7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
