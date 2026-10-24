@@ -237,7 +237,7 @@ verbatim file, add a corrected variant, and file an issue upstream (WP-32).
 | D3 | Query text | **Vendor the reference Cypher verbatim**, pinned to the upstream commit. Never edit it. Adaptations (GDS replacements, upstream-bug corrections) go in separate `variants/` files with a stated reason. The ledger reports verbatim and variant outcomes separately. | Rewrite into a portable subset. Rejected: it hides exactly the gaps we want to find. |
 | D4 | Oracle | **Neo4j 5.x, pinned to the reference version (5.20)**, runs the verbatim queries on the same data and parameters. Results are **recorded as committed snapshots** for SF0.003, so the integration tier needs no Neo4j. A `RUN_CROSS` job re-verifies them against live Neo4j. | (a) LDBC driver validation mode: Java, heavy, and still needs a reference run. (b) PostgreSQL reference: an independent second oracle, worth adding for disputed cases (§9). |
 | D5 | Timestamp encoding | **Load each workload in its reference encoding.** Interactive uses epoch-ms numbers; BI uses ISO-8601 strings, declared temporal in the mapping. Neo4j gets the same encoding the reference expects. | One encoding for both. Rejected: the Interactive queries do arithmetic on timestamps and the BI queries use temporal accessors. |
-| D6 | Data in repo | **Download on demand with SHA-256 pins**, cached under `~/.cache/arango-cypher/ldbc/` and `actions/cache` in CI. Only mappings, parameters and snapshots are committed. | Vendor the 2.4 MB sample. Smaller CI surface, but it is a generated artifact with its own provenance. |
+| D6 | Data in repo | **Download on demand, verified against pinned content digests** (SHA-256 over each entity's sorted, decompressed rows; LDBC republishes the archives with new part-file names, so archive hashes are not stable), cached under `~/.cache/arango-cypher/ldbc/` and `actions/cache` in CI. Only mappings, parameters and snapshots are committed. | Vendor the 2.4 MB sample. Smaller CI surface, but it is a generated artifact with its own provenance. |
 | D7 | Scale factors | **SF0.003 in CI** (integration tier). **SF0.1 nightly and SF1 manual** for performance. SF10 runs ad hoc on dedicated hardware. | SF0.1 in CI (~30 MB; slower to load). |
 | D8 | Supertype modeling (the biggest design choice) | Extend the **conceptual** schema with `supertypes` / `subtypeOf` **in arango-query-core** (fix upstream, don't fork). Physically: **LPG** uses a `labelsField` array (`"Message" IN n.labels`) with an array index. **PG** treats the supertype as the union of its members' collections: an `IS_SAME_COLLECTION` any-of filter on traversal targets, and a branch union for scan starts. The benchmark then *measures* what that union costs. | (a) Require a hybrid layout for supertypes (a `message` collection plus a type field), which dodges the PG question. (b) Expand supertype queries into `UNION ALL` at the Cypher level. |
 | D9 | GDS / APOC queries (IC14 BI10 BI15 BI19 BI20) | **Report as out-of-subset verbatim.** Add `arango` dialect variants (weighted shortest path via `K_SHORTEST_PATHS`/`arango.shortest_path`) with *results* checked against a pure-Cypher or SQL reference where feasible. | Exclude entirely. |
@@ -258,19 +258,22 @@ tests/ldbc/
     bi/                    # verbatim *.cypher (20)
     variants/              # adapted copies: <op>.<reason>.cypher, each with a header comment
   manifest.yml             # op id → file, workload, writes?, oracle mode, ordering contract
-  datasets.py              # fetch + checksum + cache (SF → URL, sha256)
-  loader.py                # LDBC CSV → Arango PG | LPG (and → Neo4j, for the oracle)
+  schema.py                # LDBC labels, supertypes, CSV files and column orders (single source)
+  datasets.py              # fetch + content-digest verification + cache
+  loader.py                # LDBC CSV → Arango PG | LPG (the Neo4j loader is WP-33)
   params/
     generate.py            # deterministic picker for SF ≤ 0.1
     sf0.003/<op>.yml       # committed bindings (several per op)
   expected/sf0.003/<layout-independent>/<op>/<binding>.json   # Neo4j snapshots
   ledger.py                # computes outcomes → conformance_ledger.tsv
   conformance_ledger.tsv   # op × layout × {parse, translate, execute, oracle}
-  test_ldbc_ratchet.py     # default suite: translation tier, no DB
-  test_ldbc_execution.py   # RUN_INTEGRATION: execute + compare to snapshots
-  test_ldbc_crossvalidate.py  # RUN_CROSS: live Neo4j re-verification
+  test_ldbc_*_unit.py      # default suite, no DB (loader, ratchet, …)
   bench.py                 # perf runner CLI: python -m tests.ldbc.bench --sf 0.1 --layout pg,lpg
   report.py                # results JSON → docs/ldbc_results.md (with disclaimer)
+tests/integration/        # DB-backed suites live here, so they inherit the
+  test_ldbc_load.py        #   local-database guard in tests/integration/conftest.py
+  test_ldbc_execution.py   # RUN_INTEGRATION: execute + compare to snapshots
+  test_ldbc_crossvalidate.py  # RUN_CROSS: live Neo4j re-verification
 tests/fixtures/mappings/
   ldbc_pg.export.json
   ldbc_lpg.export.json
@@ -327,15 +330,22 @@ as passing.
   - Unique `id` per label: for PG, a unique index per collection; for LPG, a
     persistent index on `[type, id]`.
   - `firstName`, `name` and `creationDate`.
-  - LPG also gets a VCI on `edges[type]`, a `labels[*]` array index, and a
-    `[type]` index.
+  - LPG also gets edge VCIs on `[_from, type]` and `[_to, type]` (the
+    translator's traversal hint picks the one led by the traversal's anchor),
+    a `labels[*]` array index, and type-led `[type, …]` node indexes.
 - **Arrays.** `speaks` and `email` are split on `;` into arrays.
+- **Empty fields** are omitted, not stored as `""`, matching the reference
+  import's `--ignore-empty-strings=true`, so `coalesce(m.imageFile, m.content)`
+  behaves identically on both engines.
+- **Endpoints.** A `Place` or `Organisation` endpoint is resolved to its
+  concrete label per row. A dangling endpoint, in the CSV or in the loaded
+  database, fails the load.
 - **Integrity.** The loader is idempotent, reports row counts per
   entity, and asserts that **PG count == LPG count == CSV rows** for every
   entity. A mismatch fails loudly; nothing is dropped silently.
 - **Bulk path.** `import_bulk` in batches. `arangoimport` is optional for
   SF ≥ 1.
-- **Neo4j.** Batched `UNWIND` for SF ≤ 0.1, mirroring the reference's labels
+- **Neo4j (WP-33).** Batched `UNWIND` for SF ≤ 0.1, mirroring the reference's labels
   (`:Message:Comment`). `neo4j-admin import`, with the reference's headers, for
   SF ≥ 1.
 
@@ -360,17 +370,27 @@ on its own (incremental-over-atomic).
 
 #### WP-31: Data sets and loader ⚡ (M)
 - **Scope:**
-  - `tests/ldbc/datasets.py`: SF0.003 sample URLs, SHA-256 pins and cache.
-  - `tests/ldbc/loader.py`: PG and LPG loaders, plus the Neo4j loader used by
-    the oracle.
+  - `tests/ldbc/schema.py`: labels, supertypes, files and column orders.
+  - `tests/ldbc/datasets.py`: SF0.003 sample URLs (both encodings),
+    content-digest pins and cache.
+  - `tests/ldbc/loader.py`: PG and LPG loaders. The Neo4j loader moved to
+    WP-33, which owns the oracle.
 - **Tests:**
   - Unit tests for CSV parsing: quoting, `;` arrays, both timestamp encodings,
     and polymorphic endpoint resolution.
   - An integration test that loads SF0.003 into both layouts and asserts the
     per-entity counts from §2.3.
   - An idempotence test (load twice, same counts).
-- **Acceptance:** `RUN_INTEGRATION=1 pytest tests/ldbc -k load` is green. Load
-  time for SF0.003 is recorded.
+- **Acceptance:** `RUN_INTEGRATION=1 pytest tests/integration/test_ldbc_load.py`
+  is green. Load time for SF0.003 is recorded.
+- **Status (2026-10-24): implemented.**
+  - 48 unit tests in `tests/ldbc/test_ldbc_loader_unit.py`; 18 integration
+    tests in `tests/integration/test_ldbc_load.py`.
+  - SF0.003 loads in about 2–3 s per layout (local Arango 3.11, Apple
+    silicon).
+  - A mutation check (dropping one document) is caught by the count guard in
+    both layouts.
+  - CI caches the samples (`actions/cache`, keyed on the catalog).
 
 #### WP-32: Corpus, mappings and translation ledger ⚡ (M)
 - **Scope:**

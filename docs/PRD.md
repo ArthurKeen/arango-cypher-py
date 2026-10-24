@@ -962,7 +962,12 @@ corpora). The plan, research and baseline are in
   Benchmark Results" and attribution. The harness is never described as an
   implementation of an LDBC Benchmark.
 - **LDBC-8 Scale.**
-  - CI uses SF0.003, downloaded on demand with a pinned SHA-256 and cached.
+  - CI uses SF0.003, downloaded on demand and cached. Each data set is
+    verified against a pinned **content digest**: a SHA-256 over each entity's
+    sorted, decompressed rows. An archive hash is not used, because LDBC
+    rebuilds the sample archives with fresh Spark part-file names while the
+    rows stay the same. A digest mismatch stops the run
+    (`tests/ldbc/datasets.py`).
   - Performance runs use SF0.1 (nightly, non-blocking) and SF1 or larger
     (manual).
   - Each workload is loaded in its reference timestamp encoding: epoch-ms for
@@ -1080,7 +1085,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **Planned**: dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 onward planned. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |

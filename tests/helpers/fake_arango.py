@@ -93,6 +93,44 @@ class FakeCollection:
         key = document if isinstance(document, str) else document.get("_key")
         return next((dict(d) for d in self._docs if d.get("_key") == key), None)
 
+    def import_bulk(
+        self,
+        documents: list[dict[str, Any]],
+        halt_on_error: bool = True,
+        details: bool = True,
+        from_prefix: str | None = None,
+        to_prefix: str | None = None,
+        overwrite: bool | None = None,
+        on_duplicate: str | None = None,
+        sync: bool | None = None,
+        batch_size: int | None = None,
+    ) -> dict[str, Any]:
+        """Mirrors ``StandardCollection.import_bulk``: with ``halt_on_error`` the
+        server rejects the whole request on a duplicate ``_key`` and the driver
+        raises ``DocumentInsertError``; otherwise the duplicate is counted."""
+        from arango.exceptions import DocumentInsertError
+
+        existing = {d.get("_key") for d in self._docs if "_key" in d}
+        dupes = [i for i, d in enumerate(documents) if "_key" in d and d["_key"] in existing]
+        if dupes and halt_on_error:
+            raise server_error(DocumentInsertError, 409, 1210, "unique constraint violated")
+        msgs = [
+            f"at position {i}: creating document failed with error 'unique constraint violated'"
+            for i in dupes
+        ]
+        created = [dict(d) for i, d in enumerate(documents) if i not in set(dupes)]
+        self._docs.extend(created)
+        out: dict[str, Any] = {
+            "created": len(created),
+            "errors": len(dupes),
+            "empty": 0,
+            "updated": 0,
+            "ignored": 0,
+        }
+        if details:
+            out["details"] = msgs
+        return out
+
 
 Handler = Callable[[str, dict[str, Any]], list[Any]]
 
