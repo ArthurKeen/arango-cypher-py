@@ -1,0 +1,303 @@
+# LDBC SNB operations vendored in tests/ldbc/queries/ (see queries/UPSTREAM.md).
+# Regenerate hashes after a deliberate refresh: .venv/bin/python -m tests.ldbc.corpus --rehash
+version: 1
+upstream:
+  interactive_v2: {repo: https://github.com/ldbc/ldbc_snb_interactive_v2_impls, path: cypher/queries, commit: d05cc7620c295362ef7b0cfd32d5ac1dfde5feb3}
+  bi: {repo: https://github.com/ldbc/ldbc_snb_bi, path: neo4j/queries, commit: 47dd38b40844ecdb0e42e5a610c369535304786d}
+operations:
+  - id: IS1
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-1.cypher
+    sha256: 112a496d938a1e0ef638cdd285cd4e969ac020b5dd6c8e5233bfe78f990adcad
+  - id: IS2
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-2.cypher
+    sha256: e6872a9343e8aad7d14a15bb3daa9b1f920818ef87a91f78f56781ed2a934ff7
+  - id: IS3
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-3.cypher
+    sha256: 316dfadb8410f0871a1824b1cec1b4a7af84ec3c80e5b96259e2a142995972ca
+  - id: IS4
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-4.cypher
+    sha256: f17e793ce74175a96a271c8682d0f3b71751aeee7146c998da7011412ddcdd0b
+  - id: IS5
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-5.cypher
+    sha256: ecb719558a8adb3273db0a34cdc9d4d80356d13ba13754ea97ce1c7415845c54
+  - id: IS6
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-6.cypher
+    sha256: 60504a35ab88810bd841ae86c76ebb37b25fcf5eafcd0920805bfa16aa1a4a62
+  - id: IS7
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-short-7.cypher
+    sha256: 87f83f573f9a42e8dae3c41b041ba5305d219e7f9fa05eb13a843664c93fe54b
+  - id: IC1
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-1.cypher
+    sha256: d32722e5656f47cc5220ec77348012eb64beb2d8c5ff7eeb80005d027546d1a6
+  - id: IC2
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-2.cypher
+    sha256: cfd21a44c1e2b047bb9c3aaf42791544e0d7c85125037d3fa4e7df5ee2d57871
+  - id: IC3
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-3.cypher
+    sha256: 6c97d08ec97380174821c674e7ad5095c611fd83891940e0c52c66f57a3d7e32
+  - id: IC4
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-4.cypher
+    sha256: 0ddeb16ecd06f9e3d041756a388c865b2bf47321589d685686355b5745295508
+  - id: IC5
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-5.cypher
+    sha256: c60c620f23a3213162006dbd756dfedbd4e6600d997299ff03e243731cd9b076
+  - id: IC6
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-6.cypher
+    sha256: 67df75daebdbc533bad6edc464f4b16e97a8b32f90bf0431b664e82f913d3e9b
+  - id: IC7
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-7.cypher
+    sha256: 0ebb7d2a1357092bfb57278c36b08e0f165482f8c81f4dfaed670b3e7f102758
+  - id: IC8
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-8.cypher
+    sha256: 01c852d5314a186c2fec689ccd2e872dfa1b59f6774949d3e25571865ec13352
+  - id: IC9
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-9.cypher
+    sha256: cb14c62719dfa5479776208323f121803485209a7d255c974612f705f250b3e5
+  - id: IC10
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-10.cypher
+    sha256: 5d96bde2db754e91cecf7c8fe0636ff9b9dbca5f7e0cfbb70bbcc52c95352090
+  - id: IC11
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-11.cypher
+    sha256: 5e2d7b2677eb2b3a1c695cb3896bed307d9bcac5f349e6788b4c38f73449236d
+  - id: IC12
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-12.cypher
+    sha256: e26f302761b68d9c9491cdba62ab6344351fd0cd91c49e57de0efc594e5ed0ca
+  - id: IC13
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-13.cypher
+    sha256: 1a2399c20e7307d87a7a518ebd0d76e8c40a51615140f28043b8f1d000a4b300
+  - id: IC14
+    workload: interactive_v2
+    kind: read
+    file: interactive_v2/interactive-complex-14.cypher
+    sha256: 171422c510eafa041ae788377a3d8aa87261a7289b94ca0aff162f2b7982de23
+    out_of_subset: "Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)"
+  - id: INS1
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-1.cypher
+    sha256: 6e7ac1ca0d65c45548031f268dd65ddd212d930dcf1f7a6959d8dec61de6e6e7
+  - id: INS2
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-2.cypher
+    sha256: 713f88b3b913125c3a37d3eaa08bcb6ea82e2b50c514ec0cea1d141e30eec0d6
+  - id: INS3
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-3.cypher
+    sha256: 7a8fe2653e7a32f689cee69afa8d93d8ac6144ef8264df2fdd0d06663e628e83
+  - id: INS4
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-4.cypher
+    sha256: e7af9b991a8c6bad671ce3c9a8bc581c366fd5968cce8715f2e681ff3a362071
+  - id: INS5
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-5.cypher
+    sha256: 779bdf64b272032fe01ed741ae6cf61bc577f0fd8c1dc544910ee9e9aa19bace
+  - id: INS6
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-6.cypher
+    sha256: 0d104b513466e4521019c7ad15ff1a7bc54948cc6179be992d9798bde83cba13
+  - id: INS7
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-7.cypher
+    sha256: c530e961aa8081219bb164aff2ab59fde1a73f00dca8d9fb989453cde9a443ca
+  - id: INS8
+    workload: interactive_v2
+    kind: insert
+    file: interactive_v2/interactive-update-8.cypher
+    sha256: 2af5bc3f2efb7ab200a5161c451e355c2b8fcd8e5612f8cc91d9bc530cd87f46
+  - id: DEL1
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-1.cypher
+    sha256: 1c2e48044c7aa3e95d9171a41611298795f86e853e2e6cda7bc7f2b82baacd18
+  - id: DEL2
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-2.cypher
+    sha256: e76c7dc1ab98fd619cdfd1d4b59bde624349a70aad7da6acc98b4586458b5ca8
+  - id: DEL3
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-3.cypher
+    sha256: be8f7caed10073aec18bf533f11382fb7f3e7da7cb7161f87e6fb1992276347f
+  - id: DEL4
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-4.cypher
+    sha256: b1b93e43176b587e1aec553ad8b1a94b6b4d24a5461b567e765d22ac63082b97
+  - id: DEL5
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-5.cypher
+    sha256: 613e5800639ba9836ed2bd99204db77c396946469f19fe931f5d9bffc1bbf84b
+  - id: DEL6
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-6.cypher
+    sha256: 6d4357090f16240dd9e89ae569eb20d0d2baa864c3518d999f14d5aba9f5486a
+  - id: DEL7
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-7.cypher
+    sha256: 7d25ce67e260fe48e1db9f7401e30c87a1e9ffe0a0fc87cc362473963f5e880c
+  - id: DEL8
+    workload: interactive_v2
+    kind: delete
+    file: interactive_v2/interactive-delete-8.cypher
+    sha256: e610a9aaf5de10c85b4be12517c5190cf6450d676740d6cbdb2504a066927743
+  - id: BI1
+    workload: bi
+    kind: read
+    file: bi/bi-1.cypher
+    sha256: 710655c1023d08265083b373819e0afe7c0a55c50f7690e06cff96cbadbdcdea
+  - id: BI2
+    workload: bi
+    kind: read
+    file: bi/bi-2.cypher
+    sha256: 79ea3a72107ff5505081ad4a8cdf7c357e3b0ce35e6fe3c29de598a18443fa61
+  - id: BI3
+    workload: bi
+    kind: read
+    file: bi/bi-3.cypher
+    sha256: 4fc05066885b85e0defafeea0f78eaea54a24434b80961b045c0d59cdca77da1
+  - id: BI4
+    workload: bi
+    kind: read
+    file: bi/bi-4.cypher
+    sha256: 92f3385fc493b725b0785b76d929854af18969bc8090fe652894723c20ba1be2
+  - id: BI5
+    workload: bi
+    kind: read
+    file: bi/bi-5.cypher
+    sha256: d044ed9780c54065b018a52b79ba779eb2b9bfc633327f2aad285f1bc7b00970
+  - id: BI6
+    workload: bi
+    kind: read
+    file: bi/bi-6.cypher
+    sha256: cbe935ef1e48d99010417de1026ad418eb27f5d9627555a1d28e42e8ab530e48
+  - id: BI7
+    workload: bi
+    kind: read
+    file: bi/bi-7.cypher
+    sha256: e1d1f3f5f78f14e4de5e76f43f425c25c93b953f326298b23027d23939c1d687
+  - id: BI8
+    workload: bi
+    kind: read
+    file: bi/bi-8.cypher
+    sha256: dc4c117b58fbe671ae4d2dbb846d3f5227d652e851ca4b127d8794b9cf10d77b
+  - id: BI9
+    workload: bi
+    kind: read
+    file: bi/bi-9.cypher
+    sha256: 4c5fb4553a704213ad9e58ede3b2e590d1237c068df658ad33298a1ba21ff168
+  - id: BI10
+    workload: bi
+    kind: read
+    file: bi/bi-10.cypher
+    sha256: 087adda85ccdd32ca6b2a2fcea6d94c3daee7c681209110f1e4f887d97dde6f4
+    out_of_subset: "APOC (apoc.path.subgraphNodes)"
+  - id: BI11
+    workload: bi
+    kind: read
+    file: bi/bi-11.cypher
+    sha256: 55eaa5ddfae1f09d741d281c9913d1f2de84369eba37f4da068c80633cf17189
+  - id: BI12
+    workload: bi
+    kind: read
+    file: bi/bi-12.cypher
+    sha256: 011f7b378f34a4f9600f2abb51be77799c30a4756b9dd6424ba879cd6028af01
+  - id: BI13
+    workload: bi
+    kind: read
+    file: bi/bi-13.cypher
+    sha256: 36e006b05fca5446d924c11a228e7ee082152f0b6c4b6c906e30ccc6cddf1da1
+  - id: BI14
+    workload: bi
+    kind: read
+    file: bi/bi-14.cypher
+    sha256: d37afff37a136cffa37c7650dcec2e6952a1b169d7134f479a4b6dc7f88c50f6
+  - id: BI15
+    workload: bi
+    kind: read
+    file: bi/bi-15.cypher
+    sha256: 59611c9f59c39a7c670340bdf253761d121bf808342d37a88c16bb1854662475
+    out_of_subset: "Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)"
+  - id: BI16
+    workload: bi
+    kind: read
+    file: bi/bi-16.cypher
+    sha256: 5fb867224780a00d4a2e1d9fc7870496389b32da832d2ffaceca764addc843d1
+  - id: BI17
+    workload: bi
+    kind: read
+    file: bi/bi-17.cypher
+    sha256: 0d2187fd021e4570c602124ee367bf2392f48870474187045eee27dd908539c7
+  - id: BI18
+    workload: bi
+    kind: read
+    file: bi/bi-18.cypher
+    sha256: e1dd19f7c6e496b070e1beca5fb35e6b5849f64e7a12963a29bbc81441924776
+  - id: BI19
+    workload: bi
+    kind: read
+    file: bi/bi-19.cypher
+    sha256: 48efc099d7709f3a0c601fbcf26602fca0d7f9bbb44b526c0f57d136d8363d06
+    out_of_subset: "Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)"
+  - id: BI20
+    workload: bi
+    kind: read
+    file: bi/bi-20.cypher
+    sha256: 2df4d3c1bcdb45c51a0eef974971123963cdca8163c147b11f75134796ea9f94
+    out_of_subset: "Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)"
+variants:
+  - id: INS1~schema-fix
+    of: INS1
+    file: variants/interactive-update-1.schema-fix.cypher
+    sha256: 0169081b005edf3957e5e3bbaeecb18b935c75dc7ecfee431ba8fcc45de38755
+    reason: "Upstream creates [:WORKS_AT] and Person.languages; the schema and every read use WORK_AT and speaks."

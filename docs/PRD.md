@@ -1096,7 +1096,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 part 1 (mapping fixtures `ldbc_pg`/`ldbc_lpg`, temporal-accessor guard) done; the rest is planned. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Once WP-32 lands, current figures are in `tests/ldbc/conformance_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 (mapping fixtures, temporal-accessor guard, vendored corpus, translation ratchet) done; WP-33 onward planned. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Current translation figures are in `tests/ldbc/translation_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |
