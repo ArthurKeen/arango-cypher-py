@@ -77,7 +77,9 @@ def test_end_node_and_relationship_properties_are_filters():
 
 
 def test_start_node_labels_are_checked_on_the_bound_variable():
-    aql, binds = _aql("MATCH (f:Forum)-[:CONTAINER_OF]->(x:Post) WHERE (x:Post)-[:HAS_TAG]->() RETURN f.id", "pg")
+    aql, binds = _aql(
+        "MATCH (f:Forum)-[:CONTAINER_OF]->(x:Post) WHERE (x:Post)-[:HAS_TAG]->() RETURN f.id", "pg"
+    )
     m = re.search(r"\(IS_SAME_COLLECTION\(@(\w+), x\)\) AND \(LENGTH\(FOR _pp_v", aql)
     assert m, aql
     assert binds[m.group(1)] == "post"
