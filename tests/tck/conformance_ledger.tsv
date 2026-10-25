@@ -1767,9 +1767,9 @@ translatable	expressions/list/List6/[2] Setting and returning the size of a list
 translatable	expressions/list/List6/[3] Concatenating and returning the size of literal lists
 translatable	expressions/list/List6/[4] `size()` on null list
 translatable	expressions/list/List6/[5] Fail for `size()` on paths
-translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--()]
-translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--(a)]
-translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()-[:REL*0..2]->()<-[:REL]-(:A {num: 5})]
+correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--()]
+correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--(a)]
+correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()-[:REL*0..2]->()<-[:REL]-(:A {num: 5})]
 translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=(a)-->()]
 translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=(a)-[:REL]->(:C)<-[:REL]-(a {num: 5})]
 translatable	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=(a)-[:REL]->(b)]
@@ -2011,10 +2011,10 @@ translate_fail	expressions/path/Path2/[3] `relationships()` on null path
 translatable	expressions/path/Path3/[1] Return a var length path of length zero
 translatable	expressions/path/Path3/[2] Failing when using `length()` on a node
 translatable	expressions/path/Path3/[3] Failing when using `length()` on a relationship
-translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]-()]
-translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]->()]
-translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]->(n)]
-translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()<-[r]-()]
+correct_rejection	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]-()]
+correct_rejection	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]->()]
+correct_rejection	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()-[r]->(n)]
+correct_rejection	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=()<-[r]-()]
 translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=(a)-[r]->(n)]
 translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=(a)]
 translatable	expressions/pattern/Pattern1/[10] Fail on introducing unbounded variables in pattern [pattern=(n)-[r {}]-(a)]
