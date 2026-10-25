@@ -271,6 +271,13 @@ compared with the oracle's:
   - It surfaced only as `ERR 1552`, because the harness passes `postId` as a
     bind variable that the AQL never declares. Without that tripwire the
     delete "succeeds".
+  - **Fixed 2026-10-24.** `_translate_mutating_query`
+    (`_translate_v0/writes.py`) now filters end-node labels and properties
+    and relationship properties, as the read path does. It refuses
+    (`UNSUPPORTED`) a write after more than one reading clause, or after a
+    `MATCH` with several pattern parts, instead of ignoring them.
+    - DEL2, DEL3, DEL5 and DEL8 now match the oracle on both layouts.
+    - DEL1 and DEL4 still fail closed, now on that refusal.
 - **DEL7 is wrong in two ways.**
   - The unbounded `*0..` is silently capped at `0..10`.
   - The `REMOVE` after the traversal then fails with ERR 1579 on PG, and on

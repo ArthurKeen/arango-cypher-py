@@ -148,7 +148,7 @@ class TestTranslation:
             ("MATCH (n:User) REMOVE n.a.b", "nested property"),
             ("MATCH (n:User) SET n:Admin", "label"),
             ("MATCH (a:User)-[r:FOLLOWS*1..2]->(b) SET r.w = 1", "variable-length relationship"),
-            ("MATCH (n:User) OPTIONAL MATCH (n)-[r:FOLLOWS]->() DELETE r", "not bound by the first MATCH"),
+            ("MATCH (n:User) OPTIONAL MATCH (n)-[r:FOLLOWS]->() DELETE r", "more than one reading clause"),
         ],
     )
     def test_forms_that_used_to_write_the_wrong_thing_are_refused(self, cypher: str, message: str) -> None:
