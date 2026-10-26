@@ -304,4 +304,4 @@ variants:
     of: INS1
     file: variants/interactive-update-1.schema-fix.cypher
     sha256: 0169081b005edf3957e5e3bbaeecb18b935c75dc7ecfee431ba8fcc45de38755
-    reason: "Upstream creates [:WORKS_AT] and Person.languages; the schema and every read use WORK_AT and speaks."
+    reason: "Upstream creates [:WORKS_AT] and Person.languages; the schema and every read use WORK_AT and speaks. Reported: ldbc/ldbc_snb_interactive_v2_impls#10."

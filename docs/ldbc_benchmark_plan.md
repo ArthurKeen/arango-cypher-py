@@ -340,15 +340,15 @@ verbatim file, add a corrected variant, and file an issue upstream (WP-32).
 | # | Decision | Recommendation | Alternatives |
 | --- | --- | --- | --- |
 | D1 | Workloads | **Interactive v2 (all 37 ops) first, then BI (20).** Interactive v1 is skipped. | BI first (more aggregation coverage, but blocked on temporal and `CALL {}`). |
-| D2 | Physical layouts | **PG and LPG, both mandatory** (as requested). Hybrid is optional, in Phase 3 (§9). | Add hybrid now. It mirrors LDBC's CSV split: `Place`/`Organisation` as typed collections, `Post`/`Comment` separate. |
+| D2 | Physical layouts | **PG and LPG, both mandatory** (as requested). Hybrid is optional, in Phase 3 (§9). **Decided 2026-10-26: hybrid is added after WP-35.** | Add hybrid now. It mirrors LDBC's CSV split: `Place`/`Organisation` as typed collections, `Post`/`Comment` separate. |
 | D3 | Query text | **Vendor the reference Cypher verbatim**, pinned to the upstream commit. Never edit it. Adaptations (GDS replacements, upstream-bug corrections) go in separate `variants/` files with a stated reason. The ledger reports verbatim and variant outcomes separately. | Rewrite into a portable subset. Rejected: it hides exactly the gaps we want to find. |
 | D4 | Oracle | **Neo4j 5.x, pinned to `5.26.27-community`**, runs the verbatim queries on the same data and parameters. Results are **recorded as committed snapshots** for SF0.003, so the integration tier needs no Neo4j. A `RUN_CROSS` job re-verifies them against live Neo4j. | (a) LDBC driver validation mode: Java, heavy, and still needs a reference run. (b) PostgreSQL reference: an independent second oracle, worth adding for disputed cases (§9). |
 | D5 | Timestamp encoding | **Load each workload in its reference encoding.** Interactive uses epoch-ms numbers; BI uses ISO-8601 strings, declared temporal in the mapping. Neo4j gets the same encoding the reference expects. | One encoding for both. Rejected: the Interactive queries do arithmetic on timestamps and the BI queries use temporal accessors. |
 | D6 | Data in repo | **Download on demand, verified against pinned content digests** (SHA-256 over each entity's sorted, decompressed rows; LDBC republishes the archives with new part-file names, so archive hashes are not stable), cached under `~/.cache/arango-cypher/ldbc/` and `actions/cache` in CI. Only mappings, parameters and snapshots are committed. | Vendor the 2.4 MB sample. Smaller CI surface, but it is a generated artifact with its own provenance. |
 | D7 | Scale factors | **SF0.003 in CI** (integration tier). **SF0.1 nightly and SF1 manual** for performance. SF10 runs ad hoc on dedicated hardware. | SF0.1 in CI (~30 MB; slower to load). |
-| D8 | Supertype modeling (the biggest design choice) | Extend the **conceptual** schema with `supertypes` / `subtypeOf` **in arango-query-core** (fix upstream, don't fork). Physically: **LPG** uses a `labelsField` array (`"Message" IN n.labels`) with an array index. **PG** treats the supertype as the union of its members' collections: an `IS_SAME_COLLECTION` any-of filter on traversal targets, and a branch union for scan starts. The benchmark then *measures* what that union costs. | (a) Require a hybrid layout for supertypes (a `message` collection plus a type field), which dodges the PG question. (b) Expand supertype queries into `UNION ALL` at the Cypher level. |
+| D8 | Supertype modeling (the biggest design choice) | Extend the **conceptual** schema with `supertypes` / `subtypeOf` **in arango-query-core** (fix upstream, don't fork). Physically: **LPG** uses a `labelsField` array (`"Message" IN n.labels`) with an array index. **PG** treats the supertype as the union of its members' collections: an `IS_SAME_COLLECTION` any-of filter on traversal targets, and a branch union for scan starts. The benchmark then *measures* what that union costs. **Decided 2026-10-26: this, staged (LPG first, then the PG union).** | (a) Require a hybrid layout for supertypes (a `message` collection plus a type field), which dodges the PG question. (b) Expand supertype queries into `UNION ALL` at the Cypher level. |
 | D9 | GDS / APOC queries (IC14 BI10 BI15 BI19 BI20) | **Report as out-of-subset verbatim.** Add `arango` dialect variants (weighted shortest path via `K_SHORTEST_PATHS`/`arango.shortest_path`) with *results* checked against a pure-Cypher or SQL reference where feasible. | Exclude entirely. |
-| D10 | Performance comparison | Report per query × layout × SF: translation time, plus Arango execution p50/p95/p99. Neo4j on identical container limits is **indicative only** and carries the disclaimer. A hand-written AQL baseline for a subset measures the "transpilation tax" (WP-44). | Arango only. |
+| D10 | Performance comparison | Report per query × layout × SF: translation time, plus Arango execution p50/p95/p99. Neo4j on identical container limits is **indicative only** and carries the disclaimer. A hand-written AQL baseline for a subset measures the "transpilation tax" (WP-44). **Decided 2026-10-26:** SF1+ runs on an Arango Platform deployment or a cloud VM on 3.12, and the numbers stay internal. | Arango only. |
 
 ---
 
@@ -820,18 +820,33 @@ crosses repositories.
 
 ---
 
-## 10. Open questions for review
+## 10. Decisions (2026-10-26) and remaining open questions
 
-1. **D8, supertype modeling.** Should we pursue the union lowering for PG in
-   arango-query-core? Or should we declare supertypes LPG- or hybrid-only and
-   have PG fail closed? This is the largest design choice in the plan.
-2. **D2, hybrid layout.** Add it now as a third layout, or keep it in Phase 3?
-3. **Targets.** Should M2 and M3 become PRD success criteria (e.g. "v0.5: LDBC
-   Interactive v2 reads match the oracle on PG and LPG")?
-4. **D9, GDS queries.** Are Arango-dialect variants (`K_SHORTEST_PATHS`) for
-   IC14, BI15, BI19 and BI20 worth the effort without a Neo4j oracle?
-5. **Performance hardware.** Where do SF1 and SF10 runs happen: a dedicated
-   runner, a developer machine, or Arango Cloud? Which Arango version is the
-   baseline: 3.11 (CI) or 3.12?
-6. **Publication.** Is `docs/ldbc_results.md` in this public repo acceptable,
-   given it carries the fair-use disclaimer, or should numbers stay internal?
+Decided by the maintainer on 2026-10-26:
+
+1. **D8, supertype modeling: Option A, staged.**
+   - **Where:** subtypes are modeled in arango-query-core's mapping model (fix
+     upstream, don't fork).
+   - **Stage 1, LPG:** a labels-array field (`"Message" IN n.labels`).
+   - **Stage 2, PG:** the member-collection union. The benchmark measures its
+     cost.
+   - This is WP-35.
+2. **D2, hybrid layout:** added as a third layout once WP-35 lands.
+3. **Targets:** M2 and M3 become PRD success criteria (PRD §3).
+4. **Performance environment:**
+   - SF1 and above run on an Arango Platform deployment or a cloud VM, on
+     ArangoDB 3.12.
+   - CI's correctness tiers stay on 3.11.
+   - This machine's 8 GB, shared Docker VM is too small for SF1.
+5. **Publication:**
+   - Benchmark numbers stay internal, as CI artifacts.
+   - Only the method is published, until product signs off.
+   - `docs/ldbc_results.md` is not committed until then.
+6. **The INS1 upstream bug** is reported:
+   [ldbc/ldbc_snb_interactive_v2_impls#10](https://github.com/ldbc/ldbc_snb_interactive_v2_impls/issues/10).
+   v1 has the same bug.
+
+Still open:
+
+- **D9, GDS queries.** Are Arango-dialect variants (`K_SHORTEST_PATHS`) for
+  IC14, BI15, BI19 and BI20 worth the effort without a Neo4j oracle?
