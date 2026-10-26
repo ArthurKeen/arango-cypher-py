@@ -25,3 +25,12 @@ vendored; BI15, BI19 and BI20 are out of subset (`../manifest.yml`).
 4. Re-pin the hashes with `.venv/bin/python -m tests.ldbc.corpus --rehash`.
 5. Re-record the ledger with `.venv/bin/python -m tests.ldbc.ledger --write`.
 6. Review both diffs in the same PR.
+
+## Reported upstream
+
+- `variants/interactive-update-1.schema-fix.cypher` corrects INS1's
+  `WORKS_AT` / `languages` to the schema's `WORK_AT` / `speaks`. It is
+  reported as
+  [ldbc/ldbc_snb_interactive_v2_impls#10](https://github.com/ldbc/ldbc_snb_interactive_v2_impls/issues/10);
+  v1 has the same bug. Drop the variant once a fixed upstream commit is
+  vendored.

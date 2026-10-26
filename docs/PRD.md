@@ -129,6 +129,8 @@ integration into notebooks, CLIs, services, and agentic workflows.
 | v0.2 | Write clauses compile and execute; live-DB mapping; CLI complete |
 | v0.3 | UI connect→translate→execute→view without touching JSON; Movies corpus passes PG+LPG; TCK ≥ 25% |
 | v0.4+ | Translation-only Full TCK ≥ 60% and execution-grounded compatibility reported separately; agentic tool contract functional |
+| LDBC M2 (after WP-35) | Every LDBC SNB Interactive v2 read and update except IC14 (GDS) matches the Neo4j oracle (`matches_oracle`) on both PG and LPG (`tests/ldbc/execution_ledger.tsv`) |
+| LDBC M3 | Every LDBC BI query except BI10, BI15, BI19 and BI20 (GDS/APOC) matches the oracle on both layouts |
 
 ---
 
@@ -988,7 +990,8 @@ corpora). The plan, research and baseline are in
     generated from them and conformance-checked, never hand-copied.
 - **LDBC-7 Fair use.** Every published number carries "These are not LDBC
   Benchmark Results" and attribution. The harness is never described as an
-  implementation of an LDBC Benchmark.
+  implementation of an LDBC Benchmark. Until product signs off, benchmark
+  numbers stay internal (CI artifacts) and only the method is published.
 - **LDBC-8 Scale.**
   - CI uses SF0.003, downloaded on demand and cached. Each data set is
     verified against a pinned **content digest**: a SHA-256 over each entity's
@@ -998,6 +1001,8 @@ corpora). The plan, research and baseline are in
     (`tests/ldbc/datasets.py`).
   - Performance runs use SF0.1 (nightly, non-blocking) and SF1 or larger
     (manual).
+  - SF1 and above run on an Arango Platform deployment or a cloud VM, on
+    ArangoDB 3.12. CI's correctness tiers stay on 3.11.
   - Each workload is loaded in its reference timestamp encoding: epoch-ms for
     Interactive, ISO-8601 for BI.
 - **LDBC-9 Database lifecycle.** A run owns the databases it starts and
@@ -1147,10 +1152,10 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 multi-statement/transaction execution model (the single-`AqlQuery` output can't
 represent it) — adopt one, or keep failing closed? Should the leading-`MATCH`
 constraint be relaxed (large TCK lever, non-trivial grammar/renderer work)?
-Index-hint emission from `PropertyInfo.indexed` — when? How should label
-hierarchies (supertypes) be modeled? The options are a labels-array field for
-LPG plus a member-collection union for PG, in arango-query-core, or making them
-LPG- or hybrid-only with PG failing closed. See `ldbc_benchmark_plan.md` D8.
+Index-hint emission from `PropertyInfo.indexed` — when? *(Decided 2026-10-26:
+label hierarchies are modeled in arango-query-core. Stage 1 is an LPG
+labels-array field; stage 2 is a PG member-collection union. See
+`ldbc_benchmark_plan.md` D8 and WP-35.)*
 
 **NL pipeline.** Default fuzzy matching to portable `CONTAINS`/`=~` vs. invest
 further in the ArangoSearch `arango.*` path as primary? Task decomposition /
