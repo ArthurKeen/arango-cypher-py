@@ -104,3 +104,24 @@ def test_a_second_with_projects_cypher_names_not_aql_names():
     assert "COLLECT u_2 = u_1, f_2 = f_1" in aql
     assert "OUTBOUND f_2 " in aql
     assert "RETURN {name: u_2.name, g_name: g.name}" in aql
+
+
+def test_a_renamed_variable_returns_under_its_cypher_name():
+    """TCK Match7[26]: the second ``r`` is bound as ``r_1`` but its column is ``r``."""
+    aql = _aql(
+        "MATCH (a:User), (b:User) OPTIONAL MATCH (a)-[:FOLLOWS]->(x:User) OPTIONAL MATCH (x)-[r:FOLLOWS]->(b) RETURN x, r"
+    )
+    assert re.search(r"RETURN \{x: x, r: r_\d+\}", aql), aql
+
+
+def test_a_single_unaliased_type_is_a_scalar_column():
+    """TCK Graph4[1], [4]: ``RETURN type(r)`` is one column, not ``{type: …}``."""
+    assert _aql("MATCH (u:User)-[r:FOLLOWS]->(v:User) RETURN type(r)").rstrip().endswith('RETURN "FOLLOWS"')
+    aql = _aql("MATCH (u:User) OPTIONAL MATCH (u)-[r:FOLLOWS]->(v:User) RETURN type(r)", "lpg")
+    assert re.search(r"RETURN r\[@\w+\]$", aql.rstrip()), aql
+
+
+def test_an_undirected_self_loop_is_matched_once():
+    """TCK Match7[24]: ANY yields a loop once per direction; OUTBOUND yields it once."""
+    aql = _aql("MATCH (a:User) OPTIONAL MATCH (a)-[r:FOLLOWS]-(a) RETURN r")
+    assert "OUTBOUND a @@" in aql and " ANY " not in aql, aql

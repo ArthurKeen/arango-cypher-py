@@ -367,6 +367,14 @@ silent-wrong defects. All four are fixed, and each has a live regression test
     mistranslated. In seven, a leading `OPTIONAL MATCH … WITH` became a plain
     `MATCH`. In the other seven, an `UNWIND` was dropped. All fourteen now
     translate correctly.
+- **Executing TCK: 1,700 scenarios pass, against 1,670 on `main`, and none is
+  lost.** The comparison also exposed three RETURN defects that `FIRST()` had
+  hidden, all now fixed:
+  - An unaliased variable bound under another AQL name came back under that
+    name (`r_1`, TCK Match7[26]).
+  - A lone `RETURN type(r)` came back as an object `{type: …}` (Graph4[1],
+    Graph4[4]).
+  - An undirected self-loop matched twice (Match7[24]).
 
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 

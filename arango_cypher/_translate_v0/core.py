@@ -2375,6 +2375,11 @@ def _compile_bound_part(
         forbidden_vars.add(r_aql)
 
         direction = _relationship_direction(rel_pat)
+        # An undirected single hop back to its own start node matches only
+        # self-loops, and an ANY traversal yields each loop twice (once per
+        # direction), where Cypher matches it once.
+        if direction == "ANY" and v_is_backref and out_env[v_cy] == current_aql and rel_range == (1, 1):
+            direction = "OUTBOUND"
         # Resolve an unlabeled (non-back-reference) endpoint of a typed
         # relationship from the relationship's domain/range.
         if not v_labels and not v_is_backref and rel_type:
@@ -3337,6 +3342,9 @@ def _append_return(
 
     # --- Non-aggregation path ---
     compiled_items: list[tuple[str | None, str]] = list(star_items)
+    # Positions whose column name was supplied here rather than by an ``AS``:
+    # a single such item still returns a scalar, as an unaliased one does.
+    implicit_names: set[int] = set()
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
@@ -3344,12 +3352,19 @@ def _append_return(
         if rel_type_exprs and expr_txt.lower().startswith("type(") and expr_txt.endswith(")"):
             inner = expr_txt[5:-1].strip()
             if inner in rel_type_exprs:
+                if alias is None:
+                    implicit_names.add(len(compiled_items))
                 compiled_items.append((alias or "type", rel_type_exprs[inner]))
                 continue
 
         expr = _compile_expression(expr_ctx, bind_vars)
         if var_env:
             expr = _rewrite_vars(expr, var_env)
+        if alias is None and expr != expr_txt and _BARE_IDENTIFIER_RE.fullmatch(expr_txt):
+            # A variable bound under another AQL name (``r`` as ``r_1``) keeps
+            # its Cypher name as the column.
+            implicit_names.add(len(compiled_items))
+            alias = expr_txt
         compiled_items.append((alias, expr))
 
     if distinct:
@@ -3387,7 +3402,7 @@ def _append_return(
         )
     _append_skip_limit(lines, skip_value, limit_value)
 
-    if len(compiled_items) == 1 and compiled_items[0][0] is None:
+    if len(compiled_items) == 1 and (compiled_items[0][0] is None or 0 in implicit_names):
         lines.append(f"  RETURN {compiled_items[0][1]}")
         return
 

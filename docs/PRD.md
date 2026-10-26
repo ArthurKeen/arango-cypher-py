@@ -552,7 +552,10 @@ part may have at most two hops. Aggregates follow Cypher's null semantics:
 no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
 An `UNWIND` before the first `MATCH` of such a pipeline is refused
-(`NOT_IMPLEMENTED`).
+(`NOT_IMPLEMENTED`). An unaliased variable is returned under its Cypher name
+even when it is bound under another AQL name. `RETURN type(r)` on its own is a
+scalar column. An undirected single hop from a node back to itself matches each
+self-loop once.
 In a `UNION`, internal names that repeat across branches with different values
 are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
