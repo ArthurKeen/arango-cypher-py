@@ -81,7 +81,7 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {type: \"FOLLOWS\"}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN \"FOLLOWS\""
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows

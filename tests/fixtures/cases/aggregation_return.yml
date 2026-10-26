@@ -9,7 +9,8 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          COLLECT AGGREGATE count = COUNT(n)
+          COLLECT AGGREGATE _count_nonnull = SUM((n) == null ? 0 : 1)
+          LET count = NOT_NULL(_count_nonnull, 0)
           RETURN count
       bind_vars:
         "@collection": persons
@@ -23,7 +24,8 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          COLLECT city = n.city AGGREGATE count = COUNT(n)
+          COLLECT city = n.city AGGREGATE _count_nonnull = SUM((n) == null ? 0 : 1)
+          LET count = NOT_NULL(_count_nonnull, 0)
           RETURN {city: city, count: count}
       bind_vars:
         "@collection": persons
@@ -37,7 +39,8 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          COLLECT AGGREGATE count = COUNT_DISTINCT(n.name)
+          COLLECT AGGREGATE _count_distinct = COUNT_DISTINCT(n.name), _count_has_null = MAX((n.name) == null ? 1 : 0)
+          LET count = _count_distinct - NOT_NULL(_count_has_null, 0)
           RETURN count
       bind_vars:
         "@collection": persons
@@ -51,7 +54,8 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          COLLECT AGGREGATE total = SUM(n.age), average = AVG(n.age)
+          COLLECT AGGREGATE _total_sum = SUM(n.age), average = AVG(n.age)
+          LET total = NOT_NULL(_total_sum, 0)
           RETURN {total: total, average: average}
       bind_vars:
         "@collection": persons

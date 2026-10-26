@@ -134,7 +134,8 @@ class TestCollectGroupVarShadowing:
             "MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN p.name AS name, count(m) AS c ORDER BY c DESC",
             mapping=pg,
         )
-        assert "COLLECT name = p.name AGGREGATE c = COUNT(m)" in out.aql
+        assert "COLLECT name = p.name AGGREGATE _c_nonnull = SUM((m) == null ? 0 : 1)" in out.aql
+        assert "LET c = NOT_NULL(_c_nonnull, 0)" in out.aql
 
 
 class TestSingleColumnDistinct:

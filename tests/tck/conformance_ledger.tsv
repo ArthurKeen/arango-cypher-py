@@ -569,7 +569,7 @@ translatable	clauses/match/Match7/[29] Satisfies the open world assumption, rela
 translatable	clauses/match/Match7/[2] OPTIONAL MATCH with previously bound nodes
 translatable	clauses/match/Match7/[30] Satisfies the open world assumption, single relationship
 translatable	clauses/match/Match7/[31] Satisfies the open world assumption, relationships between different nodes
-translate_fail	clauses/match/Match7/[3] OPTIONAL MATCH and bound nodes
+translatable	clauses/match/Match7/[3] OPTIONAL MATCH and bound nodes
 translatable	clauses/match/Match7/[4] Optionally matching relationship with bound nodes in reverse direction
 translatable	clauses/match/Match7/[5] Optionally matching relationship with a relationship that is already bound
 translatable	clauses/match/Match7/[6] Optionally matching relationship with a relationship and node that are both already bound
@@ -899,7 +899,7 @@ translatable	clauses/unwind/Unwind1/[1] Unwinding a list
 translatable	clauses/unwind/Unwind1/[2] Unwinding a range
 translatable	clauses/unwind/Unwind1/[3] Unwinding a concatenation of lists
 translatable	clauses/unwind/Unwind1/[4] Unwinding a collected unwound expression
-translate_fail	clauses/unwind/Unwind1/[5] Unwinding a collected expression
+translatable	clauses/unwind/Unwind1/[5] Unwinding a collected expression
 translate_fail	clauses/unwind/Unwind1/[6] Creating nodes from an unwound parameter list
 translatable	clauses/unwind/Unwind1/[7] Double unwinding a list of lists
 translatable	clauses/unwind/Unwind1/[8] Unwinding the empty list

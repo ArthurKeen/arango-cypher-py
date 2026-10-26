@@ -105,7 +105,7 @@ class TestUnlabeledMatchResolution:
             mapping=_bundle(GRAPHRAG_ENTITIES, GRAPHRAG_RELS),
         )
         assert out.bind_vars["@collection"] == "Node"
-        assert "AGGREGATE c = COUNT(n)" in out.aql
+        assert "AGGREGATE _c_nonnull = SUM((n) == null ? 0 : 1)" in out.aql
 
     def test_unlabeled_match_warns_about_excluded_side_collections(self):
         out = translate(

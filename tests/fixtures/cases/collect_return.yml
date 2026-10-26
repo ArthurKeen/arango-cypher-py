@@ -10,7 +10,7 @@ cases:
       aql: |
         FOR n IN @@collection
           COLLECT _collect_group = 1 INTO _collect_rows = {names: n.name}
-          LET names = _collect_rows[*].names
+          LET names = REMOVE_VALUE(_collect_rows[*].names, null)
           RETURN names
       bind_vars:
         "@collection": persons
@@ -25,7 +25,7 @@ cases:
       aql: |
         FOR n IN @@collection
           COLLECT city = n.city INTO _collect_rows = {names: n.name}
-          LET names = _collect_rows[*].names
+          LET names = REMOVE_VALUE(_collect_rows[*].names, null)
           RETURN {city: city, names: names}
       bind_vars:
         "@collection": persons
@@ -41,7 +41,7 @@ cases:
         FOR m IN @@collection
           FILTER m[@typeField] == @typeValue
           COLLECT _collect_group = 1 INTO _collect_rows = {titles: m.title}
-          LET titles = _collect_rows[*].titles
+          LET titles = REMOVE_VALUE(_collect_rows[*].titles, null)
           RETURN titles
       bind_vars:
         "@collection": nodes
@@ -59,7 +59,7 @@ cases:
         FOR m IN @@collection
           FILTER m[@typeField] == @typeValue
           COLLECT released = m.released INTO _collect_rows = {titles: m.title}
-          LET titles = _collect_rows[*].titles
+          LET titles = REMOVE_VALUE(_collect_rows[*].titles, null)
           RETURN {released: released, titles: titles}
       bind_vars:
         "@collection": nodes

@@ -27,7 +27,7 @@ def test_plain_collect_uses_into_projection(bundle) -> None:
         mapping=bundle,
     )
     assert "COLLECT o_1 = o INTO _collect_rows = {names: g.name}" in out.aql
-    assert "LET names = _collect_rows[*].names" in out.aql
+    assert "LET names = REMOVE_VALUE(_collect_rows[*].names, null)" in out.aql
     assert "UNIQUE(" not in out.aql  # no DISTINCT
 
 
@@ -37,7 +37,7 @@ def test_collect_distinct_wraps_unique(bundle) -> None:
         "RETURN o.name, names",
         mapping=bundle,
     )
-    assert "LET names = UNIQUE(_collect_rows[*].names)" in out.aql
+    assert "LET names = UNIQUE(REMOVE_VALUE(_collect_rows[*].names, null))" in out.aql
 
 
 def test_collect_slice_uses_slice(bundle) -> None:
@@ -70,7 +70,7 @@ def test_collect_in_return(bundle) -> None:
         mapping=bundle,
     )
     assert "INTO _collect_rows = {names: g.name}" in out.aql
-    assert "LET names = UNIQUE(_collect_rows[*].names)" in out.aql
+    assert "LET names = UNIQUE(REMOVE_VALUE(_collect_rows[*].names, null))" in out.aql
 
 
 def test_two_collects_supported(bundle) -> None:
@@ -81,8 +81,8 @@ def test_two_collects_supported(bundle) -> None:
         mapping=bundle,
     )
     assert "INTO _collect_rows = {a: g.name, b: g.type}" in out.aql
-    assert "LET a = _collect_rows[*].a" in out.aql
-    assert "LET b = _collect_rows[*].b" in out.aql
+    assert "LET a = REMOVE_VALUE(_collect_rows[*].a, null)" in out.aql
+    assert "LET b = REMOVE_VALUE(_collect_rows[*].b, null)" in out.aql
 
 
 def test_collect_compiles_nested_comparison_expression(bundle) -> None:

@@ -109,7 +109,7 @@ class TestWithCreateTail:
             "MATCH (p:Person) WITH count(p) AS c CREATE (m:Movie {released: c})",
             mapping=pg,
         )
-        assert "COLLECT AGGREGATE c = COUNT(p)" in out.aql
+        assert "COLLECT AGGREGATE _c_nonnull = SUM((p) == null ? 0 : 1)" in out.aql
         assert "INSERT {released: c} INTO" in out.aql
 
 
@@ -200,7 +200,7 @@ class TestWithMergeTail:
             "MATCH (p:Person) WITH count(p) AS c MERGE (m:Movie {released: c})",
             mapping=pg,
         )
-        assert "COLLECT AGGREGATE c = COUNT(p)" in out.aql
+        assert "COLLECT AGGREGATE _c_nonnull = SUM((p) == null ? 0 : 1)" in out.aql
         assert "UPSERT {released: c}" in out.aql
 
     def test_with_merge_return(self, pg):

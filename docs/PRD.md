@@ -544,6 +544,18 @@ A `MATCH` after `WITH` may have several comma-separated pattern parts. A
 variable it names that is already bound is correlated, not rebound. An
 `ORDER BY` after `WITH` that names a variable no longer in scope is refused
 (`UNSUPPORTED`), as Cypher raises `UndefinedVariable`.
+`OPTIONAL MATCH` yields one row per match, and one null-extended row when
+nothing matches, wherever it appears: after `MATCH`, after `WITH`, or leading a
+`WITH` pipeline. A pattern with several parts matches as a whole. Each pattern
+part may have at most two hops. Aggregates follow Cypher's null semantics:
+`count(x)`, `count(DISTINCT x)` and `collect(x)` skip nulls, and `sum()` over
+no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
+`MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
+An `UNWIND` before the first `MATCH` of such a pipeline is refused
+(`NOT_IMPLEMENTED`). An unaliased variable is returned under its Cypher name
+even when it is bound under another AQL name. `RETURN type(r)` on its own is a
+scalar column. An undirected single hop from a node back to itself matches each
+self-loop once.
 In a `UNION`, internal names that repeat across branches with different values
 are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 

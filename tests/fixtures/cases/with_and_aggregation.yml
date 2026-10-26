@@ -36,7 +36,8 @@ cases:
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-            COLLECT u_1 = u AGGREGATE degree = COUNT(v)
+            COLLECT u_1 = u AGGREGATE _degree_nonnull = SUM((v) == null ? 0 : 1)
+            LET degree = NOT_NULL(_degree_nonnull, 0)
             SORT degree DESC
             LIMIT 10
             RETURN {id: u_1.id, degree: degree}
@@ -96,7 +97,7 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT city = u.city INTO _collect_rows = {ids: u.id}
-          LET ids = _collect_rows[*].ids
+          LET ids = REMOVE_VALUE(_collect_rows[*].ids, null)
           RETURN {city: city, n: LENGTH(ids)}
       bind_vars:
         "@collection": users
@@ -198,7 +199,7 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT city = u.city INTO _collect_rows = {ids: u.id}
-          LET ids = _collect_rows[*].ids
+          LET ids = REMOVE_VALUE(_collect_rows[*].ids, null)
           LET n = LENGTH(ids)
           SORT n DESC
           LIMIT 0, 2
@@ -219,7 +220,8 @@ cases:
     expected:
       aql: |
         FOR u IN @@collection
-          COLLECT s = u.state AGGREGATE total = SUM(u.age)
+          COLLECT s = u.state AGGREGATE _total_sum = SUM(u.age)
+          LET total = NOT_NULL(_total_sum, 0)
           SORT total DESC
           LIMIT 2
           RETURN {s: s, total: total}
