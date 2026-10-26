@@ -21,9 +21,7 @@ from tests.tck.ledger import diff_ledger
 
 pytestmark = pytest.mark.integration
 
-_REGEN = (
-    ".venv/bin/python -m tests.ldbc.execution --write"
-)
+_REGEN = ".venv/bin/python -m tests.ldbc.execution --write"
 
 
 @pytest.fixture(scope="module")
