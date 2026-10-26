@@ -3,18 +3,18 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 36, out_of_subset 5, syntax_error 4, translatable 13
-# lpg: fails_closed 35, out_of_subset 5, syntax_error 4, translatable 14
+# pg: fails_closed 34, out_of_subset 5, syntax_error 4, translatable 15
+# lpg: fails_closed 30, out_of_subset 5, syntax_error 4, translatable 19
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
-fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	BI11@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	BI11@lpg	
+translatable	BI11@pg	
 fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI14@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	BI14@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI14@lpg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
+fails_closed	BI14@pg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
 out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
@@ -61,8 +61,8 @@ translatable	DEL7@lpg
 translatable	DEL7@pg	
 translatable	DEL8@lpg	
 translatable	DEL8@pg	
-fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC10@lpg	UNSUPPORTED: Unsupported function in v0: datetime
+fails_closed	IC10@pg	UNSUPPORTED: Unsupported function in v0: datetime
 translatable	IC11@lpg	
 translatable	IC11@pg	
 fails_closed	IC12@lpg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
@@ -75,14 +75,14 @@ syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC3@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC3@pg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC4@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC4@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	IC3@lpg	
+fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IC4@lpg	
+translatable	IC4@pg	
 translatable	IC5@lpg	
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
-fails_closed	IC6@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC6@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	IC6@lpg	
+fails_closed	IC6@pg	UNSUPPORTED: A single label is required in v0 subset
 fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
@@ -109,7 +109,7 @@ translatable	INS8@lpg
 translatable	INS8@pg	
 translatable	IS1@lpg	
 translatable	IS1@pg	
-fails_closed	IS2@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+translatable	IS2@lpg	
 fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
 translatable	IS3@lpg	
 translatable	IS3@pg	

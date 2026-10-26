@@ -1146,36 +1146,36 @@ translatable	clauses/with-orderBy/WithOrderBy3/[7] The order direction cannot be
 translatable	clauses/with-orderBy/WithOrderBy3/[7] The order direction cannot be overwritten [sort=a ASC, a DESC, value=1]
 translatable	clauses/with-orderBy/WithOrderBy3/[7] The order direction cannot be overwritten [sort=a DESC, -1 * a DESC, value=3]
 translatable	clauses/with-orderBy/WithOrderBy3/[7] The order direction cannot be overwritten [sort=a DESC, a ASC, value=3]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c ASC, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c ASC, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c DESC, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c DESC, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, e, b, exampleName=mixed]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, e, exampleName=mixed]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e ASC, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e ASC, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e DESC, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e DESC, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, c, a, f, a, exampleName=mixed]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, c, d, a, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, e, f, a, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c ASC, a, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c DESC, a, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, a, d, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, b, c, d, a, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, d, a, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, d, b, b, d, c, a, exampleName=out of scope]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=d, f, b, b, f, c, a, exampleName=mixed]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e ASC, a, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e DESC, a, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, a, f, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, b, e, f, a, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, a, exampleName=never defined]
-translatable	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, b, b, f, e, a, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c ASC, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c ASC, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c DESC, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c DESC, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, e, b, exampleName=mixed]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, e, exampleName=mixed]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, c, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e ASC, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e ASC, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e DESC, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e DESC, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=a, e, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, c, a, f, a, exampleName=mixed]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, c, d, a, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=b, e, f, a, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c ASC, a, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c DESC, a, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, a, d, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, b, c, d, a, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, d, a, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=c, d, b, b, d, c, a, exampleName=out of scope]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=d, f, b, b, f, c, a, exampleName=mixed]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e ASC, a, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e DESC, a, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, a, f, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, b, e, f, a, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, a, exampleName=never defined]
+correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, b, b, f, e, a, exampleName=never defined]
 translatable	clauses/with-orderBy/WithOrderBy4/[10] Sort by a non-projected expression containing an alias of a projected expression containing the variable shadowed by the alias
 translate_fail	clauses/with-orderBy/WithOrderBy4/[11] Sort by an aggregate projection
 translatable	clauses/with-orderBy/WithOrderBy4/[12] Sort by an aliased aggregate projection
@@ -1200,22 +1200,22 @@ translatable	clauses/with-skip-limit/WithSkipLimit1/[1] Handle dependencies acro
 translatable	clauses/with-skip-limit/WithSkipLimit1/[2] Ordering and skipping on aggregate
 translatable	clauses/with-skip-limit/WithSkipLimit2/[1] ORDER BY and LIMIT can be used
 translatable	clauses/with-skip-limit/WithSkipLimit2/[2] Handle dependencies across WITH with LIMIT
-translate_fail	clauses/with-skip-limit/WithSkipLimit2/[3] Connected components succeeding WITH with LIMIT
+translatable	clauses/with-skip-limit/WithSkipLimit2/[3] Connected components succeeding WITH with LIMIT
 translatable	clauses/with-skip-limit/WithSkipLimit2/[4] Ordering and limiting on aggregate
 translatable	clauses/with-skip-limit/WithSkipLimit3/[1] Get rows in the middle
 translatable	clauses/with-skip-limit/WithSkipLimit3/[2] Get rows in the middle by param
 translatable	clauses/with-skip-limit/WithSkipLimit3/[3] Limiting amount of rows when there are fewer left than the LIMIT argument
 translatable	clauses/with-where/WithWhere1/[1] Filter node with property predicate on a single variable with multiple bindings
 translatable	clauses/with-where/WithWhere1/[2] Filter node with property predicate on a single variable with multiple distinct bindings
-translate_fail	clauses/with-where/WithWhere1/[3] Filter for an unbound relationship variable
+translatable	clauses/with-where/WithWhere1/[3] Filter for an unbound relationship variable
 translatable	clauses/with-where/WithWhere1/[4] Filter for an unbound node variable
-translate_fail	clauses/with-where/WithWhere2/[1] Filter nodes with conjunctive two-part property predicate on multi variables with multiple bindings
+translatable	clauses/with-where/WithWhere2/[1] Filter nodes with conjunctive two-part property predicate on multi variables with multiple bindings
 translate_fail	clauses/with-where/WithWhere2/[2] Filter node with conjunctive multi-part property predicates on multi variables with multiple bindings
-translate_fail	clauses/with-where/WithWhere3/[1] Join between node identities
-translate_fail	clauses/with-where/WithWhere3/[2] Join between node properties of disconnected nodes
+translatable	clauses/with-where/WithWhere3/[1] Join between node identities
+translatable	clauses/with-where/WithWhere3/[2] Join between node properties of disconnected nodes
 translatable	clauses/with-where/WithWhere3/[3] Join between node properties of adjacent nodes
-translate_fail	clauses/with-where/WithWhere4/[1] Join nodes on inequality
-translate_fail	clauses/with-where/WithWhere4/[2] Join with disjunctive multi-part predicates including patterns
+translatable	clauses/with-where/WithWhere4/[1] Join nodes on inequality
+translatable	clauses/with-where/WithWhere4/[2] Join with disjunctive multi-part predicates including patterns
 translatable	clauses/with-where/WithWhere5/[1] Filter out on null
 translatable	clauses/with-where/WithWhere5/[2] Filter out on null if the AND'd predicate evaluates to false
 translatable	clauses/with-where/WithWhere5/[3] Filter out on null if the AND'd predicate evaluates to true
@@ -1225,7 +1225,7 @@ translatable	clauses/with-where/WithWhere7/[1] WHERE sees a variable bound befor
 translatable	clauses/with-where/WithWhere7/[2] WHERE sees a variable bound after but not before WITH
 translatable	clauses/with-where/WithWhere7/[3] WHERE sees both, variable bound before but not after WITH and variable bound after but not before WITH
 translatable	clauses/with/With1/[1] Forwarind a node variable 1
-translate_fail	clauses/with/With1/[2] Forwarind a node variable 2
+translatable	clauses/with/With1/[2] Forwarind a node variable 2
 translate_fail	clauses/with/With1/[3] Forwarding a relationship variable
 translatable	clauses/with/With1/[4] Forwarding a path variable
 translatable	clauses/with/With1/[5] Forwarding null
@@ -2060,7 +2060,7 @@ translatable	expressions/pattern/Pattern2/[5] Introduce a new relationship varia
 translatable	expressions/pattern/Pattern2/[6] Aggregate on a pattern comprehension
 translatable	expressions/pattern/Pattern2/[7] Use a pattern comprehension inside a list comprehension
 translatable	expressions/pattern/Pattern2/[8] Use a pattern comprehension in WITH
-translate_fail	expressions/pattern/Pattern2/[9] Use a variable-length pattern comprehension in WITH
+translatable	expressions/pattern/Pattern2/[9] Use a variable-length pattern comprehension in WITH
 translatable	expressions/precedence/Precedence1/[10] Null predicate takes precedence over boolean operator
 translatable	expressions/precedence/Precedence1/[11] List predicate takes precedence over comparison operator
 translatable	expressions/precedence/Precedence1/[12] List predicate takes precedence over negation
