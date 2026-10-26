@@ -128,3 +128,42 @@ def _reindent_aql(text: str) -> str:
             out.append(_INDENT * depth + stripped)
 
     return "\n".join(out)
+
+
+_VARLEN_TRAVERSAL_RE = re.compile(
+    r"FOR \w+, (?P<e>\w+)(?:, \w+)? IN (?P<min>\d+)\.\.(?P<max>\d+) (?:OUTBOUND|INBOUND|ANY) \S+ @@\w+"
+)
+_NEXT_FOR_RE = re.compile(r"\bFOR ")
+
+
+def _guard_varlength_edge_types(text: str) -> str:
+    """Make a variable-length traversal over a type-discriminated edge
+    collection follow only edges of its relationship type.
+
+    Every emitter checks the type of the traversal's *last* edge only
+    (``FILTER r[@relTypeField] == @relTypeValue``). On an LPG edge collection
+    that let ``[:REPLY_OF*0..]`` walk through every other relationship type —
+    wrong paths, and an exponential blow-up (LDBC IS2 timed out) — and dropped
+    the zero-hop row, where ``r`` is null. For each variable-length traversal
+    whose edge variable has such a filter, this adds
+    ``PRUNE r != null AND r[@tf] != @tv``, so expansion stops at the first
+    edge of another type (the path that ends in it is still removed by the
+    last-edge filter), and for a zero minimum lets ``r == null`` through.
+    """
+    edits: list[tuple[int, int, str]] = []  # (start, end, replacement) on the original text
+    for m in _VARLEN_TRAVERSAL_RE.finditer(text):
+        if (m.group("min"), m.group("max")) == ("1", "1"):
+            continue
+        edge = m.group("e")
+        nxt = _NEXT_FOR_RE.search(text, m.end())
+        window_end = nxt.start() if nxt else len(text)
+        f = re.compile(rf"FILTER {re.escape(edge)}\[@(\w+)\] == @(\w+)").search(text, m.end(), window_end)
+        if f is None:
+            continue  # a dedicated edge collection: every edge has the type
+        tf, tv = f.group(1), f.group(2)
+        edits.append((m.end(), m.end(), f" PRUNE {edge} != null AND {edge}[@{tf}] != @{tv}"))
+        if m.group("min") == "0":
+            edits.append((f.start(), f.end(), f"FILTER ({edge} == null OR {edge}[@{tf}] == @{tv})"))
+    for start, end, replacement in sorted(edits, reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text

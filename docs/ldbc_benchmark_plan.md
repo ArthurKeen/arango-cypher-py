@@ -299,6 +299,24 @@ silently:
     filtered out, because `r` is null there.
   - **Highest priority:** where such a query finishes, it returns silently
     wrong rows.
+  - **Fixed 2026-10-26.** A post-pass
+    (`_translate_v0/formatting.py::_guard_varlength_edge_types`) adds
+    `PRUNE r != null AND r[@tf] != @tv` to every variable-length traversal
+    whose edge carries a type filter, and lets the zero-hop row (`r == null`)
+    through.
+    - IS2 on LPG no longer times out. Its rows then exposed `coalesce()`
+      (next item).
+    - The silent 10-hop cap on open-ended ranges is kept, but every capped
+      translation now carries a warning.
+- **`coalesce()` returned its first argument, null or not.** It was emitted
+  as `FIRST(REMOVE_VALUES([a, b], null))`, but `REMOVE_VALUES` takes an
+  array of values, so nothing was removed.
+  - Every `coalesce` with a null first argument was wrong, e.g. IS2's
+    `coalesce(message.imageFile, message.content)` on text posts.
+  - **Fixed 2026-10-26** with AQL's `NOT_NULL()`. IS2 on LPG now matches the
+    oracle, and no `translates_wrong` cell remains.
+  - DEL7 on LPG now fails loudly (ERR 1202) instead of leaving the comment
+    behind.
 - **A `CASE` in a `WITH` projection is emitted as raw `CASE WHEN … END` in a
   `LET`.** AQL has no such expression (ERR 1501; IC3 and IC4).
 - **A variable is used after a `COLLECT` has dropped it, or before its `LET`.**

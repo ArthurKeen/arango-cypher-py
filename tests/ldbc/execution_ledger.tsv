@@ -3,7 +3,7 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
 # pg: execution_error 3, fails_closed 34, matches_oracle 12, out_of_subset 5, syntax_error 4
-# lpg: execution_error 6, fails_closed 30, matches_oracle 12, out_of_subset 5, syntax_error 4, translates_wrong 1
+# lpg: execution_error 6, fails_closed 30, matches_oracle 13, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 execution_error	BI11@lpg	ERR 1203: AQL: collection or view not found: a (while parsing)
@@ -56,7 +56,7 @@ matches_oracle	DEL5@lpg	1 binding(s)
 matches_oracle	DEL5@pg	1 binding(s)
 fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-translates_wrong	DEL7@lpg	[DEL7@lpg] nodes_removed: 1 missing, 0 unexpected; missing ['["Comment", {"browserUsed": "Firefox", "content": "right", "creationDate": 130…
+execution_error	DEL7@lpg	ERR 1202: AQL: document not found (while executing)
 execution_error	DEL7@pg	ERR 1579: AQL: access after data-modification by traversal (while optimizing ast)
 matches_oracle	DEL8@lpg	1 binding(s)
 matches_oracle	DEL8@pg	1 binding(s)
@@ -108,7 +108,7 @@ matches_oracle	INS8@lpg	1 binding(s)
 matches_oracle	INS8@pg	1 binding(s)
 matches_oracle	IS1@lpg	3 binding(s)
 matches_oracle	IS1@pg	3 binding(s)
-execution_error	IS2@lpg	ERR 1500: AQL: query killed (while executing)
+matches_oracle	IS2@lpg	3 binding(s)
 fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
 matches_oracle	IS3@lpg	3 binding(s)
 matches_oracle	IS3@pg	3 binding(s)
