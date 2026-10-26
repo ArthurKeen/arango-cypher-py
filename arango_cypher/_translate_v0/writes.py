@@ -325,6 +325,10 @@ def _compile_node_pattern_properties(*args, **kwargs):
     return _core_helper("_compile_node_pattern_properties")(*args, **kwargs)
 
 
+def _compile_label_predicate(*args, **kwargs):
+    return _core_helper("_compile_label_predicate")(*args, **kwargs)
+
+
 def _rewrite_vars(*args, **kwargs):
     return _core_helper("_rewrite_vars")(*args, **kwargs)
 
@@ -596,12 +600,27 @@ def _translate_mutating_query(
     if not match_ctxs:
         raise CoreError("MATCH is required before SET/DELETE", code="UNSUPPORTED")
 
-    # Compile the MATCH body into FOR/FILTER lines
+    # Compile the MATCH body into FOR/FILTER lines. Only the first MATCH and its
+    # first pattern part are compiled, so anything else that would narrow the
+    # rows written — another reading clause, another pattern part — must be
+    # refused: ignoring it writes (or deletes) more than the query asks for.
+    if len(reading_clauses) > 1:
+        raise CoreError(
+            "SET/DELETE/REMOVE after more than one reading clause is not supported: only the first "
+            "MATCH would be applied, writing rows the others exclude",
+            code="UNSUPPORTED",
+        )
     mc = match_ctxs[0]
     pattern = mc.oC_Pattern()
     parts = pattern.oC_PatternPart() or []
     if not parts:
         raise CoreError("MATCH pattern is required", code="UNSUPPORTED")
+    if len(parts) > 1:
+        raise CoreError(
+            "SET/DELETE/REMOVE after a MATCH with several pattern parts is not supported: only the "
+            "first part would be applied, writing rows the others exclude",
+            code="UNSUPPORTED",
+        )
 
     anon = parts[0].oC_AnonymousPatternPart()
     elem = anon.oC_PatternElement()
@@ -673,6 +692,17 @@ def _translate_mutating_query(
                 bind_vars[vtf] = v_map.get("typeField")
                 bind_vars[vtv] = v_map.get("typeValue")
                 lines.append(f"    FILTER {v_var}[@{vtf}] == @{vtv}")
+            elif v_style == "COLLECTION" and not (
+                len(v_labels) == 1
+                and rel_type is not None
+                and resolver.edge_constrains_target(rel_type, _strip_label_backticks(v_primary), direction)
+            ):
+                # The edge may lead into another collection (a polymorphic
+                # LIKES reaches posts and comments): keep only the labelled
+                # one, as the read path does, or the write touches the others.
+                pred = _compile_label_predicate(v_var, v_node.oC_NodeLabels(), bind_vars)
+                if pred is not None:
+                    lines.append(f"    FILTER {pred}")
 
         r_style = r_map.get("style")
         if r_style == "GENERIC_WITH_TYPE":
@@ -681,6 +711,11 @@ def _translate_mutating_query(
             bind_vars[rtf] = r_map.get("typeField")
             bind_vars[rtv] = r_map.get("typeValue")
             lines.append(f"    FILTER {rel_var}[@{rtf}] == @{rtv}")
+
+        for f in _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars):
+            lines.append(f"    FILTER {f}")
+        for f in _compile_node_pattern_properties(v_node, var=v_var, bind_vars=bind_vars):
+            lines.append(f"    FILTER {f}")
 
         if not v_labels:
             # An unlabeled end node lives wherever the edge leads; resolve it

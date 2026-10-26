@@ -568,8 +568,17 @@ refuses (`UNSUPPORTED`) the forms that used to write the wrong thing: two
 variables writing one collection (`SET a.x = 1, b.x = 2` with `a`, `b` both
 `:User`), a nested property (`SET n.a.b` wrote `n.b`), a variable-length
 relationship, a variable not bound by the first `MATCH` pattern (such as one
-from `OPTIONAL MATCH`), and `SET n:Label`. `REMOVE n:Label` is skipped, as it
+from `OPTIONAL MATCH`), `SET n:Label`, and a write that follows more than one
+reading clause or a `MATCH` with several pattern parts. Only the first would be
+applied, writing rows the others exclude. `REMOVE n:Label` is skipped, as it
 always was: labels are collections or a type field here.
+
+The written-to rows are those the whole first pattern matches. End-node labels
+(including a collection-style label on a polymorphic relationship), end-node
+properties and relationship properties are filters, as on the read path. Before
+2026-10-24 the write path dropped them: `MATCH (:Person {id: $p})-[l:LIKES]->
+(:Post {id: $q}) DELETE l` removed every LIKES edge of the person
+(`ldbc_benchmark_plan.md` §3.5).
 
 **Recently closed write-clause gaps (2026-06):** unlabeled `SET`/`DELETE`/`REMOVE`
 on `MATCH (n)`; **multiple `MERGE` clauses** in one statement; **multi-hop

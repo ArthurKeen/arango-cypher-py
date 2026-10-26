@@ -2,8 +2,8 @@
 #   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 5, fails_closed 36, matches_oracle 8, out_of_subset 5, syntax_error 4
-# lpg: execution_error 5, fails_closed 35, matches_oracle 8, out_of_subset 5, syntax_error 4, translates_wrong 1
+# pg: execution_error 1, fails_closed 36, matches_oracle 12, out_of_subset 5, syntax_error 4
+# lpg: execution_error 1, fails_closed 35, matches_oracle 12, out_of_subset 5, syntax_error 4, translates_wrong 1
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
@@ -44,22 +44,22 @@ fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	DEL1@lpg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
-fails_closed	DEL1@pg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
-execution_error	DEL2@lpg	ERR 1552: AQL: bind parameter 'postId' was not declared in the query (while parsing)
-execution_error	DEL2@pg	ERR 1552: AQL: bind parameter 'postId' was not declared in the query (while parsing)
-execution_error	DEL3@lpg	ERR 1552: AQL: bind parameter 'commentId' was not declared in the query (while parsing)
-execution_error	DEL3@pg	ERR 1552: AQL: bind parameter 'commentId' was not declared in the query (while parsing)
-fails_closed	DEL4@lpg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
-fails_closed	DEL4@pg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
-execution_error	DEL5@lpg	ERR 1552: AQL: bind parameter 'personId' was not declared in the query (while parsing)
-execution_error	DEL5@pg	ERR 1552: AQL: bind parameter 'personId' was not declared in the query (while parsing)
+fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+fails_closed	DEL1@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+matches_oracle	DEL2@lpg	1 binding(s)
+matches_oracle	DEL2@pg	1 binding(s)
+matches_oracle	DEL3@lpg	1 binding(s)
+matches_oracle	DEL3@pg	1 binding(s)
+fails_closed	DEL4@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+fails_closed	DEL4@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+matches_oracle	DEL5@lpg	1 binding(s)
+matches_oracle	DEL5@pg	1 binding(s)
 fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 translates_wrong	DEL7@lpg	[DEL7@lpg] nodes_removed: 1 missing, 0 unexpected; missing ['["Comment", {"browserUsed": "Firefox", "content": "right", "creationDate": 130…
 execution_error	DEL7@pg	ERR 1579: AQL: access after data-modification by traversal (while optimizing ast)
-execution_error	DEL8@lpg	ERR 1552: AQL: bind parameter 'person2Id' was not declared in the query (while parsing)
-execution_error	DEL8@pg	ERR 1552: AQL: bind parameter 'person2Id' was not declared in the query (while parsing)
+matches_oracle	DEL8@lpg	1 binding(s)
+matches_oracle	DEL8@pg	1 binding(s)
 fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
 fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
 matches_oracle	IC11@lpg	4 binding(s)

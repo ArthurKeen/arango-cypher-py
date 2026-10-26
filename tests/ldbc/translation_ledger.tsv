@@ -45,14 +45,14 @@ fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	DEL1@lpg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
-fails_closed	DEL1@pg	UNSUPPORTED: DELETE targets 'forum', which is not bound by the first MATCH pattern
+fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+fails_closed	DEL1@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 translatable	DEL2@lpg	
 translatable	DEL2@pg	
 translatable	DEL3@lpg	
 translatable	DEL3@pg	
-fails_closed	DEL4@lpg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
-fails_closed	DEL4@pg	UNSUPPORTED: DELETE targets 'message', which is not bound by the first MATCH pattern
+fails_closed	DEL4@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+fails_closed	DEL4@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 translatable	DEL5@lpg	
 translatable	DEL5@pg	
 fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
