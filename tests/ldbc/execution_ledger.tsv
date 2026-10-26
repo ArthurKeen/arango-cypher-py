@@ -2,12 +2,12 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 3, fails_closed 34, matches_oracle 12, out_of_subset 5, syntax_error 4
-# lpg: execution_error 6, fails_closed 30, matches_oracle 13, out_of_subset 5, syntax_error 4
+# pg: execution_error 3, fails_closed 33, matches_oracle 13, out_of_subset 5, syntax_error 4
+# lpg: execution_error 4, fails_closed 30, matches_oracle 15, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
-execution_error	BI11@lpg	ERR 1203: AQL: collection or view not found: a (while parsing)
-execution_error	BI11@pg	ERR 1203: AQL: collection or view not found: a (while parsing)
+matches_oracle	BI11@lpg	3 binding(s)
+matches_oracle	BI11@pg	3 binding(s)
 fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
@@ -74,20 +74,20 @@ syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country == countryX) THEN ...' at position 35:39 (while parsing)
+execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country_1 == countryX_2) T...' at position 35:39 (while parsing)
 fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC4@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 15:26 (while parsing)
 execution_error	IC4@pg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 9:26 (while parsing)
-execution_error	IC5@lpg	ERR 1203: AQL: collection or view not found: forum (while parsing)
+matches_oracle	IC5@lpg	3 binding(s)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
-fails_closed	IC6@pg	UNSUPPORTED: A single label is required in v0 subset
+execution_error	IC6@pg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
 fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	IC9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0

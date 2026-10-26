@@ -22,9 +22,11 @@ from tests.helpers.mapping_fixtures import mapping_bundle_for
             "not a MATCH-bound document variable",
         ),
         (
-            "MATCH (n:User)\nWITH n\nUNWIND [1] AS x\nRETURN n",
+            # UNWIND after WITH now compiles (test_translate_optional_match_rows);
+            # an in-query CALL there still fails closed.
+            "MATCH (n:User)\nWITH n\nCALL db.labels() YIELD label\nRETURN n, label",
             "NOT_IMPLEMENTED",
-            "Only MATCH is supported after WITH",
+            "Only MATCH and UNWIND are supported after WITH",
         ),
         # Relationship type guardrails. Untyped relationships (``-->`` /
         # ``-[]->`` / ``-[r]->``) are now supported when a single edge

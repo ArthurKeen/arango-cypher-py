@@ -256,6 +256,8 @@ Neo4j oracle's snapshots. Its first run:
   pipeline is mis-lowered: the `OPTIONAL MATCH` becomes an inner `FOR`, and
   the aggregation boundaries are stacked. PG refuses the same query
   (`fails_closed`), and LPG should too.
+  - **Fixed 2026-10-26**, with the OPTIONAL MATCH defects below. IC5 on LPG
+    now matches the oracle.
 
 **Writes (WP-33 part 3, 2026-10-24).** Each write's post-state delta is
 compared with the oracle's:
@@ -324,6 +326,47 @@ silently:
   - IC5 sorts by `forum.id` after `COLLECT`, and filters on `otherPersons`
     before defining it.
   - AQL then reads the name as a collection (ERR 1203; IC5, IC6, BI11).
+  - BI11 and IC5 (LPG) are fixed by compiling the pipeline in query order
+    (2026-10-26, next block). IC4 and IC6 remain.
+
+**Found by BI12 on LPG (2026-10-26).** BI12 became translatable once LPG
+supertypes landed (WP-35 stage 1), and the oracle showed 9 rows where Neo4j
+returns 10. The cause was `OPTIONAL MATCH`, and fixing it uncovered three more
+silent-wrong defects. All four are fixed, and each has a live regression test
+(`tests/integration/test_optional_match_live.py`):
+
+- **An `OPTIONAL MATCH` after `WITH`, or between `MATCH` and `WITH`, was an
+  inner join.** It became a plain `FOR`, so a person with no message vanished.
+  BI12 lost its `messageCount = 0` group.
+- **Everywhere else, `OPTIONAL MATCH` kept only its first match.** It compiled
+  to `LET f = FIRST(...)`.
+  - `MATCH (u) OPTIONAL MATCH (u)-[:FOLLOWS]->(f) RETURN u, f` returned one
+    followee per user, and `count(f)` was at most 1.
+  - A node-only `OPTIONAL MATCH` added `LIMIT 1`.
+  - A multi-part optional pattern took independent `FIRST()`s, not one joint
+    match.
+  - **Fix:** the pattern compiles through the bound-MATCH compiler into a
+    subquery of match rows. The outer query iterates those rows, or one empty
+    row when there are none:
+    `FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])`.
+- **`count(x)`, `count(DISTINCT x)` and `collect(x)` counted and kept nulls,
+  and `sum()` over no rows was null.** AQL's `COUNT`/`COUNT_DISTINCT` count
+  nulls, so `count(u.age)` counted users without an age.
+  - **Fix:** `_translate_v0/aggregates.py` lowers `count(x)` to
+    `SUM(x == null ? 0 : 1)`, falling back to 0. `count(DISTINCT x)` subtracts
+    the one distinct null, and `collect()` drops nulls.
+- **A `MATCH` between two `WITH`s was compiled above both.**
+  - `MATCH (u) WITH u LIMIT 1 MATCH (u)--(f) WITH f …` applied the `LIMIT` to
+    the traversal's rows.
+  - An `UNWIND` there was dropped.
+  - A second `WITH` keyed its variables by their AQL names (`country_1`), so a
+    later `MATCH` saw them as unbound.
+  - **Fix:** the pipeline now compiles clause by clause, in query order. BI11
+    now matches the oracle on both layouts.
+  - Fourteen TCK scenarios had been counted as translatable while silently
+    mistranslated. In seven, a leading `OPTIONAL MATCH … WITH` became a plain
+    `MATCH`. In the other seven, an `UNWIND` was dropped. All fourteen now
+    translate correctly.
 
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 

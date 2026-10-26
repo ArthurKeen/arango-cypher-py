@@ -11,7 +11,7 @@ resolvable `MappingBundle` and the physical Arango graph layout.
 | Capability | Parse/translate evidence | Runtime/equivalence evidence | Status | Material limits |
 | --- | --- | --- | --- | --- |
 | `MATCH`, multiple match parts, directed/bounded variable length | TCK `clauses/match`: 371/381 passable | Movies/Northwind cross-validation: 34/34 passed on 2026-08-06 | Supported | Zero-hop and mapping-specific edges need execution verification. |
-| `OPTIONAL MATCH` | Included in match coverage | Historical TCK result mismatches | Partial | Null-extension/value semantics have a remaining tail. |
+| `OPTIONAL MATCH` | Included in match coverage; `tests/test_translate_optional_match_rows.py` | `tests/integration/test_optional_match_live.py`; LDBC BI11 and IC5 (LPG) match the Neo4j oracle (2026-10-26) | Supported | At most two hops per pattern part. Before 2026-10-26 it kept only the first match per row (`FIRST()`), and after `WITH` it dropped rows with no match. |
 | Labels, relationship types, mapped properties | TCK graph/pattern: 60/61 and 48/50 | Golden fixtures + cross-validation | Supported | Requires an unambiguous mapping. |
 | Typeless relationships | Targeted regression tests | No corpus-wide equivalence rate | Constrained | May require expensive edge-collection inference. |
 | Multi-type relationship hop `[:A\|B]` | Explicit fail-fast | — | Unsupported | Requires multi-collection traversal/filter lowering. |

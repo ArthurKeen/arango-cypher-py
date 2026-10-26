@@ -1,4 +1,6 @@
 # Golden tests for full OPTIONAL MATCH support (WP-9)
+# An OPTIONAL MATCH is a subquery of its matches, iterated, or one empty row
+# when there is none (null-extension) — not FIRST(), which kept one match.
 # Covers: multi-segment, node-only, leading OPTIONAL MATCH
 
 ##############################################################################
@@ -12,8 +14,8 @@
     RETURN u.name, p.name
   mapping_fixture: pg
   expect_aql_contains:
-    - "LET"
-    - "FIRST("
+    - "LET _opt_rows = ("
+    - "LENGTH(_opt_rows) > 0 ? _opt_rows : [{}]"
     - "RETURN"
 
 ##############################################################################
@@ -27,7 +29,7 @@
     RETURN u.name, f.name, ff.name
   mapping_fixture: pg
   expect_aql_contains:
-    - "FIRST("
+    - "LENGTH(_opt_rows) > 0 ? _opt_rows : [{}]"
     - "OUTBOUND"
     - "RETURN"
 
@@ -42,7 +44,7 @@
     RETURN u.name, f.name
   mapping_fixture: lpg
   expect_aql_contains:
-    - "FIRST("
+    - "LENGTH(_opt_rows) > 0 ? _opt_rows : [{}]"
     - "OUTBOUND"
     - "RETURN"
 
@@ -72,6 +74,6 @@
     RETURN u.name, f.name
   mapping_fixture: pg
   expect_aql_contains:
-    - "FIRST("
+    - "LENGTH(_opt_rows) > 0 ? _opt_rows : [{}]"
     - "FILTER"
     - "RETURN"

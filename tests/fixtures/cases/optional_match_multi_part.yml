@@ -8,12 +8,11 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  LET b = FIRST(\n\
-      \  FOR b_0, r_0 IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
-      \ b_0)\n    RETURN b_0\n    )\n    LET c = FIRST(\n    FOR c_0, r_0_1 IN 1..1\
-      \ OUTBOUND a @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2,\
-      \ c_0)\n      RETURN c_0\n      )\n      RETURN {name: a.name, b_name: b.name,\
-      \ c_name: c.name}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  LET _opt_rows =\
+      \ (\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n    FOR c, r_1 IN 1..1\
+      \ OUTBOUND a @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, c)\n      RETURN {b: b, c: c}\n      )\n\
+      \      FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n        LET b = _opt_row.b\n        LET c = _opt_row.c\n\
+      \        RETURN {name: a.name, b_name: b.name, c_name: c.name}"
     bind_vars:
       '@collection': users
       '@edgeCollection': follows
@@ -31,13 +30,12 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR a IN @@uCollection\n  FOR b, r IN\
-      \ 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
-      \ b)\n    LET c = FIRST(\n    FOR c_0, r_0 IN 1..1 OUTBOUND b @@edgeCollection2\n\
-      \      FILTER IS_SAME_COLLECTION(@vCollection2, c_0)\n      RETURN c_0\n   \
-      \   )\n      LET d = FIRST(\n      FOR d_0, r_0_1 IN 1..1 OUTBOUND b @@edgeCollection3\n\
-      \        FILTER IS_SAME_COLLECTION(@vCollection3, d_0)\n        RETURN d_0\n\
-      \        )\n        RETURN {name: a.name, c_name: c.name, d_name: d.name}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR a IN @@uCollection\n  FOR b, r IN 1..1\
+      \ OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n    LET _opt_rows = (\n    FOR c, r_1 IN\
+      \ 1..1 OUTBOUND b @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, c)\n      FOR d, r_2 IN 1..1 OUTBOUND\
+      \ b @@edgeCollection3\n        FILTER IS_SAME_COLLECTION(@vCollection3, d)\n        RETURN {c: c, d: d}\n        )\n   \
+      \     FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n          LET c = _opt_row.c\n          LET d = _opt_row.d\n\
+      \          RETURN {name: a.name, c_name: c.name, d_name: d.name}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows

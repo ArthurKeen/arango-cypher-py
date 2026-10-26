@@ -45,4 +45,5 @@ class TestAggInnerScalarFns:
             "MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN p.name, count(m) AS c",
             mapping=pg,
         )
-        assert "COUNT(m)" in out.aql
+        # count() skips nulls: AQL COUNT() would count them.
+        assert "SUM((m) == null ? 0 : 1)" in out.aql

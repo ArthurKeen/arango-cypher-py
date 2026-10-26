@@ -3,7 +3,7 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 34, out_of_subset 5, syntax_error 4, translatable 15
+# pg: fails_closed 33, out_of_subset 5, syntax_error 4, translatable 16
 # lpg: fails_closed 30, out_of_subset 5, syntax_error 4, translatable 19
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
@@ -82,13 +82,13 @@ translatable	IC4@pg
 translatable	IC5@lpg	
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 translatable	IC6@lpg	
-fails_closed	IC6@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IC6@pg	
 fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	IC9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0

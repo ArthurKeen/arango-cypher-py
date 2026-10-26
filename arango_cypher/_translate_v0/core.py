@@ -12,6 +12,7 @@ from arango_query_core import (
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
+from .aggregates import lower_aggregate
 from .bind_names import _merge_bind_vars, _refuse_overwritten_params
 from .calls import (
     _inject_in_query_calls,
@@ -875,13 +876,16 @@ def _translate_match_body(
         )
         var_env = {v: v for v in forbidden}
 
+        multi_rel_type_exprs: dict[str, str] = {}
         if optional_matches:
             opt_env = _compile_optional_matches(
                 optional_matches,
                 resolver=resolver,
                 bind_vars=bind_vars,
                 forbidden_vars=forbidden,
+                bound_env={v: v for v in _pattern_parts_user_vars(all_parts)},
                 lines=lines,
+                rel_type_exprs=multi_rel_type_exprs,
             )
             var_env.update(opt_env)
 
@@ -889,7 +893,13 @@ def _translate_match_body(
         if ret is None:
             raise CoreError("RETURN is required in v0 subset", code="UNSUPPORTED")
         _set_user_vars_from_parts(all_parts)
-        _append_return(ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars, var_env=var_env)
+        _append_return(
+            ret.oC_ProjectionBody(),
+            lines=lines,
+            bind_vars=bind_vars,
+            var_env=var_env,
+            rel_type_exprs=multi_rel_type_exprs or None,
+        )
         return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
     match_ctx = match_ctxs[0]
@@ -948,6 +958,7 @@ def _translate_match_body(
             lines.append(f"  FILTER {f}")
 
         opt_var_env: dict[str, str] = {}
+        node_rel_type_exprs: dict[str, str] = {}
         if optional_matches:
             fv: set[str] = {var}
             opt_var_env = _compile_optional_matches(
@@ -955,7 +966,9 @@ def _translate_match_body(
                 resolver=resolver,
                 bind_vars=bind_vars,
                 forbidden_vars=fv,
+                bound_env={var: var},
                 lines=lines,
+                rel_type_exprs=node_rel_type_exprs,
             )
 
         ret = spq.oC_Return()
@@ -967,6 +980,7 @@ def _translate_match_body(
             lines=lines,
             bind_vars=bind_vars,
             var_env=opt_var_env,
+            rel_type_exprs=node_rel_type_exprs or None,
         )
         return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
@@ -1251,7 +1265,9 @@ def _translate_match_body(
             resolver=resolver,
             bind_vars=bind_vars,
             forbidden_vars=forbidden_vars,
+            bound_env={v: v for v in _pattern_parts_user_vars(all_parts)},
             lines=lines,
+            rel_type_exprs=rel_type_exprs,
         )
 
     ret = spq.oC_Return()
@@ -1392,6 +1408,111 @@ def _translate_computational_multi_part(
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
 
+def _compile_leading_match(
+    match_ctx: CypherParser.OC_MatchContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> tuple[list[str], set[str], dict[str, str]]:
+    """Compile the first MATCH of a multi-part query, which binds from nothing.
+
+    Returns the AQL lines, the AQL names in use, and the variable environment.
+    A leading OPTIONAL MATCH yields one null-extended row when nothing matches
+    (``OPTIONAL MATCH (a:Missing) WITH a …`` still has a row), so it compiles
+    like any other OPTIONAL MATCH, with nothing bound.
+    """
+    if match_ctx.OPTIONAL() is not None:
+        lines: list[str] = []
+        forbidden_vars: set[str] = set()
+        env = _compile_optional_matches(
+            [match_ctx],
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            bound_env={},
+            lines=lines,
+        )
+        return lines, forbidden_vars, env
+    parts = match_ctx.oC_Pattern().oC_PatternPart() or []
+    if len(parts) > 1:
+        # ``MATCH (a {…}), (b {…}), … WITH …`` — the disconnected-parts compiler
+        # the single-query path already uses (LDBC IC3, IC4, BI11, BI14).
+        where = match_ctx.oC_Where()
+        lines, forbidden_vars = _compile_match_multi_parts_from_parts(
+            list(parts),
+            extra_wheres=[where] if where is not None else [],
+            resolver=resolver,
+            bind_vars=bind_vars,
+        )
+    else:
+        lines, forbidden_vars = _compile_match_pipeline(match_ctx, resolver=resolver, bind_vars=bind_vars)
+    return lines, forbidden_vars, {v: v for v in forbidden_vars}
+
+
+def _compile_pipeline_unwind(
+    unwind_ctx: CypherParser.OC_UnwindContext,
+    *,
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    var_env: dict[str, str],
+    lines: list[str],
+) -> dict[str, str]:
+    """Compile an UNWIND that reads rows already bound into ``FOR x IN expr``.
+
+    Returns the variable environment extended with the unwound variable.
+    """
+    expr = _compile_expression(unwind_ctx.oC_Expression(), bind_vars)
+    if var_env:
+        expr = _rewrite_vars(expr, var_env)
+    cypher_var = unwind_ctx.oC_Variable().getText().strip()
+    aql_var = _pick_fresh_var(cypher_var, forbidden_vars=forbidden_vars)
+    forbidden_vars.add(aql_var)
+    lines.append(f"  FOR {aql_var} IN {expr}")
+    user_vars = list(_active_user_vars.get())
+    if cypher_var not in user_vars:
+        _active_user_vars.set([*user_vars, cypher_var])
+    return {**var_env, cypher_var: aql_var}
+
+
+def _compile_following_match(
+    match_ctx: CypherParser.OC_MatchContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    var_env: dict[str, str],
+    lines: list[str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Compile a MATCH or OPTIONAL MATCH that reads rows already bound.
+
+    Returns the extended variable environment and the ``type(r)`` expressions
+    of the relationships it binds. An OPTIONAL MATCH keeps every incoming row
+    (null-extended when nothing matches) — see :func:`_compile_optional_matches`.
+    """
+    if match_ctx.OPTIONAL() is None:
+        out_env, rel_type_exprs = _compile_match_from_bound(
+            match_ctx,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            var_env=var_env,
+            lines=lines,
+        )
+        forbidden_vars.update(out_env.keys())
+        return out_env, rel_type_exprs
+    rel_type_exprs = {}
+    opt_env = _compile_optional_matches(
+        [match_ctx],
+        resolver=resolver,
+        bind_vars=bind_vars,
+        forbidden_vars=forbidden_vars,
+        bound_env=var_env,
+        lines=lines,
+        rel_type_exprs=rel_type_exprs,
+    )
+    return {**var_env, **opt_env}, rel_type_exprs
+
+
 def _translate_multi_part_query(
     mpq: CypherParser.OC_MultiPartQueryContext,
     *,
@@ -1425,86 +1546,87 @@ def _translate_multi_part_query(
     if not reading_clauses:
         raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
 
-    match_ctxs: list[CypherParser.OC_MatchContext] = []
-    for rc in reading_clauses:
-        m = rc.oC_Match()
-        if m is not None:
-            match_ctxs.append(m)
-    if not match_ctxs:
-        raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
-
-    first_parts = match_ctxs[0].oC_Pattern().oC_PatternPart() or []
-    if len(first_parts) > 1:
-        # ``MATCH (a {…}), (b {…}), … WITH …`` — the disconnected-parts compiler
-        # the single-query path already uses (LDBC IC3, IC4, BI11, BI14).
-        first_where = match_ctxs[0].oC_Where()
-        lines, forbidden_vars = _compile_match_multi_parts_from_parts(
-            list(first_parts),
-            extra_wheres=[first_where] if first_where is not None else [],
-            resolver=resolver,
-            bind_vars=bind_vars,
-        )
-    else:
-        lines, forbidden_vars = _compile_match_pipeline(match_ctxs[0], resolver=resolver, bind_vars=bind_vars)
-
-    for extra_match in match_ctxs[1:]:
-        extra_var_env, _ = _compile_match_from_bound(
-            extra_match,
-            resolver=resolver,
-            bind_vars=bind_vars,
-            forbidden_vars=forbidden_vars,
-            var_env={v: v for v in forbidden_vars},
-            lines=lines,
-        )
-        forbidden_vars.update(extra_var_env.keys())
-
-    # Seed the in-scope user variables (for RETURN * / WITH *) from the leading
-    # MATCH patterns; each WITH stage then replaces the scope with its output.
-    _mpq_match_parts: list = []
-    for mc in match_ctxs:
-        _mpq_match_parts.extend(mc.oC_Pattern().oC_PatternPart() or [])
-    _set_user_vars_from_parts(_mpq_match_parts)
-
-    # Apply all WITH stages
-    var_env: dict[str, str] = {v: v for v in forbidden_vars}
-    for w in with_ctxs:
-        var_env = _apply_with(
-            w,
-            lines=lines,
-            bind_vars=bind_vars,
-            forbidden_vars=forbidden_vars,
-            incoming_env=var_env,
-        )
-
-    # Final RETURN is in the trailing SinglePartQuery
-    tail = mpq.oC_SinglePartQuery()
-    if tail is None:
-        raise CoreError("RETURN is required in v0 subset", code="UNSUPPORTED")
-
-    # Support a tail MATCH after WITH (e.g. MATCH ... WITH ... MATCH ... RETURN ...).
-    # This is limited to patterns that start from an already-bound variable.
-    tail_reading = tail.oC_ReadingClause() or []
-    rel_type_exprs: dict[str, str] = {}
-    if tail_reading:
-        tail_match_ctxs: list[CypherParser.OC_MatchContext] = []
-        for rc in tail_reading:
-            m = rc.oC_Match()
-            if m is not None:
-                tail_match_ctxs.append(m)
-        if not tail_match_ctxs:
-            raise CoreError("Only MATCH is supported after WITH in v0 subset", code="NOT_IMPLEMENTED")
-        tail_parts: list = []
-        for tm in tail_match_ctxs:
-            var_env, rel_type_exprs = _compile_match_from_bound(
-                tm,
+    # Walk the clauses in query order: a MATCH after a WITH reads the rows that
+    # WITH produced (``WITH p LIMIT 1 MATCH (p)--(f)`` limits *before* the
+    # traversal), so it must be compiled at its own position, never hoisted
+    # above the WITH stages.
+    lines: list[str] = []
+    forbidden_vars: set[str] = set()
+    var_env: dict[str, str] = {}
+    seen_match = False
+    for child in mpq.children or []:
+        if isinstance(child, CypherParser.OC_WithContext):
+            if not seen_match:
+                raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
+            var_env = _apply_with(
+                child,
+                lines=lines,
+                bind_vars=bind_vars,
+                forbidden_vars=forbidden_vars,
+                incoming_env=var_env,
+            )
+            continue
+        if not isinstance(child, CypherParser.OC_ReadingClauseContext):
+            continue
+        uw = child.oC_Unwind()
+        if uw is not None and seen_match:
+            var_env = _compile_pipeline_unwind(
+                uw, bind_vars=bind_vars, forbidden_vars=forbidden_vars, var_env=var_env, lines=lines
+            )
+            continue
+        m = child.oC_Match()
+        if m is None:
+            raise CoreError(
+                "Only MATCH, and UNWIND after a MATCH, are supported before WITH in a query with MATCH",
+                code="NOT_IMPLEMENTED",
+            )
+        if not seen_match:
+            lines, forbidden_vars, var_env = _compile_leading_match(m, resolver=resolver, bind_vars=bind_vars)
+            seen_match = True
+        else:
+            # A WITH ends every part here, and it projects ``type(r)`` as a
+            # value, so these relationships' type expressions are not needed.
+            var_env, _ = _compile_following_match(
+                m,
                 resolver=resolver,
                 bind_vars=bind_vars,
                 forbidden_vars=forbidden_vars,
                 var_env=var_env,
                 lines=lines,
             )
-            tail_parts.extend(tm.oC_Pattern().oC_PatternPart() or [])
-        _set_user_vars_from_parts(tail_parts)
+        _set_user_vars_from_parts(m.oC_Pattern().oC_PatternPart() or [])
+
+    # Final RETURN is in the trailing SinglePartQuery
+    tail = mpq.oC_SinglePartQuery()
+    if tail is None:
+        raise CoreError("RETURN is required in v0 subset", code="UNSUPPORTED")
+
+    # Reading clauses after the last WITH (MATCH … WITH … [OPTIONAL] MATCH /
+    # UNWIND … RETURN …), in order.
+    tail_reading = tail.oC_ReadingClause() or []
+    rel_type_exprs: dict[str, str] = {}
+    for rc in tail_reading:
+        tail_uw = rc.oC_Unwind()
+        if tail_uw is not None:
+            var_env = _compile_pipeline_unwind(
+                tail_uw, bind_vars=bind_vars, forbidden_vars=forbidden_vars, var_env=var_env, lines=lines
+            )
+            continue
+        tm = rc.oC_Match()
+        if tm is None:
+            raise CoreError(
+                "Only MATCH and UNWIND are supported after WITH in v0 subset", code="NOT_IMPLEMENTED"
+            )
+        var_env, part_rel_type_exprs = _compile_following_match(
+            tm,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            var_env=var_env,
+            lines=lines,
+        )
+        rel_type_exprs.update(part_rel_type_exprs)
+        _set_user_vars_from_parts(tm.oC_Pattern().oC_PatternPart() or [])
 
     # A tail write after WITH (e.g. MATCH … WITH … CREATE/MERGE/SET …). The WITH
     # pipeline is already in ``lines`` with ``var_env`` bound; the write nests
@@ -1706,275 +1828,64 @@ def _compile_optional_matches(
     resolver: MappingResolver,
     bind_vars: dict[str, Any],
     forbidden_vars: set[str],
+    bound_env: dict[str, str],
     lines: list[str],
+    rel_type_exprs: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Compile OPTIONAL MATCH clauses into LET + subquery (FIRST) pattern.
+    """Compile OPTIONAL MATCH clauses with Cypher's row semantics.
 
-    Supports:
-    - Single-hop: ``OPTIONAL MATCH (a)-[:REL]->(b)``
-    - Multi-segment: ``OPTIONAL MATCH (a)-[:R1]->(b)-[:R2]->(c)``
-    - Node-only: ``OPTIONAL MATCH (n:Person {name: "Nobody"})``
+    Each pattern (with its WHERE) is compiled by the bound-MATCH compiler into a
+    subquery that returns one object per match. The outer query then iterates
+    those rows — or one empty row when there is none — and rebinds each new
+    variable from it::
+
+        LET _opt_rows = (FOR f, r IN 1..1 ANY p @@edges ... RETURN {f: f})
+        FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])
+          LET f = _opt_row.f
+
+    A row with no match survives with the new variables null (``{}.f`` is
+    null), and a row with several matches yields one row per match. The earlier
+    ``LET f = FIRST(...)`` kept only the first match, so ``count(f)`` was capped
+    at one and every other match was silently dropped.
+
+    *bound_env* maps the user variables already in scope (from the preceding
+    MATCH or WITH) to their AQL names; a pattern node or relationship naming one
+    is correlated with it, not rebound. Returns the Cypher → AQL names of the
+    variables the clauses introduce.
     """
+    env: dict[str, str] = dict(bound_env)
     extra_env: dict[str, str] = {}
     for om in opt_matches:
-        pattern = om.oC_Pattern()
-        om_parts = pattern.oC_PatternPart()
-        if not om_parts:
-            raise CoreError(
-                "OPTIONAL MATCH requires at least one pattern part",
-                code="UNSUPPORTED",
-            )
+        sub_lines: list[str] = []
+        out_env, sub_rel_type_exprs = _compile_match_from_bound(
+            om,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            var_env=env,
+            lines=sub_lines,
+        )
+        new_vars = [cv for cv in out_env if cv not in env]
+        rows_var = _pick_fresh_var("_opt_rows", forbidden_vars=forbidden_vars)
+        forbidden_vars.add(rows_var)
+        row_var = _pick_fresh_var("_opt_row", forbidden_vars=forbidden_vars)
+        forbidden_vars.add(row_var)
 
-        for part in om_parts:
-            anon = part.oC_AnonymousPatternPart()
-            elem = anon.oC_PatternElement()
-            start_node = elem.oC_NodePattern()
-            if start_node is None:
-                raise CoreError("OPTIONAL MATCH requires a node pattern", code="UNSUPPORTED")
-            chains = elem.oC_PatternElementChain() or []
-
-            if not chains:
-                _compile_optional_node_only(
-                    om,
-                    start_node,
-                    resolver=resolver,
-                    bind_vars=bind_vars,
-                    forbidden_vars=forbidden_vars,
-                    lines=lines,
-                    extra_env=extra_env,
-                )
-                continue
-
-            _compile_optional_with_chains(
-                om,
-                start_node,
-                chains,
-                resolver=resolver,
-                bind_vars=bind_vars,
-                forbidden_vars=forbidden_vars,
-                lines=lines,
-                extra_env=extra_env,
-            )
-
+        fields = ", ".join(f"{out_env[cv]}: {out_env[cv]}" for cv in new_vars)
+        lines.append(f"  LET {rows_var} = (")
+        lines.extend(f"  {ln}" for ln in sub_lines)
+        lines.append(f"    RETURN {{{fields}}}")
+        lines.append("  )")
+        lines.append(f"  FOR {row_var} IN (LENGTH({rows_var}) > 0 ? {rows_var} : [{{}}])")
+        # The outer LET reuses the subquery's AQL name, so a ``type(r)``
+        # expression compiled against it stays valid (and is null for no match).
+        for cv in new_vars:
+            lines.append(f"    LET {out_env[cv]} = {row_var}.{out_env[cv]}")
+            env[cv] = out_env[cv]
+            extra_env[cv] = out_env[cv]
+        if rel_type_exprs is not None:
+            rel_type_exprs.update({cv: e for cv, e in sub_rel_type_exprs.items() if cv in new_vars})
     return extra_env
-
-
-def _compile_optional_node_only(
-    om: CypherParser.OC_MatchContext,
-    start_node: Any,
-    *,
-    resolver: MappingResolver,
-    bind_vars: dict[str, Any],
-    forbidden_vars: set[str],
-    lines: list[str],
-    extra_env: dict[str, str],
-) -> None:
-    """Compile node-only OPTIONAL MATCH: ``OPTIONAL MATCH (n:Label {prop: val})``."""
-    u_var, u_labels = _extract_node_var_and_labels(start_node, default_var="n")
-    if not u_labels:
-        raise CoreError(
-            "Node-only OPTIONAL MATCH requires at least one label",
-            code="UNSUPPORTED",
-        )
-
-    primary = _pick_primary_entity_label(u_labels, resolver)
-    emap = resolver.resolve_entity(_strip_label_backticks(primary))
-    coll_key = _pick_bind_key("@optCollection", bind_vars)
-    bind_vars[coll_key] = emap.get("collectionName")
-
-    inner_var = _pick_fresh_var(f"{u_var}_0", forbidden_vars=forbidden_vars)
-    sub_filters: list[str] = []
-
-    style = emap.get("style")
-    if style == "LABEL":
-        tf_key = _pick_bind_key("optTF", bind_vars)
-        tv_key = _pick_bind_key("optTV", bind_vars)
-        bind_vars[tf_key] = emap.get("typeField")
-        bind_vars[tv_key] = emap.get("typeValue")
-        sub_filters.append(f"{inner_var}[@{tf_key}] == @{tv_key}")
-
-    props = start_node.oC_Properties()
-    if props is not None:
-        map_lit = props.oC_MapLiteral()
-        if map_lit is not None:
-            keys = map_lit.oC_PropertyKeyName() or []
-            vals = map_lit.oC_Expression() or []
-            for k_ctx, v_ctx in zip(keys, vals, strict=False):
-                k = k_ctx.getText().strip()
-                val = _compile_expression(v_ctx, bind_vars)
-                sub_filters.append(f"{inner_var}.{k} == {val}")
-
-    where_ctx = om.oC_Where()
-    if where_ctx is not None:
-        wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
-        wf = re.sub(rf"\b{re.escape(u_var)}\b", inner_var, wf)
-        sub_filters.append(wf)
-
-    coll_ref = _aql_collection_ref(coll_key)
-    sub_lines = [f"FOR {inner_var} IN {coll_ref}"]
-    for sf in sub_filters:
-        sub_lines.append(f"  FILTER {sf}")
-    sub_lines.append("  LIMIT 1")
-    sub_lines.append(f"  RETURN {inner_var}")
-    subquery = "\n    ".join(sub_lines)
-
-    let_var = _pick_fresh_var(u_var, forbidden_vars=forbidden_vars)
-    lines.append(f"  LET {let_var} = FIRST(\n    {subquery}\n  )")
-    extra_env[u_var] = let_var
-
-
-def _compile_optional_with_chains(
-    om: CypherParser.OC_MatchContext,
-    start_node: Any,
-    chains: list[Any],
-    *,
-    resolver: MappingResolver,
-    bind_vars: dict[str, Any],
-    forbidden_vars: set[str],
-    lines: list[str],
-    extra_env: dict[str, str],
-) -> None:
-    """Compile OPTIONAL MATCH with one or more relationship chains."""
-    u_var, _ = _extract_node_var_and_labels(start_node, default_var="n")
-    if u_var not in forbidden_vars:
-        raise CoreError(
-            f"OPTIONAL MATCH start variable '{u_var}' is not bound",
-            code="UNSUPPORTED",
-        )
-
-    # For multi-segment, we chain traversals inside the subquery
-    current_start = u_var
-    sub_lines: list[str] = []
-    all_filters: list[str] = []
-    all_target_vars: list[tuple[str, str]] = []  # (cypher_var, inner_var)
-    all_rel_vars: list[tuple[str, str, Any]] = []  # (cypher_var, inner_var, rel_pat)
-
-    for chain in chains:
-        rel_pat = chain.oC_RelationshipPattern()
-        v_node = chain.oC_NodePattern()
-        if rel_pat is None or v_node is None:
-            raise CoreError("Invalid OPTIONAL MATCH pattern", code="UNSUPPORTED")
-
-        v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
-        rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
-        direction = _relationship_direction(rel_pat)
-
-        inner_v = _pick_fresh_var(f"{v_var}_0", forbidden_vars=forbidden_vars)
-        inner_r = _pick_fresh_var(f"{rel_var}_0", forbidden_vars=forbidden_vars)
-
-        r_map = _resolve_relationship_for_pattern(resolver, rel_type)
-        edge_key = _pick_bind_key("@edgeCollection", bind_vars)
-        bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
-        if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
-            raise CoreError(
-                f"Invalid relationship mapping collection for: {rel_type}",
-                code="INVALID_MAPPING",
-            )
-
-        hop_filters: list[str] = []
-        if v_labels:
-            v_primary = _pick_primary_entity_label(v_labels, resolver)
-            v_map = resolver.resolve_entity(_strip_label_backticks(v_primary))
-            # An untyped edge carries no domain/range, so it never constrains the target.
-            skip_coll_filter = rel_type is not None and resolver.edge_constrains_target(
-                rel_type, v_primary, direction
-            )
-            if not skip_coll_filter:
-                vcoll_key = _pick_bind_key("vCollection", bind_vars)
-                bind_vars[vcoll_key] = v_map.get("collectionName")
-                hop_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {inner_v})")
-            v_style = v_map.get("style")
-            if v_style == "LABEL":
-                vtf_key = _pick_bind_key("vTypeField", bind_vars)
-                vtv_key = _pick_bind_key("vTypeValue", bind_vars)
-                bind_vars[vtf_key] = v_map.get("typeField")
-                bind_vars[vtv_key] = v_map.get("typeValue")
-                hop_filters.append(f"{inner_v}[@{vtf_key}] == @{vtv_key}")
-
-        r_style = r_map.get("style")
-        if r_style == "GENERIC_WITH_TYPE":
-            rtf_key = _pick_bind_key("relTypeField", bind_vars)
-            rtv_key = _pick_bind_key("relTypeValue", bind_vars)
-            bind_vars[rtf_key] = r_map.get("typeField")
-            bind_vars[rtv_key] = r_map.get("typeValue")
-            hop_filters.append(f"{inner_r}[@{rtf_key}] == @{rtv_key}")
-
-        # Inline property filters on target node
-        props = v_node.oC_Properties()
-        if props is not None:
-            map_lit = props.oC_MapLiteral()
-            if map_lit is not None:
-                keys = map_lit.oC_PropertyKeyName() or []
-                vals = map_lit.oC_Expression() or []
-                for k_ctx, v_ctx in zip(keys, vals, strict=False):
-                    k = k_ctx.getText().strip()
-                    val = _compile_expression(v_ctx, bind_vars)
-                    hop_filters.append(f"{inner_v}.{k} == {val}")
-
-        rmin, rmax = rel_range
-        edge_ref = _aql_collection_ref(edge_key)
-        indent = "  " * len(all_target_vars)
-        sub_lines.append(
-            f"{indent}FOR {inner_v}, {inner_r} IN {rmin}..{rmax} {direction} {current_start} {edge_ref}"
-        )
-        for hf in hop_filters:
-            sub_lines.append(f"{indent}  FILTER {hf}")
-
-        current_start = inner_v
-        all_target_vars.append((v_var, inner_v))
-
-        detail = rel_pat.oC_RelationshipDetail()
-        if detail is not None and detail.oC_Variable() is not None:
-            all_rel_vars.append((rel_var, inner_r, rel_pat))
-
-    where_ctx = om.oC_Where()
-    if where_ctx is not None:
-        wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
-        for cv, iv in all_target_vars:
-            wf = re.sub(rf"\b{re.escape(cv)}\b", iv, wf)
-        all_filters.append(wf)
-
-    final_indent = "  " * len(all_target_vars)
-    for af in all_filters:
-        sub_lines.append(f"{final_indent}  FILTER {af}")
-
-    # Build the return object with all target vars
-    if len(all_target_vars) == 1:
-        sub_lines.append(f"{final_indent}  RETURN {all_target_vars[0][1]}")
-    else:
-        ret_fields = ", ".join(f"{cv}: {iv}" for cv, iv in all_target_vars)
-        for cv, iv, _ in all_rel_vars:
-            ret_fields += f", {cv}: {iv}"
-        sub_lines.append(f"{final_indent}  RETURN {{{ret_fields}}}")
-
-    subquery = "\n    ".join(sub_lines)
-
-    if len(all_target_vars) == 1:
-        cv, _ = all_target_vars[0]
-        let_var = _pick_fresh_var(cv, forbidden_vars=forbidden_vars)
-        lines.append(f"  LET {let_var} = FIRST(\n    {subquery}\n  )")
-        extra_env[cv] = let_var
-
-        # Expose relationship var
-        for rel_cv, rel_iv, _rel_p in all_rel_vars:
-            rel_let = _pick_fresh_var(rel_cv, forbidden_vars=forbidden_vars)
-            # Re-emit the traversal to get the edge
-            r_sub = list(sub_lines)
-            r_sub[-1] = f"{final_indent}  RETURN {rel_iv}"
-            r_subquery = "\n    ".join(r_sub)
-            lines.append(f"  LET {rel_let} = FIRST(\n    {r_subquery}\n  )")
-            extra_env[rel_cv] = rel_let
-    else:
-        combo_var = _pick_fresh_var("_opt_combo", forbidden_vars=forbidden_vars)
-        lines.append(f"  LET {combo_var} = FIRST(\n    {subquery}\n  )")
-        for cv, _ in all_target_vars:
-            let_var = _pick_fresh_var(cv, forbidden_vars=forbidden_vars)
-            lines.append(f"  LET {let_var} = {combo_var}.{cv}")
-            extra_env[cv] = let_var
-        for rel_cv, _, _ in all_rel_vars:
-            rel_let = _pick_fresh_var(rel_cv, forbidden_vars=forbidden_vars)
-            lines.append(f"  LET {rel_let} = {combo_var}.{rel_cv}")
-            extra_env[rel_cv] = rel_let
 
 
 def _compile_match_multi_parts(
@@ -2927,11 +2838,13 @@ def _collect_post_expr(raw_var: str, spec: dict[str, Any]) -> str:
     """Build the AQL value expression for a parsed collect projection.
 
     ``raw_var`` holds the list gathered by ``COLLECT ... INTO raw_var = inner``.
-    Applies DISTINCT (``UNIQUE``) then any slice/index. Slice bounds are emitted
-    verbatim, which is correct for the common non-negative literal bounds; a
-    negative slice bound is a known limitation (documented in the coverage plan).
+    Drops nulls (Cypher's ``collect()`` skips them — a null-extended OPTIONAL
+    MATCH row contributes nothing), then applies DISTINCT (``UNIQUE``) and any
+    slice/index. Slice bounds are emitted verbatim, which is correct for the
+    common non-negative literal bounds; a negative slice bound is a known
+    limitation (documented in the coverage plan).
     """
-    e = raw_var
+    e = f"REMOVE_VALUE({raw_var}, null)"
     if spec.get("distinct"):
         e = f"UNIQUE({e})"
     sl = spec.get("slice")
@@ -2947,6 +2860,33 @@ def _collect_post_expr(raw_var: str, spec: dict[str, Any]) -> str:
             elif end is not None:
                 e = f"SLICE({e}, 0, {end})"
     return e
+
+
+def _aggregate_clause(
+    compiled_agg: list[tuple[str, str, str]],
+    compiled_collects: list[tuple[str, str, dict[str, Any]]],
+    reserve: Any,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """``COLLECT … AGGREGATE`` assignments and post-COLLECT ``LET``s for a
+    projection's aggregates, with Cypher's null semantics.
+
+    Each aggregate is lowered by :func:`lower_aggregate`; each ``collect()``
+    gathers into a temp and is finished (nulls dropped, DISTINCT, slice) by
+    :func:`_collect_post_expr`. *reserve* returns a fresh, now-used name.
+    """
+    pieces: list[str] = []
+    post_lets: list[tuple[str, str]] = []
+    for _key, aql, expr in compiled_agg:
+        agg, post = lower_aggregate(aql, expr, reserve)
+        pieces.extend(agg)
+        if post is not None:
+            post_lets.append((aql, post))
+    for _key, aql, spec in compiled_collects:
+        temp = reserve(f"_{aql}_grp")
+        fn = "UNIQUE" if spec.get("distinct") else "PUSH"
+        pieces.append(f"{temp} = {fn}({spec['inner']})")
+        post_lets.append((aql, _collect_post_expr(temp, spec)))
+    return pieces, post_lets
 
 
 def _aggregate_from_collected_rows(agg_expr: str, rows_var: str, field: str | None) -> str:
@@ -2966,6 +2906,9 @@ def _aggregate_from_collected_rows(agg_expr: str, rows_var: str, field: str | No
     if fn == "COUNT_DISTINCT":
         return f"LENGTH(UNIQUE({values}))"
     return f"{fn}({rows_var}[*].{field})"
+
+
+_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _apply_with(
@@ -3058,10 +3001,18 @@ def _apply_with(
         expr = _compile_expression(expr_ctx, bind_vars)
         if incoming_env:
             expr = _rewrite_vars(expr, incoming_env)
-        cypher_var = alias or _infer_key(expr) or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}"
-        # If this is a pass-through (WITH u) and doesn't introduce a binding, keep it.
-        if alias is None and cypher_var == expr:
-            compiled_nonagg.append((cypher_var, cypher_var, expr))
+        # The projected name comes from the Cypher text: after an earlier WITH
+        # renamed ``b`` to ``b_1``, ``WITH b`` still projects ``b``.
+        is_bare_var = _BARE_IDENTIFIER_RE.fullmatch(expr_txt) is not None
+        cypher_var = (
+            alias
+            or (expr_txt if is_bare_var else None)
+            or _infer_key(expr)
+            or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}"
+        )
+        # A pass-through (WITH u) introduces no binding: u keeps its AQL name.
+        if alias is None and is_bare_var and _BARE_IDENTIFIER_RE.fullmatch(expr):
+            compiled_nonagg.append((cypher_var, expr, expr))
             continue
 
         aql_var = cypher_var if cypher_var not in forbidden_vars else pick_name(cypher_var)
@@ -3137,17 +3088,14 @@ def _apply_with(
     # AGGREGATE parts.
     if compiled_agg or compiled_collects:
         group_parts = ", ".join(f"{aql} = {expr}" for _, aql, expr in compiled_nonagg)
-        agg_pieces = [f"{aql} = {expr}" for _, aql, expr in compiled_agg]
-        post_lets: list[tuple[str, str]] = []
-        for cy, aql, spec in compiled_collects:
-            if spec.get("slice") is not None:
-                temp = pick_name(f"_{aql}_grp")
-                forbidden_vars.add(temp)
-                agg_pieces.append(f"{temp} = PUSH({spec['inner']})")
-                post_lets.append((aql, _collect_post_expr(temp, spec)))
-            else:
-                fn = "UNIQUE" if spec.get("distinct") else "PUSH"
-                agg_pieces.append(f"{aql} = {fn}({spec['inner']})")
+
+        def reserve(name: str) -> str:
+            picked = pick_name(name)
+            forbidden_vars.add(picked)
+            return picked
+
+        agg_pieces, post_lets = _aggregate_clause(compiled_agg, compiled_collects, reserve)
+        for cy, aql, _spec in compiled_collects:
             env[cy] = aql
         agg_parts = ", ".join(agg_pieces)
 
@@ -3550,16 +3498,7 @@ def _append_return_aggregation(
         # AQL supports aggregate functions such as COUNT/SUM directly. ``collect``
         # is handled by the INTO-projection path above because PUSH/UNIQUE are
         # not valid COLLECT AGGREGATE expressions in ArangoDB 3.11.
-        agg_pieces = [f"{aql} = {e}" for _k, aql, e in compiled_agg]
-        post_lets: list[tuple[str, str]] = []
-        for _k, aql, spec in compiled_collects:
-            if spec.get("slice") is not None:
-                temp = f"_{aql}_grp"
-                agg_pieces.append(f"{temp} = PUSH({spec['inner']})")
-                post_lets.append((aql, _collect_post_expr(temp, spec)))
-            else:
-                fn = "UNIQUE" if spec.get("distinct") else "PUSH"
-                agg_pieces.append(f"{aql} = {fn}({spec['inner']})")
+        agg_pieces, post_lets = _aggregate_clause(compiled_agg, compiled_collects, _alloc)
         agg_parts = ", ".join(agg_pieces)
 
         collect_line = "  COLLECT"

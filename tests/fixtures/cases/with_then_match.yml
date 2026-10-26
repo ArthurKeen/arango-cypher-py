@@ -97,8 +97,11 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT u_1 = u AGGREGATE degree\
-      \ = COUNT(v)\n    FOR w, r_1 IN 1..1 OUTBOUND u_1 @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      SORT u_1.id, w.id\n      RETURN {id: u_1.id, degree: degree, w_id: w.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1\
+      \ OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    COLLECT u_1 = u AGGREGATE _degree_nonnull\
+      \ = SUM((v) == null ? 0 : 1)\n    LET degree = NOT_NULL(_degree_nonnull, 0)\n    FOR w, r_1 IN 1..1 OUTBOUND u_1 @@edgeCollection2\n\
+      \      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      SORT u_1.id, w.id\n      RETURN {id: u_1.id, degree: degree, w_id:\
+      \ w.id}"
     bind_vars:
       '@uCollection': users
       '@edgeCollection': follows
