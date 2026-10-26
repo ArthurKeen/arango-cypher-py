@@ -4,8 +4,8 @@ Neo4j is the oracle for the LDBC suites, so it must hold the same graph as the
 ArangoDB layouts: the totals pinned in ``test_ldbc_load.py``, the reference's
 supertype labels, and each workload's timestamp encoding.
 
-Activation: ``RUN_INTEGRATION=1 RUN_CROSS=1`` and a running Neo4j
-(``docker-compose.neo4j.yml``).
+Activation: ``RUN_INTEGRATION=1 RUN_CROSS=1``; Neo4j is started for the session
+(``docker-compose.ldbc.yml``) unless ``NEO4J_URI`` points at one.
 """
 
 from __future__ import annotations
@@ -22,12 +22,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.cross]
 
 
 @pytest.fixture(scope="module")
-def driver():
-    if os.environ.get("RUN_CROSS") != "1":
-        pytest.skip("Set RUN_CROSS=1 (and start docker-compose.neo4j.yml)")
+def driver(ldbc_neo4j_uri):
     from tests.integration import neo4j_reference
 
-    drv = neo4j_reference.get_driver()
+    drv = neo4j_reference.get_driver(ldbc_neo4j_uri)
     yield drv
     # Another suite sharing this Neo4j must reseed its own dataset.
     neo4j_reference._active_dataset = None

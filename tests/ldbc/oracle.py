@@ -14,7 +14,9 @@ stores them in.
 
 Record (needs the Neo4j of ``docker-compose.neo4j.yml``)::
 
-    RUN_CROSS=1 .venv/bin/python -m tests.ldbc.oracle --record
+    .venv/bin/python -m tests.ldbc.oracle --record
+
+(the databases are started and removed around the run: tests/ldbc/stack.py)
 """
 
 from __future__ import annotations
@@ -168,12 +170,14 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("neo4j").setLevel(logging.WARNING)
     from tests.integration.neo4j_reference import get_driver
+    from tests.ldbc.stack import ldbc_stack
 
-    driver = get_driver()
-    try:
-        snapshots = record(driver)
-    finally:
-        driver.close()
+    with ldbc_stack(arango=False, neo4j=True) as endpoints:
+        driver = get_driver(endpoints.neo4j_uri)
+        try:
+            snapshots = record(driver)
+        finally:
+            driver.close()
     total = sum(len(s["bindings"]) for s in snapshots.values())
     print(f"{len(snapshots)} operations, {total} bindings recorded")
     if args.record:

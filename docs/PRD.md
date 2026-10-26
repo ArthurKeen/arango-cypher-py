@@ -1000,6 +1000,13 @@ corpora). The plan, research and baseline are in
     (manual).
   - Each workload is loaded in its reference timestamp encoding: epoch-ms for
     Interactive, ISO-8601 for BI.
+- **LDBC-9 Database lifecycle.** A run owns the databases it starts and
+  removes them when it finishes, on success or failure, including a failed
+  start. The suites and tools use `tests/ldbc/stack.py` and
+  `docker-compose.ldbc.yml`, which has its own ports and capped memory.
+  - A server named by `ARANGO_URL` or `NEO4J_URI` (CI's services, a developer's
+    instance) is used as-is and never started or stopped.
+  - `LDBC_KEEP_STACK=1` keeps the stack for inspection.
 
 ---
 

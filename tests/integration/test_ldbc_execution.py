@@ -4,7 +4,7 @@ Loads SF0.003 into both layouts, runs every read binding through the
 translator and ArangoDB, and compares with ``tests/ldbc/expected/``. No Neo4j
 needed. When it fails, fix the regression — or record an intentional change::
 
-    RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
+    .venv/bin/python -m tests.ldbc.execution --write
 """
 
 from __future__ import annotations
@@ -21,14 +21,12 @@ from tests.tck.ledger import diff_ledger
 
 pytestmark = pytest.mark.integration
 
-_REGEN = (
-    "RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write"
-)
+_REGEN = ".venv/bin/python -m tests.ldbc.execution --write"
 
 
 @pytest.fixture(scope="module")
-def measured():
-    return build_execution_ledger(loaded_databases())
+def measured(ldbc_arango_url):
+    return build_execution_ledger(loaded_databases(ldbc_arango_url))
 
 
 @pytest.fixture(scope="module")

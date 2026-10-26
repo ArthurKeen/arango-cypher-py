@@ -56,7 +56,7 @@ def connection_params() -> tuple[str, str, str]:
     return uri, user, password
 
 
-def get_driver():  # pragma: no cover - exercised only under `cross` marker
+def get_driver(uri: str | None = None):  # pragma: no cover - exercised only under `cross` marker
     """Return an open Neo4j driver, importing the driver lazily.
 
     Raises ``RuntimeError`` if the driver is not installed or the server
@@ -69,7 +69,8 @@ def get_driver():  # pragma: no cover - exercised only under `cross` marker
             "neo4j driver not installed; `pip install 'neo4j>=5'` or install the `neo4j` extra."
         ) from e
 
-    uri, user, password = connection_params()
+    env_uri, user, password = connection_params()
+    uri = uri or env_uri
     driver = GraphDatabase.driver(uri, auth=(user, password))
     try:
         driver.verify_connectivity()
