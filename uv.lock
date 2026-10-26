@@ -125,7 +125,7 @@ requires-dist = [
     { name = "antlr4-tools", marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'dev'" },
     { name = "arango-cypher-py", extras = ["analyzer"], marker = "extra == 'service'" },
-    { name = "arango-query-core", specifier = ">=0.2.4,<0.3.0" },
+    { name = "arango-query-core", specifier = ">=0.2.5,<0.3.0" },
     { name = "arangodb-schema-analyzer", marker = "extra == 'analyzer'", specifier = ">=0.14.1,<0.16.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.100.0" },
@@ -156,11 +156,11 @@ deploy = [{ name = "arango-byoc-deploy", git = "https://github.com/ArthurKeen/ar
 
 [[package]]
 name = "arango-query-core"
-version = "0.2.4"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/39/37/a368936b8848c4b95a2fefb1593fa2336b8cdabe036d1e680ba576746efa/arango_query_core-0.2.4.tar.gz", hash = "sha256:9e9026774858e9dff68d6b0860edf19647b98febfa6e9eca4b6fb2bce2c85d02", size = 94021, upload-time = "2026-10-21T17:32:13.087Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/eb/c46298e3b9977e1a24ae71f158102ff3185d37a35aca31512dc6770d8594/arango_query_core-0.2.5.tar.gz", hash = "sha256:e86dbe7c8e1595f509b5bd994ad1938e141ad02a9f41a3e1bbce005d34259020", size = 98032, upload-time = "2026-10-26T20:08:44.79Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/28/7d0482922eeb400311b96c851be51f0d6dd3fbfab5cc21fbbff1fa727c47/arango_query_core-0.2.4-py3-none-any.whl", hash = "sha256:dc558f1a23602d593705269d41b7b6a4c26f2a5640dbc40162b321b6690736cf", size = 63616, upload-time = "2026-10-21T17:32:11.847Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/43/6c94913a4ecf72aa8eb6a1f80a4067d152790a8150fdd5201d47c166af94/arango_query_core-0.2.5-py3-none-any.whl", hash = "sha256:6e1b5d509eb5bee1b4e92884167cea436a0c9eb8c8935a4d2213a5d9f618c6be", size = 65252, upload-time = "2026-10-26T20:08:43.208Z" },
 ]
 
 [[package]]
