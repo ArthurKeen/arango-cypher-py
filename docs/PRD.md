@@ -638,11 +638,24 @@ pipelines such as `UNWIND … WITH … <write>` and mid-pipeline
 `DELETE`/`SET` before a following `WITH`.
 
 **Label hierarchies (supertypes)** — a label whose members live under other
-labels, such as LDBC's `Message` ⊇ `Post`, `Comment` — cannot be expressed in
-the mapping model (WP-35).
-- **A mapping that leaves the supertype out** fails closed: a query naming the
-  supertype gets `MAPPING_NOT_FOUND`. The LDBC fixtures (`ldbc_pg`, `ldbc_lpg`)
-  work this way.
+labels, such as LDBC's `Message` ⊇ `Post`, `Comment`. WP-35 adds them in stages
+(decision D8). A conceptual entity lists its members in `subtypes`, and
+arango-query-core ≥ 0.2.5 resolves the hierarchy
+(`MappingResolver.is_supertype`, `supertype_members`).
+- **LPG (stage 1).** The supertype maps as a `MULTI_LABEL` entity over the
+  node's labels array (`labelsField`, `labelValue`), and `(m:Message)` filters
+  `@labelValue IN m[@labelsField]`.
+  - CREATE of a member writes its supertypes into the array, and a
+    whole-document SET keeps it.
+  - CREATE by a supertype, and MERGE on a supertype or on one of its members,
+    are refused (`UNSUPPORTED`).
+  - A node naming both a member and its supertype (`(m:Comment:Message)`)
+    filters on the member's type field.
+  - An entity style the translator does not know is refused
+    (`INVALID_MAPPING`) wherever a node is matched.
+- **PG (stage 2, open).** The member-collection union is not lowered yet. The
+  `ldbc_pg` fixture leaves supertypes out, so a query naming one fails closed
+  (`MAPPING_NOT_FOUND`).
 - **A mapping that maps the supertype as if it were a concrete label** makes
   translation succeed, but the AQL describes the mapping, not the data. Under
   PG it scans a collection named after the supertype; under LPG it compares the

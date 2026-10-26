@@ -694,7 +694,17 @@ beyond the fail-closed guard.
 
 ### Phase 1 — Correctness gaps, ordered by operations unlocked
 
-#### WP-35: Label hierarchies (supertypes) ⚡ (L)
+#### WP-35: Label hierarchies (supertypes) ⚡ (L) — stage 1 (LPG) implemented 2026-10-26
+- **Status:**
+  - **Core.** arango-query-core 0.2.5 carries the hierarchy: `subtypes`,
+    `SUPERTYPE_STYLES` (`MULTI_LABEL`, `UNION`), `is_supertype` and
+    `supertype_members`.
+  - **LPG (stage 1).** Supertypes map as `MULTI_LABEL` over the labels array.
+    LPG translatable went from 19 to 33, and LPG matches_oracle from 15 to 25,
+    including BI12, BI5 and IC9. No cell is `translates_wrong`.
+  - **PG (stage 2).** The union lowering is still open.
+  - **Newly loud on LPG:** BI3 (ERR 1511), BI6 (`like` is an AQL keyword), IS7
+    (raw `CASE WHEN`) and DEL6 (ERR 1202).
 - **Upstream (`arango-query-core`):**
   - Conceptual `subtypeOf` / `supertypes` in `MappingBundle`.
   - A physical `labelsField` for LPG.
