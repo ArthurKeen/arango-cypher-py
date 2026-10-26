@@ -184,6 +184,6 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN FIRST(REMOVE_VALUES([n.nickname, n.name], null))\n"
+    aql: "FOR n IN @@collection\n  RETURN NOT_NULL(n.nickname, n.name)\n"
     bind_vars:
       '@collection': persons

@@ -18,7 +18,7 @@ from .calls import (
     _translate_standalone_call,
     _translate_standalone_in_query_call,
 )
-from .formatting import _prepend_with_collections, _reindent_aql
+from .formatting import _guard_varlength_edge_types, _prepend_with_collections, _reindent_aql
 from .hints import (
     _build_collection_index_hint,
     _build_vci_options,
@@ -92,7 +92,7 @@ def translate_v0(
         _refuse_overwritten_params(params, result.bind_vars)
         result = _prepend_with_collections(result, resolver)
         result = AqlQuery(
-            text=_reindent_aql(result.text),
+            text=_reindent_aql(_guard_varlength_edge_types(result.text)),
             bind_vars=result.bind_vars,
             debug=result.debug,
             warnings=tuple(warnings) if warnings else result.warnings,
@@ -4109,6 +4109,23 @@ def _extract_relationship_type_and_var(
 _MAX_VLP_DEPTH = 10
 
 
+def _capped_depth(range_ctx: Any) -> int:
+    """The hop cap for an open-ended range (``*``, ``*2..``), announced as a warning.
+
+    AQL traversals need a maximum depth, so an unbounded Cypher range is cut
+    at :data:`_MAX_VLP_DEPTH` hops: a path longer than that is not matched.
+    The warning makes the difference visible to the caller instead of silent.
+    """
+    msg = (
+        f"Variable-length relationship '{range_ctx.getText()}' has no upper bound; "
+        f"it is limited to {_MAX_VLP_DEPTH} hops (longer paths are not matched)."
+    )
+    warnings = _active_warnings.get()
+    if msg not in warnings:
+        warnings.append(msg)
+    return _MAX_VLP_DEPTH
+
+
 def _parse_range_literal(
     range_ctx: CypherParser.OC_RangeLiteralContext,
 ) -> tuple[int, int]:
@@ -4118,7 +4135,7 @@ def _parse_range_literal(
 
     if not ints and not has_dots:
         # bare ``*`` → 1..max
-        return 1, _MAX_VLP_DEPTH
+        return 1, _capped_depth(range_ctx)
 
     if len(ints) == 1 and not has_dots:
         # ``*3`` → exactly 3 hops
@@ -4141,11 +4158,11 @@ def _parse_range_literal(
         if raw.startswith("*") and ".." in raw:
             before_dots = raw[1 : raw.index("..")]
             if before_dots.strip().isdigit():
-                return n, _MAX_VLP_DEPTH
+                return n, _capped_depth(range_ctx)
             return 1, n
-        return n, _MAX_VLP_DEPTH
+        return n, _capped_depth(range_ctx)
 
-    return 1, _MAX_VLP_DEPTH
+    return 1, _capped_depth(range_ctx)
 
 
 def _extract_interleaved_op(ctx: Any, term_index: int, valid_ops: set[str]) -> str:
@@ -5228,9 +5245,11 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "coalesce":
             if not compiled_args:
                 raise CoreError("coalesce expects at least 1 arg", code="UNSUPPORTED")
-            # ArangoDB AQL doesn't have COALESCE(); emulate Cypher coalesce by
-            # picking the first non-null value.
-            return f"FIRST(REMOVE_VALUES([{', '.join(compiled_args)}], null))"
+            # AQL's NOT_NULL() returns its first non-null argument: Cypher's
+            # coalesce(). (The previous FIRST(REMOVE_VALUES([…], null)) removed
+            # nothing — REMOVE_VALUES takes an *array* of values — so it always
+            # returned the first argument, null or not; LDBC IS2.)
+            return f"NOT_NULL({', '.join(compiled_args)})"
         if fn_norm == "id":
             if len(compiled_args) != 1:
                 raise CoreError("id expects 1 arg", code="UNSUPPORTED")

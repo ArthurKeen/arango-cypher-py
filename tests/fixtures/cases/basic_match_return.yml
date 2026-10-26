@@ -96,7 +96,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (FIRST(REMOVE_VALUES([n.active, false], null)) == true)
+          FILTER (NOT_NULL(n.active, false) == true)
           RETURN n
       bind_vars:
         "@collection": users

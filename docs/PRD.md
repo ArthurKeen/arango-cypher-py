@@ -534,6 +534,10 @@ comprehensions; named paths + `length`/`nodes`/`relationships`; `EXISTS { }` and
 access (`n.address.zip`). A parameter that shares its name with a bind
 variable the translation generates (`typeValue`, `@collection`, …) and would
 have its value replaced is refused (`UNSUPPORTED`) rather than silently rebound.
+A variable-length relationship on a type-discriminated (LPG) edge collection
+follows only edges of its type; `*0..` includes the zero-hop row. An open-ended
+range (`*`, `*2..`) is limited to 10 hops (`_MAX_VLP_DEPTH`), and the
+translation says so in a warning. `coalesce()` is AQL `NOT_NULL()`.
 A `MATCH` after `WITH` may have several comma-separated pattern parts. A
 variable it names that is already bound is correlated, not rebound. An
 `ORDER BY` after `WITH` that names a variable no longer in scope is refused
