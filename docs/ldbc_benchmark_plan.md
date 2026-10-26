@@ -375,6 +375,13 @@ silent-wrong defects. All four are fixed, and each has a live regression test
   - A lone `RETURN type(r)` came back as an object `{type: …}` (Graph4[1],
     Graph4[4]).
   - An undirected self-loop matched twice (Match7[24]).
+- **Open, found while fixing the above. Neither is exercised by LDBC, which
+  binds parameters.**
+  - A string literal in an inline property map matches case-insensitively.
+    `(t:Tag {name: 'x'})` compiles to `LOWER(t.name) == LOWER('x')`
+    (`_compile_node_pattern_properties`), so it matches more nodes than Neo4j.
+  - `RETURN f.name AS f ORDER BY f` sorts by the node `f`, not by the
+    projected alias.
 
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 
