@@ -1,0 +1,25 @@
+{
+ "kind": "write",
+ "operation": "INS5",
+ "file": "interactive_v2/interactive-update-5.cypher",
+ "sha256": "779bdf64b272032fe01ed741ae6cf61bc577f0fd8c1dc544910ee9e9aa19bace",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "forumId": 0,
+    "personId": 14,
+    "creationDate": 1354131438085
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"HAS_MEMBER\", \"Forum\", 0, \"Person\", 14, {\"creationDate\": 1354131438085}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

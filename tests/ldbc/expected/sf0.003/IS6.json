@@ -1,4 +1,5 @@
 {
+ "kind": "read",
  "operation": "IS6",
  "file": "interactive_v2/interactive-short-6.cypher",
  "sha256": "60504a35ab88810bd841ae86c76ebb37b25fcf5eafcd0920805bfa16aa1a4a62",

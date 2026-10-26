@@ -1,0 +1,24 @@
+{
+ "kind": "write",
+ "operation": "DEL5",
+ "file": "interactive_v2/interactive-delete-5.cypher",
+ "sha256": "613e5800639ba9836ed2bd99204db77c396946469f19fe931f5d9bffc1bbf84b",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "forumId": 0,
+    "personId": 10995116277782
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"HAS_MEMBER\", \"Forum\", 0, \"Person\", 10995116277782, {\"creationDate\": 1349551490381}]"
+    ]
+   }
+  }
+ ]
+}

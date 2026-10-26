@@ -557,3 +557,125 @@ operations:
   - binding:
       tag: Lleyton_Hewitt
     rows: 0
+writes:
+  INS1:
+    personId: 90000000000001
+    personFirstName: Ada
+    personLastName: Lovelace
+    gender: female
+    birthday: 315532800000
+    creationDate: 1354131438085
+    locationIP: 10.0.0.1
+    browserUsed: Firefox
+    languages:
+    - en
+    - fr
+    emails:
+    - ada@example.org
+    cityId: 125
+    tagIds:
+    - 60
+    - 470
+    studyAt:
+    - - 1575
+      - 2000
+    workAt:
+    - - 0
+      - 2005
+  INS1~schema-fix:
+    personId: 90000000000001
+    personFirstName: Ada
+    personLastName: Lovelace
+    gender: female
+    birthday: 315532800000
+    creationDate: 1354131438085
+    locationIP: 10.0.0.1
+    browserUsed: Firefox
+    languages:
+    - en
+    - fr
+    emails:
+    - ada@example.org
+    cityId: 125
+    tagIds:
+    - 60
+    - 470
+    studyAt:
+    - - 1575
+      - 2000
+    workAt:
+    - - 0
+      - 2005
+  INS2:
+    personId: 14
+    postId: 371
+    creationDate: 1354131438085
+  INS3:
+    personId: 14
+    commentId: 481036339217
+    creationDate: 1354131438085
+  INS4:
+    forumId: 90000000000004
+    forumTitle: Group for LDBC
+    creationDate: 1354131438085
+    moderatorPersonId: 24189255811081
+    tagIds:
+    - 60
+    - 470
+  INS5:
+    forumId: 0
+    personId: 14
+    creationDate: 1354131438085
+  INS6:
+    postId: 90000000000006
+    imageFile: ''
+    creationDate: 1354131438085
+    locationIP: 10.0.0.6
+    browserUsed: Chrome
+    language: en
+    content: An LDBC post
+    length: 12
+    authorPersonId: 24189255811081
+    forumId: 0
+    countryId: 0
+    tagIds:
+    - 60
+    - 470
+  INS7:
+    commentId: 90000000000007
+    creationDate: 1354131438085
+    locationIP: 10.0.0.7
+    browserUsed: Safari
+    content: A reply
+    length: 7
+    authorPersonId: 24189255811081
+    countryId: 0
+    replyToPostId: 371
+    replyToCommentId: 0
+    tagIds:
+    - 60
+    - 470
+  INS8:
+    person1Id: 14
+    person2Id: 16
+    creationDate: 1354131438085
+  DEL1:
+    personId: 37383395344409
+  DEL2:
+    personId: 14
+    postId: 893353201046
+  DEL3:
+    personId: 14
+    commentId: 1030792154027
+  DEL4:
+    forumId: 68719476775
+  DEL5:
+    forumId: 0
+    personId: 10995116277782
+  DEL6:
+    postId: 824633724068
+  DEL7:
+    commentId: 481036339217
+  DEL8:
+    person1Id: 14
+    person2Id: 10995116277782

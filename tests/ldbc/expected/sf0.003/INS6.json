@@ -1,0 +1,43 @@
+{
+ "kind": "write",
+ "operation": "INS6",
+ "file": "interactive_v2/interactive-update-6.cypher",
+ "sha256": "0d104b513466e4521019c7ad15ff1a7bc54948cc6179be992d9798bde83cba13",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "postId": 90000000000006,
+    "imageFile": "",
+    "creationDate": 1354131438085,
+    "locationIP": "10.0.0.6",
+    "browserUsed": "Chrome",
+    "language": "en",
+    "content": "An LDBC post",
+    "length": 12,
+    "authorPersonId": 24189255811081,
+    "forumId": 0,
+    "countryId": 0,
+    "tagIds": [
+     60,
+     470
+    ]
+   },
+   "delta": {
+    "nodes_added": [
+     "[\"Post\", {\"browserUsed\": \"Chrome\", \"content\": \"An LDBC post\", \"creationDate\": 1354131438085, \"id\": 90000000000006, \"language\": \"en\", \"length\": 12, \"locationIP\": \"10.0.0.6\"}]"
+    ],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"CONTAINER_OF\", \"Forum\", 0, \"Post\", 90000000000006, {}]",
+     "[\"HAS_CREATOR\", \"Post\", 90000000000006, \"Person\", 24189255811081, {}]",
+     "[\"HAS_TAG\", \"Post\", 90000000000006, \"Tag\", 470, {}]",
+     "[\"HAS_TAG\", \"Post\", 90000000000006, \"Tag\", 60, {}]",
+     "[\"IS_LOCATED_IN\", \"Post\", 90000000000006, \"Country\", 0, {}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

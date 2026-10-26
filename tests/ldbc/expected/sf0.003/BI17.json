@@ -1,4 +1,5 @@
 {
+ "kind": "read",
  "operation": "BI17",
  "file": "bi/bi-17.cypher",
  "sha256": "0d2187fd021e4570c602124ee367bf2392f48870474187045eee27dd908539c7",

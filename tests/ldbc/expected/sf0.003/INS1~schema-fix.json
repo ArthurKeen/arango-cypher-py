@@ -1,0 +1,60 @@
+{
+ "kind": "write",
+ "operation": "INS1~schema-fix",
+ "file": "variants/interactive-update-1.schema-fix.cypher",
+ "sha256": "0169081b005edf3957e5e3bbaeecb18b935c75dc7ecfee431ba8fcc45de38755",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "personId": 90000000000001,
+    "personFirstName": "Ada",
+    "personLastName": "Lovelace",
+    "gender": "female",
+    "birthday": 315532800000,
+    "creationDate": 1354131438085,
+    "locationIP": "10.0.0.1",
+    "browserUsed": "Firefox",
+    "languages": [
+     "en",
+     "fr"
+    ],
+    "emails": [
+     "ada@example.org"
+    ],
+    "cityId": 125,
+    "tagIds": [
+     60,
+     470
+    ],
+    "studyAt": [
+     [
+      1575,
+      2000
+     ]
+    ],
+    "workAt": [
+     [
+      0,
+      2005
+     ]
+    ]
+   },
+   "delta": {
+    "nodes_added": [
+     "[\"Person\", {\"birthday\": 315532800000, \"browserUsed\": \"Firefox\", \"creationDate\": 1354131438085, \"email\": [\"ada@example.org\"], \"firstName\": \"Ada\", \"gender\": \"female\", \"id\": 90000000000001, \"lastName\": \"Lovelace\", \"locationIP\": \"10.0.0.1\", \"speaks\": [\"en\", \"fr\"]}]"
+    ],
+    "nodes_removed": [],
+    "edges_added": [
+     "[\"HAS_INTEREST\", \"Person\", 90000000000001, \"Tag\", 470, {}]",
+     "[\"HAS_INTEREST\", \"Person\", 90000000000001, \"Tag\", 60, {}]",
+     "[\"IS_LOCATED_IN\", \"Person\", 90000000000001, \"City\", 125, {}]",
+     "[\"STUDY_AT\", \"Person\", 90000000000001, \"University\", 1575, {\"classYear\": 2000}]",
+     "[\"WORK_AT\", \"Person\", 90000000000001, \"Company\", 0, {\"workFrom\": 2005}]"
+    ],
+    "edges_removed": []
+   }
+  }
+ ]
+}

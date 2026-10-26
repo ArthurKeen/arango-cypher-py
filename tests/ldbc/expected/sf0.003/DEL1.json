@@ -1,0 +1,46 @@
+{
+ "kind": "write",
+ "operation": "DEL1",
+ "file": "interactive_v2/interactive-delete-1.cypher",
+ "sha256": "1c2e48044c7aa3e95d9171a41611298795f86e853e2e6cda7bc7f2b82baacd18",
+ "dataset": "sf0.003-epoch-ms",
+ "oracle": "Neo4j/5.26.27",
+ "bindings": [
+  {
+   "binding": {
+    "personId": 37383395344409
+   },
+   "delta": {
+    "nodes_added": [],
+    "nodes_removed": [
+     "[\"Comment\", {\"browserUsed\": \"Internet Explorer\", \"content\": \"roflol\", \"creationDate\": 1354129364012, \"id\": 1168231107568, \"length\": 6, \"locationIP\": \"31.171.137.117\"}]",
+     "[\"Forum\", {\"creationDate\": 1353779531966, \"id\": 1168231104911, \"title\": \"Wall of Luigi Colombo\"}]",
+     "[\"Person\", {\"birthday\": 530236800000, \"browserUsed\": \"Internet Explorer\", \"creationDate\": 1353779521966, \"email\": [\"Luigi37383395344409@gmail.com\"], \"firstName\": \"Luigi\", \"gender\": \"male\", \"id\": 37383395344409, \"lastName\": \"Colombo\", \"locationIP\": \"31.171.137.117\", \"speaks\": [\"it\", \"de\", \"en\"]}]"
+    ],
+    "edges_added": [],
+    "edges_removed": [
+     "[\"HAS_CREATOR\", \"Comment\", 1168231107568, \"Person\", 37383395344409, {\"creationDate\": 1354129364012}]",
+     "[\"HAS_INTEREST\", \"Person\", 37383395344409, \"Tag\", 1985, {\"creationDate\": 1353779521966}]",
+     "[\"HAS_INTEREST\", \"Person\", 37383395344409, \"Tag\", 246, {\"creationDate\": 1353779521966}]",
+     "[\"HAS_INTEREST\", \"Person\", 37383395344409, \"Tag\", 2990, {\"creationDate\": 1353779521966}]",
+     "[\"HAS_INTEREST\", \"Person\", 37383395344409, \"Tag\", 6438, {\"creationDate\": 1353779521966}]",
+     "[\"HAS_MEMBER\", \"Forum\", 893353197855, \"Person\", 37383395344409, {\"creationDate\": 1354126535113}]",
+     "[\"HAS_MODERATOR\", \"Forum\", 1168231104911, \"Person\", 37383395344409, {\"creationDate\": 1353779531966}]",
+     "[\"HAS_TAG\", \"Forum\", 1168231104911, \"Tag\", 1985, {\"creationDate\": 1353779531966}]",
+     "[\"HAS_TAG\", \"Forum\", 1168231104911, \"Tag\", 246, {\"creationDate\": 1353779531966}]",
+     "[\"HAS_TAG\", \"Forum\", 1168231104911, \"Tag\", 2990, {\"creationDate\": 1353779531966}]",
+     "[\"HAS_TAG\", \"Forum\", 1168231104911, \"Tag\", 6438, {\"creationDate\": 1353779531966}]",
+     "[\"IS_LOCATED_IN\", \"Comment\", 1168231107568, \"Country\", 81, {\"creationDate\": 1354129364012}]",
+     "[\"IS_LOCATED_IN\", \"Person\", 37383395344409, \"City\", 1177, {\"creationDate\": 1353779521966}]",
+     "[\"LIKES\", \"Person\", 37383395344409, \"Comment\", 1168231107490, {\"creationDate\": 1353795095155}]",
+     "[\"REPLY_OF\", \"Comment\", 1168231107568, \"Post\", 1099511630831, {\"creationDate\": 1354129364012}]",
+     "[\"STUDY_AT\", \"Person\", 37383395344409, \"University\", 4673, {\"classYear\": 2006, \"creationDate\": 1353779521966}]",
+     "[\"WORK_AT\", \"Person\", 37383395344409, \"Company\", 637, {\"creationDate\": 1353779521966, \"workFrom\": 2008}]",
+     "[\"WORK_AT\", \"Person\", 37383395344409, \"Company\", 644, {\"creationDate\": 1353779521966, \"workFrom\": 2007}]",
+     "[\"WORK_AT\", \"Person\", 37383395344409, \"Company\", 657, {\"creationDate\": 1353779521966, \"workFrom\": 2007}]",
+     "[\"WORK_AT\", \"Person\", 37383395344409, \"Company\", 663, {\"creationDate\": 1353779521966, \"workFrom\": 2007}]"
+    ]
+   }
+  }
+ ]
+}
