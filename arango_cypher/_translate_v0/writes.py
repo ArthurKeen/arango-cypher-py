@@ -329,6 +329,30 @@ def _compile_label_predicate(*args, **kwargs):
     return _core_helper("_compile_label_predicate")(*args, **kwargs)
 
 
+def _multi_label_filter(*args, **kwargs):
+    return _core_helper("_multi_label_filter")(*args, **kwargs)
+
+
+def _supertype_label_fields(label: str, collection: str, resolver: MappingResolver) -> dict[str, list[str]]:
+    """``{labelsField: [labels]}`` a new *label* document in *collection* must carry.
+
+    A ``MULTI_LABEL`` supertype finds its members by their labels array, so a
+    node created under a member label lists every supertype that covers it in
+    that collection, then its own label (the loader's convention). Without it,
+    ``MATCH (m:Message)`` would never see a newly created ``Post``.
+    """
+    fields: dict[str, list[str]] = {}
+    for name in resolver.all_entity_labels():
+        emap = resolver.resolve_entity(name)
+        if emap.get("style") != "MULTI_LABEL" or emap.get("collectionName") != collection:
+            continue
+        if label in resolver.supertype_members(name):
+            fields.setdefault(emap["labelsField"], []).append(emap.get("labelValue") or name)
+    for values in fields.values():
+        values.append(label)
+    return fields
+
+
 def _rewrite_vars(*args, **kwargs):
     return _core_helper("_rewrite_vars")(*args, **kwargs)
 
@@ -648,6 +672,10 @@ def _translate_mutating_query(
             bind_vars["typeField"] = entity_mapping["typeField"]
             bind_vars["typeValue"] = entity_mapping["typeValue"]
             lines.append(f"  FILTER {var}[@typeField] == @typeValue")
+        elif style == "MULTI_LABEL":
+            lines.append(f"  FILTER {_multi_label_filter(var, entity_mapping, bind_vars)}")
+        elif style != "COLLECTION":
+            raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
     else:
         # Unlabeled ``MATCH (n) SET/DELETE/REMOVE …``: resolve to the single
         # domain collection using the same inference the read path uses. Fails
@@ -692,6 +720,10 @@ def _translate_mutating_query(
                 bind_vars[vtf] = v_map.get("typeField")
                 bind_vars[vtv] = v_map.get("typeValue")
                 lines.append(f"    FILTER {v_var}[@{vtf}] == @{vtv}")
+            elif v_style == "MULTI_LABEL":
+                lines.append(f"    FILTER {_multi_label_filter(v_var, v_map, bind_vars)}")
+            elif v_style not in ("COLLECTION", "LABEL"):
+                raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
             elif v_style == "COLLECTION" and not (
                 len(v_labels) == 1
                 and rel_type is not None
@@ -1027,6 +1059,11 @@ def _compile_create_node(
             bind_vars,
         )
 
+        if style in ("MULTI_LABEL", "UNION"):
+            raise CoreError(
+                f"Cannot CREATE a node by its supertype {primary!r}: name a concrete label",
+                code="UNSUPPORTED",
+            )
         if style == "LABEL":
             type_field = entity_mapping.get("typeField", "type")
             tv_key = _pick_bind_key("typeValue", bind_vars)
@@ -1034,6 +1071,13 @@ def _compile_create_node(
             extra_fields.append(f"{type_field}: @{tv_key}")
         elif style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
+        concrete = _strip_label_backticks(primary)
+        for labels_field, values in _supertype_label_fields(
+            concrete, entity_mapping["collectionName"], resolver
+        ).items():
+            lv_key = _pick_bind_key("labelsValue", bind_vars)
+            bind_vars[lv_key] = values
+            extra_fields.append(f"{labels_field}: @{lv_key}")
 
     doc = _build_insert_doc(props, extra_fields, base=param_ref)
     if writes is not None:
@@ -1572,6 +1616,14 @@ def _build_merge_node_docs(
     props = _compile_create_props(node.oC_Properties(), bind_vars)
     extra_fields: list[str] = []
     style = entity_mapping.get("style")
+    if style in ("MULTI_LABEL", "UNION") or _supertype_label_fields(
+        _strip_label_backticks(primary), entity_mapping.get("collectionName") or "", resolver
+    ):
+        raise CoreError(
+            f"MERGE on {primary!r} is not supported: it is, or has, a supertype whose "
+            "labels array the MERGE would have to match",
+            code="UNSUPPORTED",
+        )
     if style == "LABEL":
         type_field = entity_mapping.get("typeField", "type")
         tv_key = _pick_bind_key("typeValue", bind_vars)

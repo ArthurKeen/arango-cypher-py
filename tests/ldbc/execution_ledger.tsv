@@ -2,15 +2,15 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 3, fails_closed 33, matches_oracle 13, out_of_subset 5, syntax_error 4
-# lpg: execution_error 4, fails_closed 30, matches_oracle 15, out_of_subset 5, syntax_error 4
+# pg: execution_error 3, fails_closed 34, matches_oracle 12, out_of_subset 5, syntax_error 4
+# lpg: execution_error 11, fails_closed 16, matches_oracle 21, out_of_subset 5, syntax_error 4, translates_wrong 1
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
-matches_oracle	BI11@lpg	3 binding(s)
-matches_oracle	BI11@pg	3 binding(s)
-fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	BI11@lpg	ERR 1203: AQL: collection or view not found: a (while parsing)
+execution_error	BI11@pg	ERR 1203: AQL: collection or view not found: a (while parsing)
+translates_wrong	BI12@lpg	[BI12@lpg binding 0] row-count mismatch: neo4j=10 vs aql=9 cypher: '' neo4j columns: ['<scalar>']; sample: [[0, 20], [1, 12], [2, 6]] aql c…
 fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
 fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI14@lpg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
 fails_closed	BI14@pg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
@@ -18,31 +18,31 @@ out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
 syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
-fails_closed	BI17@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI17@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 matches_oracle	BI18@lpg	4 binding(s)
 matches_oracle	BI18@pg	4 binding(s)
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
 out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
-fails_closed	BI1@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI1@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
 fails_closed	BI1@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
-fails_closed	BI2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI3@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	BI3@lpg	ERR 1511: AQL: variable 'v' is assigned multiple times (while parsing)
 fails_closed	BI3@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
 syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
-fails_closed	BI5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	BI5@lpg	ERR 1203: AQL: collection or view not found: message (while parsing)
 fails_closed	BI5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	BI6@lpg	ERR 1501: AQL: syntax error, unexpected like operator, expecting } near 'like: like_0}
 fails_closed	BI6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	BI7@lpg	4 binding(s)
 fails_closed	BI7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@lpg	UNSUPPORTED: Unsupported function in v0: collect
 fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	BI9@lpg	3 binding(s)
 fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 fails_closed	DEL1@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
@@ -54,7 +54,7 @@ fails_closed	DEL4@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading
 fails_closed	DEL4@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 matches_oracle	DEL5@lpg	1 binding(s)
 matches_oracle	DEL5@pg	1 binding(s)
-fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	DEL6@lpg	ERR 1202: AQL: document not found (while executing)
 fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 execution_error	DEL7@lpg	ERR 1202: AQL: document not found (while executing)
 execution_error	DEL7@pg	ERR 1579: AQL: access after data-modification by traversal (while optimizing ast)
@@ -72,22 +72,22 @@ out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
 syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
-fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IC2@lpg	3 binding(s)
 fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country_1 == countryX_2) T...' at position 35:39 (while parsing)
+execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country == countryX) THEN ...' at position 35:39 (while parsing)
 fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC4@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 15:26 (while parsing)
 execution_error	IC4@pg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 9:26 (while parsing)
-matches_oracle	IC5@lpg	3 binding(s)
+execution_error	IC5@lpg	ERR 1203: AQL: collection or view not found: forum (while parsing)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
-execution_error	IC6@pg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
-fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC6@pg	UNSUPPORTED: A single label is required in v0 subset
+fails_closed	IC7@lpg	UNSUPPORTED: Unsupported function in v0: collect
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IC8@lpg	3 binding(s)
 fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IC9@lpg	3 binding(s)
+fails_closed	IC9@pg	UNSUPPORTED: A single label is required in v0 subset
 fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0
@@ -112,11 +112,11 @@ matches_oracle	IS2@lpg	3 binding(s)
 fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
 matches_oracle	IS3@lpg	3 binding(s)
 matches_oracle	IS3@pg	3 binding(s)
-fails_closed	IS4@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IS4@lpg	3 binding(s)
 fails_closed	IS4@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IS5@lpg	3 binding(s)
 fails_closed	IS5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+matches_oracle	IS6@lpg	3 binding(s)
 fails_closed	IS6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+execution_error	IS7@lpg	ERR 1501: AQL: syntax error, unexpected identifier, expecting } near 'WHEN (r_2 == null) THEN false EL...' at position 24:239 (while parsin…
 fails_closed	IS7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message

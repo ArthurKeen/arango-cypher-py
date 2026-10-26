@@ -27,15 +27,22 @@ def test_check_mode_reports_current_fixtures():
 @pytest.mark.parametrize("layout", ["pg", "lpg"])
 def test_every_concrete_label_and_type_resolves(layout):
     r = MappingResolver(mapping_bundle_for(f"ldbc_{layout}"))
-    assert sorted(r.all_entity_labels()) == sorted(CONCRETE_LABELS)
+    supertypes = set(SUPERTYPES) if layout == "lpg" else set()
+    assert set(r.all_entity_labels()) == set(CONCRETE_LABELS) | supertypes
     assert sorted(r.all_relationship_types()) == sorted(REL_TYPES)
 
 
-@pytest.mark.parametrize("layout", ["pg", "lpg"])
 @pytest.mark.parametrize("supertype", sorted(SUPERTYPES))
-def test_supertypes_fail_closed(layout, supertype):
+def test_lpg_supertypes_are_multi_label_over_their_members(supertype):
+    r = MappingResolver(mapping_bundle_for("ldbc_lpg"))
+    assert r.resolve_entity(supertype)["style"] == "MULTI_LABEL"
+    assert r.supertype_members(supertype) == list(SUPERTYPES[supertype])
+
+
+@pytest.mark.parametrize("supertype", sorted(SUPERTYPES))
+def test_pg_supertypes_still_fail_closed_until_stage_2(supertype):
     with pytest.raises(CoreError) as exc:
-        translate(f"MATCH (n:{supertype}) RETURN n.id", mapping=mapping_bundle_for(f"ldbc_{layout}"))
+        translate(f"MATCH (n:{supertype}) RETURN n.id", mapping=mapping_bundle_for("ldbc_pg"))
     assert exc.value.code == "MAPPING_NOT_FOUND"
 
 
