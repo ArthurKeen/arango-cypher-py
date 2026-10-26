@@ -221,4 +221,6 @@ def keep_fields_for(collection: str, physical_mapping: dict[str, Any]) -> list[s
     for spec in (physical_mapping.get("entities") or {}).values():
         if spec.get("collectionName") == collection and spec.get("style") == "LABEL":
             fields.append(spec.get("typeField") or "type")
+        if spec.get("collectionName") == collection and spec.get("style") == "MULTI_LABEL":
+            fields.append(spec.get("labelsField") or "labels")
     return [_aql_string_literal(f) for f in dict.fromkeys(fields)]

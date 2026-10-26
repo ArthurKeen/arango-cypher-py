@@ -4,14 +4,14 @@
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
 # pg: fails_closed 33, out_of_subset 5, syntax_error 4, translatable 16
-# lpg: fails_closed 30, out_of_subset 5, syntax_error 4, translatable 19
+# lpg: fails_closed 16, out_of_subset 5, syntax_error 4, translatable 33
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
 translatable	BI11@pg	
-fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI12@lpg	
 fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI13@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
 fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI14@lpg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
 fails_closed	BI14@pg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
@@ -19,31 +19,31 @@ out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
 syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
-fails_closed	BI17@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI17@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 translatable	BI18@lpg	
 translatable	BI18@pg	
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
 out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
-fails_closed	BI1@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI1@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
 fails_closed	BI1@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
-fails_closed	BI2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI3@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI3@lpg	
 fails_closed	BI3@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
 syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
-fails_closed	BI5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI5@lpg	
 fails_closed	BI5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI6@lpg	
 fails_closed	BI6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI7@lpg	
 fails_closed	BI7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	BI8@lpg	UNSUPPORTED: Unsupported function in v0: collect
 fails_closed	BI8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	BI9@lpg	
 fails_closed	BI9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 fails_closed	DEL1@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
@@ -55,7 +55,7 @@ fails_closed	DEL4@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading
 fails_closed	DEL4@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
 translatable	DEL5@lpg	
 translatable	DEL5@pg	
-fails_closed	DEL6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	DEL6@lpg	
 fails_closed	DEL6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 translatable	DEL7@lpg	
 translatable	DEL7@pg	
@@ -73,7 +73,7 @@ out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
 syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
-fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IC2@lpg	
 fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 translatable	IC3@lpg	
 fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
@@ -83,11 +83,11 @@ translatable	IC5@lpg
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 translatable	IC6@lpg	
 translatable	IC6@pg	
-fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+fails_closed	IC7@lpg	UNSUPPORTED: Unsupported function in v0: collect
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IC8@lpg	
 fails_closed	IC8@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC9@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IC9@lpg	
 fails_closed	IC9@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
 fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
@@ -113,11 +113,11 @@ translatable	IS2@lpg
 fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
 translatable	IS3@lpg	
 translatable	IS3@pg	
-fails_closed	IS4@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IS4@lpg	
 fails_closed	IS4@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS5@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IS5@lpg	
 fails_closed	IS5@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS6@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IS6@lpg	
 fails_closed	IS6@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IS7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
+translatable	IS7@lpg	
 fails_closed	IS7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
