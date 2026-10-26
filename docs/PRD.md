@@ -534,6 +534,10 @@ comprehensions; named paths + `length`/`nodes`/`relationships`; `EXISTS { }` and
 access (`n.address.zip`). A parameter that shares its name with a bind
 variable the translation generates (`typeValue`, `@collection`, …) and would
 have its value replaced is refused (`UNSUPPORTED`) rather than silently rebound.
+A `MATCH` after `WITH` may have several comma-separated pattern parts. A
+variable it names that is already bound is correlated, not rebound. An
+`ORDER BY` after `WITH` that names a variable no longer in scope is refused
+(`UNSUPPORTED`), as Cypher raises `UndefinedVariable`.
 In a `UNION`, internal names that repeat across branches with different values
 are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 

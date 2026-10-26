@@ -283,6 +283,30 @@ compared with the oracle's:
   - The `REMOVE` after the traversal then fails with ERR 1579 on PG, and on
     LPG it leaves the comment in place (`translates_wrong`).
 
+**Exposed by WP-36 (2026-10-26).** Once multi-part MATCH translated, these
+reads got past their first blocker. The execution tier shows they then meet
+**pre-existing** defects. All of them fail loudly (`execution_error`), not
+silently:
+
+- **LPG variable-length relationships check only the last edge's type.**
+  This affects every LPG mapping, not just LDBC.
+  - `[:REPLY_OF*0..]` compiles to `FOR v, r IN 0..10 … @@edges FILTER
+    r.type == …`, so the traversal walks every relationship type in the
+    shared edge collection.
+  - The result is wrong paths, and an exponential blow-up: IS2 on LPG is
+    killed at the 30 s cap.
+  - `*0..` is also silently capped at 10 hops, and the zero-hop row is
+    filtered out, because `r` is null there.
+  - **Highest priority:** where such a query finishes, it returns silently
+    wrong rows.
+- **A `CASE` in a `WITH` projection is emitted as raw `CASE WHEN … END` in a
+  `LET`.** AQL has no such expression (ERR 1501; IC3 and IC4).
+- **A variable is used after a `COLLECT` has dropped it, or before its `LET`.**
+  - IC4 groups by `tag` after `COLLECT tag_1 = tag`.
+  - IC5 sorts by `forum.id` after `COLLECT`, and filters on `otherPersons`
+    before defining it.
+  - AQL then reads the name as a collection (ERR 1203; IC5, IC6, BI11).
+
 ### 3.4 Upstream reference quirks (to report to LDBC, not to fix here)
 
 **INS1** (`interactive-update-1.cypher`) creates
@@ -613,10 +637,23 @@ beyond the fail-closed guard.
   - Execution evidence from the ledger.
 - **Unlocks:** the 30 operations in §2.5. This WP gates most of the rest.
 
-#### WP-36: Multi-part `MATCH` after `WITH` (M)
+#### WP-36: Multi-part `MATCH` after `WITH` (M) — implemented 2026-10-26
 - **Scope:** comma-separated pattern parts in a bound `MATCH`
   (`_compile_match_from_bound`, `core.py:2295`), with shared variables joined.
 - **Unlocks:** IS2 IC3 IC4 IC6 IC10 BI10 BI11 BI14 (first-failure basis).
+- **Status (2026-10-26): implemented.**
+  - A `MATCH` after `WITH` compiles each comma-separated part in order.
+  - A multi-part first `MATCH` may precede `WITH`; it reuses the
+    disconnected-parts compiler.
+  - A hop ending at an already-bound variable is correlated by `_id` instead
+    of rebinding it. That removes IC5's ERR 1511.
+  - An `ORDER BY` after `WITH` that names an out-of-scope variable is refused.
+    Before, the translation sorted by it, because AQL never drops it from
+    scope.
+  - **TCK:** 9 scenarios improve, and 30 negative scenarios
+    (`WithOrderBy3/[8]`) that used to "translate" are now correctly rejected.
+  - **LDBC:** IC4 (both layouts), and IS2, IC3, IC6 and BI11 (LPG; BI11 also
+    on PG) now translate. They then meet the defects in §3.5.
 
 #### WP-37: Aggregates nested in expressions (S)
 - **Scope:** `head(collect(…))`, `size(collect(…))` and similar. Hoist the

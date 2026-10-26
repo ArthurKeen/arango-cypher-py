@@ -1433,7 +1433,19 @@ def _translate_multi_part_query(
     if not match_ctxs:
         raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
 
-    lines, forbidden_vars = _compile_match_pipeline(match_ctxs[0], resolver=resolver, bind_vars=bind_vars)
+    first_parts = match_ctxs[0].oC_Pattern().oC_PatternPart() or []
+    if len(first_parts) > 1:
+        # ``MATCH (a {…}), (b {…}), … WITH …`` — the disconnected-parts compiler
+        # the single-query path already uses (LDBC IC3, IC4, BI11, BI14).
+        first_where = match_ctxs[0].oC_Where()
+        lines, forbidden_vars = _compile_match_multi_parts_from_parts(
+            list(first_parts),
+            extra_wheres=[first_where] if first_where is not None else [],
+            resolver=resolver,
+            bind_vars=bind_vars,
+        )
+    else:
+        lines, forbidden_vars = _compile_match_pipeline(match_ctxs[0], resolver=resolver, bind_vars=bind_vars)
 
     for extra_match in match_ctxs[1:]:
         extra_var_env, _ = _compile_match_from_bound(
@@ -2304,17 +2316,55 @@ def _compile_match_from_bound(
     lines: list[str],
 ) -> tuple[dict[str, str], dict[str, str]]:
     """
-    Compile a MATCH that occurs after a WITH, where the start variable is already bound.
+    Compile a MATCH that occurs after a WITH, where variables may already be bound.
     Supported:
     - MATCH (u) WHERE ... (filter only)
-    - MATCH (u)-[:TYPE]->(v:Label) (1 hop)
+    - MATCH (u)-[:TYPE]->(v:Label) (1 or 2 hops)
+    - several comma-separated pattern parts, compiled in order; each part may
+      start at a variable bound by the WITH or by an earlier part, and a node
+      or relationship already bound is correlated by ``_id`` rather than rebound.
     """
     pattern = match_ctx.oC_Pattern()
-    parts = pattern.oC_PatternPart()
-    if not parts or len(parts) != 1:
-        raise CoreError("Only a single pattern part is supported in v0", code="UNSUPPORTED")
-    anon = parts[0].oC_AnonymousPatternPart()
-    elem = anon.oC_PatternElement()
+    parts = pattern.oC_PatternPart() or []
+    if not parts:
+        raise CoreError("MATCH after WITH requires a pattern", code="UNSUPPORTED")
+    out_env = dict(var_env)
+    rel_type_exprs: dict[str, str] = {}
+    any_chain = False
+    for part in parts:
+        if part.oC_AnonymousPatternPart() is None:
+            raise CoreError("Named paths in a MATCH after WITH are not supported", code="UNSUPPORTED")
+        elem = part.oC_AnonymousPatternPart().oC_PatternElement()
+        has_chain = _compile_bound_part(
+            elem,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            out_env=out_env,
+            rel_type_exprs=rel_type_exprs,
+            lines=lines,
+        )
+        any_chain = any_chain or has_chain
+
+    where_ctx = match_ctx.oC_Where()
+    if where_ctx is not None:
+        f = _rewrite_vars(_compile_where(where_ctx.oC_Expression(), bind_vars), out_env)
+        lines.append(f"    FILTER {f}" if any_chain else f"  FILTER {f}")
+    return out_env, rel_type_exprs
+
+
+def _compile_bound_part(
+    elem: CypherParser.OC_PatternElementContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    out_env: dict[str, str],
+    rel_type_exprs: dict[str, str],
+    lines: list[str],
+) -> bool:
+    """Compile one pattern part of a MATCH after WITH into *lines*, extending
+    *out_env* with the variables it binds. Returns whether it has relationships."""
     node = elem.oC_NodePattern()
     if node is None:
         raise CoreError("Only node patterns are supported in v0", code="UNSUPPORTED")
@@ -2323,12 +2373,10 @@ def _compile_match_from_bound(
     if node.oC_Variable() is None:
         raise CoreError("MATCH after WITH must bind a variable", code="UNSUPPORTED")
     u_cy = node.oC_Variable().getText().strip()
-    bound_start = u_cy in var_env
-    u_aql = var_env.get(u_cy)
+    bound_start = u_cy in out_env
+    u_aql = out_env.get(u_cy)
 
     # If the start is unbound, start a fresh scan over (u:Label) using the mapping.
-    out_env = dict(var_env)
-    rel_type_exprs: dict[str, str] = {}
     if not bound_start:
         labels_ctx = node.oC_NodeLabels()
         label: str | None = None
@@ -2371,14 +2419,8 @@ def _compile_match_from_bound(
         for f in _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars):
             lines.append(f"    FILTER {f}")
 
-    # Optional WHERE filter for node-only patterns.
     if not chains:
-        where_ctx = match_ctx.oC_Where()
-        if where_ctx is not None:
-            f = _compile_where(where_ctx.oC_Expression(), bind_vars)
-            f = _rewrite_vars(f, out_env)
-            lines.append(f"  FILTER {f}")
-        return out_env, rel_type_exprs
+        return False
 
     if len(chains) not in (1, 2):
         raise CoreError("Only 1-hop or 2-hop patterns are supported in v0 subset", code="UNSUPPORTED")
@@ -2398,20 +2440,25 @@ def _compile_match_from_bound(
         rel_named = _rdetail is not None and _rdetail.oC_Variable() is not None
         v_is_backref = v_cy in out_env
 
-        v_aql = _pick_fresh_var(v_cy, forbidden_vars=forbidden_vars) if v_cy not in out_env else out_env[v_cy]
-        # Only an *explicitly named* relationship may back-reference an existing
-        # binding. An unnamed edge's synthetic default name (``r``) must never
-        # alias a variable already bound by a prior MATCH — that produced AQL
-        # like ``FOR m, r … FOR w, r`` (ERR 1511, "assigned multiple times").
-        r_aql = (
-            out_env[rel_cy]
-            if (rel_named and rel_cy in out_env)
-            else _pick_fresh_var(rel_cy, forbidden_vars=forbidden_vars)
-        )
+        # A node or relationship already bound (by the WITH or an earlier
+        # part) is not rebound: AQL rejects assigning a variable twice (ERR
+        # 1511 — LDBC IC5 on LPG). The traversal binds a fresh variable and is
+        # correlated with the bound one by ``_id``. Only an *explicitly named*
+        # relationship may back-reference: an unnamed edge's synthetic default
+        # name (``r``) must never alias a prior binding.
+        v_aql = _pick_fresh_var(v_cy, forbidden_vars=forbidden_vars)
+        r_is_backref = rel_named and rel_cy in out_env
+        r_aql = _pick_fresh_var(rel_cy, forbidden_vars=forbidden_vars)
+        backref_filters: list[str] = []
+        if v_is_backref:
+            backref_filters.append(f"{v_aql}._id == {out_env[v_cy]}._id")
+        if r_is_backref:
+            backref_filters.append(f"{r_aql}._id == {out_env[rel_cy]}._id")
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=r_aql, bind_vars=bind_vars)
 
-        out_env[v_cy] = v_aql
-        if rel_named:
+        if not v_is_backref:
+            out_env[v_cy] = v_aql
+        if rel_named and not r_is_backref:
             out_env[rel_cy] = r_aql
         forbidden_vars.add(v_aql)
         forbidden_vars.add(r_aql)
@@ -2438,7 +2485,9 @@ def _compile_match_from_bound(
                 f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING"
             )
 
-        skip_coll_filter = (
+        # A correlated (already bound) end node needs no collection check: the
+        # ``_id`` filter pins it to the bound document.
+        skip_coll_filter = (v_is_backref and not v_labels) or (
             v_primary is not None
             and rel_type is not None
             and resolver.edge_constrains_target(rel_type, v_primary, direction)
@@ -2492,7 +2541,7 @@ def _compile_match_from_bound(
                 else _untyped_rel_type_expr(r_aql, resolver)
             )
 
-        for f in v_filters + r_filters:
+        for f in backref_filters + v_filters + r_filters:
             lines.append(f"    FILTER {f}")
         for f in r_prop_filters:
             lines.append(f"    FILTER {f}")
@@ -2501,15 +2550,9 @@ def _compile_match_from_bound(
         for f in _compile_node_pattern_properties(v_node, var=v_aql, bind_vars=bind_vars):
             lines.append(f"    FILTER {f}")
 
-        current_aql = v_aql
+        current_aql = out_env[v_cy] if v_is_backref else v_aql
 
-    where_ctx = match_ctx.oC_Where()
-    user_filter = _compile_where(where_ctx.oC_Expression(), bind_vars) if where_ctx is not None else None
-    if user_filter:
-        user_filter = _rewrite_vars(user_filter, out_env)
-        lines.append(f"    FILTER {user_filter}")
-
-    return out_env, rel_type_exprs
+    return True
 
 
 def _compile_match_pipeline(
@@ -3048,6 +3091,9 @@ def _apply_with(
 
     env = {cy: aql for cy, aql, _ in compiled_nonagg}
     env.update({cy: aql for cy, aql, _ in compiled_agg})
+    if order_ctx is not None and incoming_env is not None:
+        projected = set(env) | {cy for cy, _, _ in compiled_collects}
+        _refuse_out_of_scope_sort_vars(order_ctx, visible=set(incoming_env) | projected)
 
     # AQL 3.11 does not accept PUSH()/UNIQUE() as COLLECT AGGREGATE
     # expressions. For collect-only projections, preserve each collect input
@@ -3145,6 +3191,43 @@ def _apply_with(
 
     _active_user_vars.set(list(env.keys()))
     return env
+
+
+def _refuse_out_of_scope_sort_vars(order_ctx: Any, *, visible: set[str]) -> None:
+    """Refuse a WITH's ORDER BY that names a variable no longer (or never) in scope.
+
+    ``MATCH (a), (b), (c) WITH a, b WITH a ORDER BY c`` is a Cypher
+    UndefinedVariable error, but AQL never drops ``c`` from scope, so the
+    translation sorted by it silently. Conservative: a sort item containing a
+    pattern or a construct that binds its own variables is not checked.
+    """
+    local_binders = (
+        CypherParser.OC_IdInCollContext,
+        CypherParser.OC_ReduceExpressionContext,
+        CypherParser.OC_PatternComprehensionContext,
+        CypherParser.OC_RelationshipsPatternContext,
+    )
+
+    def walk(node: Any, out: set[str]) -> bool:
+        if isinstance(node, local_binders):
+            return False
+        if isinstance(node, CypherParser.OC_AtomContext) and node.oC_Variable() is not None:
+            out.add(node.oC_Variable().getText().strip())
+        for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0):
+            if not walk(node.getChild(i), out):
+                return False
+        return True
+
+    for item in order_ctx.oC_SortItem() or []:
+        names: set[str] = set()
+        if not walk(item.oC_Expression(), names):
+            continue
+        undefined = sorted(n.strip("`") for n in names if n.strip("`") not in visible and n not in visible)
+        if undefined:
+            raise CoreError(
+                f"ORDER BY refers to variable(s) not in scope after WITH: {', '.join(undefined)}",
+                code="UNSUPPORTED",
+            )
 
 
 def _compile_order_by(

@@ -2,18 +2,18 @@
 #   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 1, fails_closed 36, matches_oracle 12, out_of_subset 5, syntax_error 4
-# lpg: execution_error 1, fails_closed 35, matches_oracle 12, out_of_subset 5, syntax_error 4, translates_wrong 1
+# pg: execution_error 3, fails_closed 34, matches_oracle 12, out_of_subset 5, syntax_error 4
+# lpg: execution_error 6, fails_closed 30, matches_oracle 12, out_of_subset 5, syntax_error 4, translates_wrong 1
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
-fails_closed	BI11@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	BI11@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+execution_error	BI11@lpg	ERR 1203: AQL: collection or view not found: a (while parsing)
+execution_error	BI11@pg	ERR 1203: AQL: collection or view not found: a (while parsing)
 fails_closed	BI12@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI12@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI13@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	BI13@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	BI14@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	BI14@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	BI14@lpg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
+fails_closed	BI14@pg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
 out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
@@ -60,8 +60,8 @@ translates_wrong	DEL7@lpg	[DEL7@lpg] nodes_removed: 1 missing, 0 unexpected; mis
 execution_error	DEL7@pg	ERR 1579: AQL: access after data-modification by traversal (while optimizing ast)
 matches_oracle	DEL8@lpg	1 binding(s)
 matches_oracle	DEL8@pg	1 binding(s)
-fails_closed	IC10@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC10@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+fails_closed	IC10@lpg	UNSUPPORTED: Unsupported function in v0: datetime
+fails_closed	IC10@pg	UNSUPPORTED: Unsupported function in v0: datetime
 matches_oracle	IC11@lpg	4 binding(s)
 matches_oracle	IC11@pg	4 binding(s)
 fails_closed	IC12@lpg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
@@ -74,14 +74,14 @@ syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 fails_closed	IC2@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC2@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
-fails_closed	IC3@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC3@pg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC4@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC4@pg	UNSUPPORTED: Only a single pattern part is supported in v0
-execution_error	IC5@lpg	ERR 1511: AQL: variable 'forum' is assigned multiple times (while parsing)
+execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country == countryX) THEN ...' at position 35:39 (while parsing)
+fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
+execution_error	IC4@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 15:26 (while parsing)
+execution_error	IC4@pg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 9:26 (while parsing)
+execution_error	IC5@lpg	ERR 1203: AQL: collection or view not found: forum (while parsing)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
-fails_closed	IC6@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
-fails_closed	IC6@pg	UNSUPPORTED: Only a single pattern part is supported in v0
+execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
+fails_closed	IC6@pg	UNSUPPORTED: A single label is required in v0 subset
 fails_closed	IC7@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC7@pg	MAPPING_NOT_FOUND: No entity mapping for: Message
 fails_closed	IC8@lpg	MAPPING_NOT_FOUND: No entity mapping for: Message
@@ -108,7 +108,7 @@ matches_oracle	INS8@lpg	1 binding(s)
 matches_oracle	INS8@pg	1 binding(s)
 matches_oracle	IS1@lpg	3 binding(s)
 matches_oracle	IS1@pg	3 binding(s)
-fails_closed	IS2@lpg	UNSUPPORTED: Only a single pattern part is supported in v0
+execution_error	IS2@lpg	ERR 1500: AQL: query killed (while executing)
 fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
 matches_oracle	IS3@lpg	3 binding(s)
 matches_oracle	IS3@pg	3 binding(s)
