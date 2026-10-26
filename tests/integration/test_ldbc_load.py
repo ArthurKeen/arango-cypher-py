@@ -61,8 +61,8 @@ _CASES = [(name, layout) for name in sorted(DATASETS) for layout in ("pg", "lpg"
 
 
 @pytest.fixture(scope="module")
-def loaded() -> dict[tuple[str, str], tuple[Any, LoadReport]]:
-    return {(name, layout): load_fresh(name, layout) for name, layout in _CASES}
+def loaded(ldbc_arango_url) -> dict[tuple[str, str], tuple[Any, LoadReport]]:
+    return {(name, layout): load_fresh(name, layout, ldbc_arango_url) for name, layout in _CASES}
 
 
 @pytest.mark.parametrize("dataset,layout", _CASES)

@@ -17,12 +17,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.cross]
 
 
 @pytest.fixture(scope="module")
-def recorded():
-    if os.environ.get("RUN_CROSS") != "1":
-        pytest.skip("Set RUN_CROSS=1 (and start docker-compose.neo4j.yml)")
+def recorded(ldbc_neo4j_uri):
     from tests.integration import neo4j_reference
 
-    driver = neo4j_reference.get_driver()
+    driver = neo4j_reference.get_driver(ldbc_neo4j_uri)
     try:
         yield oracle.record(driver)
     finally:
@@ -42,5 +40,5 @@ def test_live_oracle_matches_the_committed_snapshots(recorded):
             drifted.append(op_id)
     assert not drifted, (
         f"the oracle's answers changed for {drifted}. If intended (e.g. a Neo4j upgrade), re-record with "
-        "RUN_CROSS=1 .venv/bin/python -m tests.ldbc.oracle --record and review the diff."
+        ".venv/bin/python -m tests.ldbc.oracle --record and review the diff."
     )

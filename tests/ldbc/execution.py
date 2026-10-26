@@ -16,7 +16,9 @@ oracle's recorded rows (``expected/<scale>/<op>.json``). A cell's outcome:
 Results go to ``execution_ledger.tsv``; ``tests/integration/test_ldbc_execution.py``
 ratchets it. Regenerate (needs the local ArangoDB of the integration tier)::
 
-    RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
+    .venv/bin/python -m tests.ldbc.execution --write
+
+(the databases are started and removed around the run: tests/ldbc/stack.py)
 """
 
 from __future__ import annotations
@@ -131,7 +133,7 @@ def write_execution_ledger(ledger: dict[str, Cell]) -> None:
         EXEC_LEDGER_PATH,
         [
             "LDBC SNB execution ledger: translated AQL vs the Neo4j oracle's snapshots — regenerate with:",
-            "  RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write",
+            "  .venv/bin/python -m tests.ldbc.execution --write",
             "Format: <outcome>\\t<operation>@<layout>\\t<detail>, sorted by cell.",
             f"Passing outcomes: {', '.join(sorted(PASSING_OUTCOMES))}. translates_wrong is a defect, not a state.",
         ],
@@ -142,12 +144,12 @@ def load_execution_ledger() -> dict[str, Cell]:
     return load_ledger(EXEC_LEDGER_PATH)
 
 
-def loaded_databases() -> dict[tuple[str, str], Any]:
-    """Load every data set × layout afresh (about ten seconds at SF0.003)."""
+def loaded_databases(url: str | None = None) -> dict[tuple[str, str], Any]:
+    """Load every data set × layout afresh on *url* (about ten seconds at SF0.003)."""
     from tests.ldbc.arango_dbs import load_fresh
 
     return {
-        (dataset, layout): load_fresh(dataset, layout)[0]  # type: ignore[arg-type]
+        (dataset, layout): load_fresh(dataset, layout, url)[0]  # type: ignore[arg-type]
         for dataset in sorted(set(P._WORKLOAD_DATASET.values()))
         for layout in LAYOUTS
     }
@@ -157,7 +159,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Measure or record the LDBC execution ledger.")
     ap.add_argument("--write", action="store_true", help=f"write {EXEC_LEDGER_PATH.name}")
     args = ap.parse_args(argv)
-    ledger = build_execution_ledger(loaded_databases())
+    from tests.ldbc.stack import ldbc_stack
+
+    with ldbc_stack(arango=True) as endpoints:
+        ledger = build_execution_ledger(loaded_databases(endpoints.arango_url))
     if args.write:
         write_execution_ledger(ledger)
         print(f"wrote {EXEC_LEDGER_PATH}")

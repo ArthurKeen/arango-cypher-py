@@ -18,9 +18,7 @@ _READS = P.read_operations()
 def test_every_bound_read_has_a_current_snapshot(op):
     snap = oracle.read(op.id)
     assert snap is None or snap["kind"] == "read"
-    assert snap is not None, (
-        f"no snapshot for {op.id}: RUN_CROSS=1 .venv/bin/python -m tests.ldbc.oracle --record"
-    )
+    assert snap is not None, f"no snapshot for {op.id}: .venv/bin/python -m tests.ldbc.oracle --record"
     assert snap["sha256"] == op.sha256, f"{op.id}: snapshot recorded for a different query text; re-record"
 
 

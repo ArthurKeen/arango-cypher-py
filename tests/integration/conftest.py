@@ -179,3 +179,33 @@ def arango_pytest_url() -> str:
     yield url
 
     subprocess.run(down, cwd=root, capture_output=True, text=True)
+
+
+# ---------------------------------------------------------------------------
+# LDBC databases (tests/ldbc/stack.py): started for the session and removed
+# afterwards, unless ARANGO_URL / NEO4J_URI point at a server someone else runs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def ldbc_arango_url() -> Any:
+    if os.environ.get("RUN_INTEGRATION") != "1":
+        pytest.skip("RUN_INTEGRATION=1 required")
+    from tests.ldbc.stack import docker_available, ldbc_stack
+
+    if not os.environ.get("ARANGO_URL") and not docker_available():
+        pytest.skip("no ARANGO_URL and Docker is unavailable to start the LDBC ArangoDB")
+    with ldbc_stack(arango=True) as endpoints:
+        yield endpoints.arango_url
+
+
+@pytest.fixture(scope="session")
+def ldbc_neo4j_uri() -> Any:
+    if os.environ.get("RUN_INTEGRATION") != "1" or os.environ.get("RUN_CROSS") != "1":
+        pytest.skip("RUN_INTEGRATION=1 and RUN_CROSS=1 required")
+    from tests.ldbc.stack import docker_available, ldbc_stack
+
+    if not os.environ.get("NEO4J_URI") and not docker_available():
+        pytest.skip("no NEO4J_URI and Docker is unavailable to start the LDBC Neo4j")
+    with ldbc_stack(arango=False, neo4j=True) as endpoints:
+        yield endpoints.neo4j_uri

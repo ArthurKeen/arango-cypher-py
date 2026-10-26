@@ -600,7 +600,9 @@ on its own (incremental-over-atomic).
   - **Local runs.** Neo4j and ArangoDB each need about 1.1 GB with the repo's
     settings. On a Docker VM shared with many other containers, both were
     OOM-killed (exit 137) during runs. That was host contention, not a query.
-    For SF0.003 it is enough to start them with a compose override:
+    **Superseded 2026-10-26** by the LDBC-9 lifecycle: `tests/ldbc/stack.py`
+    starts `docker-compose.ldbc.yml` (capped memory, own ports) around each
+    run and removes it after. The manual overrides below were the stopgap:
     - Neo4j: `NEO4J_server_memory_heap_max__size=512m` and
       `..._pagecache_size=128m`;
     - ArangoDB: `ARANGODB_OVERRIDE_DETECTED_TOTAL_MEMORY=1536M`.

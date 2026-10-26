@@ -26,9 +26,9 @@ def db_name(dataset: str, layout: str) -> str:
     return f"ldbc_{dataset.replace('.', '_').replace('-', '_')}_{layout}"
 
 
-def connect(name: str) -> Any:
-    """The database *name*, created if missing."""
-    client = ArangoClient(hosts=_env("ARANGO_URL", "http://localhost:8529"))
+def connect(name: str, url: str | None = None) -> Any:
+    """The database *name* on *url* (default: ``ARANGO_URL``), created if missing."""
+    client = ArangoClient(hosts=url or _env("ARANGO_URL", "http://localhost:8529"))
     user, pw = _env("ARANGO_USER", "root"), _env("ARANGO_PASS", "openSesame")
     sys_db = client.db("_system", username=user, password=pw)
     if not sys_db.has_database(name):
@@ -36,7 +36,7 @@ def connect(name: str) -> Any:
     return client.db(name, username=user, password=pw)
 
 
-def load_fresh(dataset: str, layout: Layout) -> tuple[Any, LoadReport]:
-    """Connect to the data set × layout database and (re)load it from scratch."""
-    db = connect(db_name(dataset, layout))
+def load_fresh(dataset: str, layout: Layout, url: str | None = None) -> tuple[Any, LoadReport]:
+    """Connect to the data set × layout database on *url* and (re)load it from scratch."""
+    db = connect(db_name(dataset, layout), url)
     return db, load(db, fetch(dataset), layout=layout, encoding=DATASETS[dataset].encoding)

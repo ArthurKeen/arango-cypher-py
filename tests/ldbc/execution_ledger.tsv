@@ -1,5 +1,5 @@
 # LDBC SNB execution ledger: translated AQL vs the Neo4j oracle's snapshots — regenerate with:
-#   RUN_INTEGRATION=1 ARANGO_URL=http://localhost:28529 .venv/bin/python -m tests.ldbc.execution --write
+#   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
 # pg: execution_error 3, fails_closed 34, matches_oracle 12, out_of_subset 5, syntax_error 4
