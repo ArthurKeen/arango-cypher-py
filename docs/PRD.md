@@ -653,9 +653,25 @@ arango-query-core ≥ 0.2.5 resolves the hierarchy
     filters on the member's type field.
   - An entity style the translator does not know is refused
     (`INVALID_MAPPING`) wherever a node is matched.
-- **PG (stage 2, open).** The member-collection union is not lowered yet. The
-  `ldbc_pg` fixture leaves supertypes out, so a query naming one fails closed
-  (`MAPPING_NOT_FOUND`).
+- **PG (stage 2).** The supertype maps as a `UNION` entity over its members
+  (`members`, or the conceptual `subtypes`), each keeping its own collection
+  (`arango_cypher/_translate_v0/supertypes.py`).
+  - A scan of `(m:Message)` iterates a `UNION` of one subquery per member. The
+    node's inline properties filter inside each branch, so each member's
+    index serves `{id: $id}`. `WHERE` filters after the union.
+  - A traversal target, or the label predicate `x:Message`, tests that the
+    document is in a member collection. The test is left out when the edge's
+    domain or range already guarantees it (`HAS_CREATOR` reaches only posts
+    and comments).
+  - A member mapped `LABEL` (a type-discriminated shared collection) adds its
+    type filter. A member of any other style is refused (`INVALID_MAPPING`).
+  - SET, REMOVE and DELETE on a variable matched by a `UNION` supertype are
+    refused (`UNSUPPORTED`), because a write names a single collection. Other
+    variables in the same match can still be written.
+- **Extra labels.** A supertype label that the primary label implies adds no
+  filter (`(p:Post:Message)`). One it does not imply is tested, under both
+  styles. That includes a `COLLECTION` primary, so `(x:Person:Message)` matches
+  nothing instead of every Person.
 - **A mapping that maps the supertype as if it were a concrete label** makes
   translation succeed, but the AQL describes the mapping, not the data. Under
   PG it scans a collection named after the supertype; under LPG it compares the

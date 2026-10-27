@@ -16,8 +16,9 @@ WP-35), staged by layout:
 
 * **LPG** (stage 1): ``MULTI_LABEL`` — every node's ``labels`` array lists its
   supertype, so ``(m:Message)`` is ``"Message" IN m.labels``.
-* **PG** (stage 2, not yet): no mapping, so a query naming a supertype still
-  fails closed with ``MAPPING_NOT_FOUND`` until the ``UNION`` lowering lands.
+* **PG** (stage 2): ``UNION`` — the members keep their own collections, so a
+  scan of ``(m:Message)`` unions ``post`` and ``comment`` and a traversal target
+  tests membership of either.
 
 Polymorphic relationships declare union ``domain``/``range`` lists of concrete
 labels, which the resolver supports.
@@ -156,21 +157,24 @@ def build(layout: Layout) -> dict[str, Any]:
                 "indexes": [_index_json(s) for s in node_specs],
             }
 
-    if layout == "lpg":
-        label_specs = [s for s in specs if s.collection == LPG_NODES and s.fields[0] == f"{LABELS_FIELD}[*]"]
-        for sup, members in SUPERTYPES.items():
-            cols: dict[str, Column] = {}
-            for member in members:
-                for c in _label_properties(member):
-                    cols.setdefault(c.name, c)
-            entities_cs.append(
-                {
-                    "name": sup,
-                    "labels": [sup],
-                    "subtypes": list(members),
-                    "properties": [{"name": c.name, "type": _PROP_TYPE[c.kind]} for c in cols.values()],
-                }
-            )
+    label_specs = [s for s in specs if s.collection == LPG_NODES and s.fields[0] == f"{LABELS_FIELD}[*]"]
+    for sup, members in SUPERTYPES.items():
+        cols: dict[str, Column] = {}
+        for member in members:
+            for c in _label_properties(member):
+                cols.setdefault(c.name, c)
+        entities_cs.append(
+            {
+                "name": sup,
+                "labels": [sup],
+                "subtypes": list(members),
+                "properties": [{"name": c.name, "type": _PROP_TYPE[c.kind]} for c in cols.values()],
+            }
+        )
+        if layout == "pg":
+            # The members' collections carry the indexes; the supertype has none of its own.
+            entities_pm[sup] = {"style": "UNION", "members": list(members)}
+        else:
             entities_pm[sup] = {
                 "collectionName": LPG_NODES,
                 "style": "MULTI_LABEL",
@@ -221,7 +225,7 @@ def build(layout: Layout) -> dict[str, Any]:
                 + (
                     "are MULTI_LABEL over the nodes' labels array."
                     if layout == "lpg"
-                    else "are not mapped yet on PG (stage 2, UNION; PRD §8.4)."
+                    else "are UNION over their members' collections (PRD §8.4)."
                 )
             ],
         },
