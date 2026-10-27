@@ -45,7 +45,12 @@ def test_label_predicate_on_a_supertype():
 def test_a_concrete_label_is_preferred_as_primary():
     q = _t("MATCH (m:Comment:Message {id: 1}) RETURN m.id")
     assert re.search(r"m\[@\w+\] == @\w+", q.aql), q.aql  # Comment's type-field filter
-    assert '"Message" IN m.labels' in q.aql  # the supertype stays as a label filter
+    assert "Message" not in q.aql and "Message" not in q.bind_vars.values()  # every Comment is a Message
+
+
+def test_a_supertype_the_primary_does_not_imply_filters_on_its_labels_field():
+    q = _t("MATCH (m:Person:Message {id: 1}) RETURN m.id")
+    assert _multi_label(q, "m") == ("Message", "labels")
 
 
 def test_place_and_organisation_are_supertypes_too():

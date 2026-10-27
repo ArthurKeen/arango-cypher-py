@@ -18,6 +18,7 @@ from .._antlr.CypherParser import CypherParser
 from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
 from .property_writes import PropertyOp, PropertyWrites, StoredWrite, keep_fields_for
+from .supertypes import union_scan_source
 
 
 def _atom_variable(atom: Any) -> str | None:
@@ -661,20 +662,30 @@ def _translate_mutating_query(
     # ``None``: the variable cannot be written (a variable-length relationship
     # is a list of edges).
     write_keys: dict[str, str | None] = {var: "@collection"}
+    # Variables matched by a UNION supertype, whose documents live in several
+    # collections: an UPDATE/REMOVE names one, so they cannot be written.
+    union_vars: dict[str, str] = {}
 
     if labels:
         primary = _pick_primary_entity_label(labels, resolver)
         entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
-        bind_vars["@collection"] = entity_mapping["collectionName"]
 
         style = entity_mapping.get("style")
+        if style == "UNION":
+            lines = [
+                f"FOR {var} IN {union_scan_source(var, primary, resolver, bind_vars, filters=prop_filters)}"
+            ]
+            prop_filters = []
+            union_vars[var] = _strip_label_backticks(primary)
+        else:
+            bind_vars["@collection"] = entity_mapping["collectionName"]
         if style == "LABEL":
             bind_vars["typeField"] = entity_mapping["typeField"]
             bind_vars["typeValue"] = entity_mapping["typeValue"]
             lines.append(f"  FILTER {var}[@typeField] == @typeValue")
         elif style == "MULTI_LABEL":
             lines.append(f"  FILTER {_multi_label_filter(var, entity_mapping, bind_vars)}")
-        elif style != "COLLECTION":
+        elif style not in ("COLLECTION", "UNION"):
             raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
     else:
         # Unlabeled ``MATCH (n) SET/DELETE/REMOVE …``: resolve to the single
@@ -710,10 +721,14 @@ def _translate_mutating_query(
         if v_labels:
             v_primary = _pick_primary_entity_label(v_labels, resolver)
             v_map = resolver.resolve_entity(_strip_label_backticks(v_primary))
-            write_keys[v_var] = _find_or_create_collection_bind_key(
-                "@collection", v_map["collectionName"], bind_vars
-            )
             v_style = v_map.get("style")
+            if v_style == "UNION":
+                union_vars[v_var] = _strip_label_backticks(v_primary)
+                write_keys[v_var] = None
+            else:
+                write_keys[v_var] = _find_or_create_collection_bind_key(
+                    "@collection", v_map["collectionName"], bind_vars
+                )
             if v_style == "LABEL":
                 vtf = _pick_bind_key("vTypeField", bind_vars)
                 vtv = _pick_bind_key("vTypeValue", bind_vars)
@@ -722,16 +737,17 @@ def _translate_mutating_query(
                 lines.append(f"    FILTER {v_var}[@{vtf}] == @{vtv}")
             elif v_style == "MULTI_LABEL":
                 lines.append(f"    FILTER {_multi_label_filter(v_var, v_map, bind_vars)}")
-            elif v_style not in ("COLLECTION", "LABEL"):
+            elif v_style not in ("COLLECTION", "UNION"):
                 raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
-            elif v_style == "COLLECTION" and not (
+            elif not (
                 len(v_labels) == 1
                 and rel_type is not None
                 and resolver.edge_constrains_target(rel_type, _strip_label_backticks(v_primary), direction)
             ):
                 # The edge may lead into another collection (a polymorphic
                 # LIKES reaches posts and comments): keep only the labelled
-                # one, as the read path does, or the write touches the others.
+                # one — or, for a UNION supertype, its members — as the read
+                # path does, or the write touches the others.
                 pred = _compile_label_predicate(v_var, v_node.oC_NodeLabels(), bind_vars)
                 if pred is not None:
                     lines.append(f"    FILTER {pred}")
@@ -767,6 +783,12 @@ def _translate_mutating_query(
                 code="UNSUPPORTED",
             )
         key = write_keys[target_var]
+        if target_var in union_vars:
+            raise CoreError(
+                f"{verb} on {target_var!r} is not supported: it is matched as the supertype "
+                f"{union_vars[target_var]!r}, whose members live in several collections",
+                code="UNSUPPORTED",
+            )
         if key is None:
             raise CoreError(
                 f"{verb} on {target_var!r}, a variable-length relationship (a list of edges), "
@@ -1052,18 +1074,17 @@ def _compile_create_node(
         primary = _pick_primary_entity_label(labels, resolver)
         entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
         style = entity_mapping.get("style")
+        if style in ("MULTI_LABEL", "UNION"):
+            raise CoreError(
+                f"Cannot CREATE a node by its supertype {primary!r}: name a concrete label",
+                code="UNSUPPORTED",
+            )
 
         coll_key = _find_or_create_collection_bind_key(
             "@collection",
             entity_mapping["collectionName"],
             bind_vars,
         )
-
-        if style in ("MULTI_LABEL", "UNION"):
-            raise CoreError(
-                f"Cannot CREATE a node by its supertype {primary!r}: name a concrete label",
-                code="UNSUPPORTED",
-            )
         if style == "LABEL":
             type_field = entity_mapping.get("typeField", "type")
             tv_key = _pick_bind_key("typeValue", bind_vars)
@@ -1606,6 +1627,21 @@ def _build_merge_node_docs(
 
     primary = _pick_primary_entity_label(labels, resolver)
     entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
+    style = entity_mapping.get("style")
+    if style == "UNION":
+        raise CoreError(
+            f"MERGE on {primary!r} is not supported: it is a supertype whose members live in "
+            "several collections",
+            code="UNSUPPORTED",
+        )
+    if style == "MULTI_LABEL" or _supertype_label_fields(
+        _strip_label_backticks(primary), entity_mapping.get("collectionName") or "", resolver
+    ):
+        raise CoreError(
+            f"MERGE on {primary!r} is not supported: it is, or has, a supertype whose "
+            "labels array the MERGE would have to match",
+            code="UNSUPPORTED",
+        )
     coll_key = _find_or_create_collection_bind_key(
         "@collection",
         entity_mapping["collectionName"],
@@ -1615,15 +1651,6 @@ def _build_merge_node_docs(
 
     props = _compile_create_props(node.oC_Properties(), bind_vars)
     extra_fields: list[str] = []
-    style = entity_mapping.get("style")
-    if style in ("MULTI_LABEL", "UNION") or _supertype_label_fields(
-        _strip_label_backticks(primary), entity_mapping.get("collectionName") or "", resolver
-    ):
-        raise CoreError(
-            f"MERGE on {primary!r} is not supported: it is, or has, a supertype whose "
-            "labels array the MERGE would have to match",
-            code="UNSUPPORTED",
-        )
     if style == "LABEL":
         type_field = entity_mapping.get("typeField", "type")
         tv_key = _pick_bind_key("typeValue", bind_vars)

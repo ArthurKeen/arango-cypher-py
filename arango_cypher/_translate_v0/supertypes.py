@@ -1,0 +1,167 @@
+"""Where a matched node's documents live: one label's collection, or a
+``UNION`` supertype's member collections (PRD §8.4, WP-35 stage 2).
+
+A ``UNION`` supertype (LDBC's ``Message`` over PG's ``post`` and ``comment``
+collections; arango-query-core ``SUPERTYPE_STYLES``) has no collection of its
+own, so the two places a node's collection enters the AQL are lowered over its
+members instead:
+
+* **Scan start** — ``FOR m IN @@collection`` becomes a ``UNION`` of one
+  subquery per member. The node's inline property filters are pushed into each
+  branch, so ``(m:Message {id: $id})`` uses each member's index instead of
+  materialising every member document first.
+* **Collection check** — ``IS_SAME_COLLECTION(@c, v)`` on a traversal target or
+  label predicate becomes "``v`` is a document of one of the members".
+
+A member mapped ``COLLECTION`` is identified by its collection alone; a member
+mapped ``LABEL`` (a type-discriminated shared collection, as in a hybrid
+layout) also needs its type field. Other member styles fail closed.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
+from arango_query_core import CoreError, MappingResolver
+
+from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
+
+
+def _collection_of(label: str, emap: dict[str, Any]) -> str:
+    coll = emap.get("collectionName")
+    if not isinstance(coll, str) or not coll:
+        raise CoreError(f"Invalid entity mapping collectionName for: {label}", code="INVALID_MAPPING")
+    return coll
+
+
+def _union_members(label: str, resolver: MappingResolver) -> list[tuple[str, dict[str, Any]]]:
+    """The concrete members of the ``UNION`` supertype *label* with their mappings."""
+    label = _strip_label_backticks(label)
+    members = [(m, resolver.resolve_entity(m)) for m in resolver.supertype_members(label)]
+    for member, emap in members:
+        _collection_of(member, emap)
+        style = emap.get("style")
+        if style not in ("COLLECTION", "LABEL"):
+            raise CoreError(
+                f"Supertype {label!r} is mapped UNION, but its member {member!r} is mapped {style}: "
+                "only COLLECTION and LABEL members can be unioned",
+                code="INVALID_MAPPING",
+            )
+        if style == "LABEL" and not (emap.get("typeField") and emap.get("typeValue")):
+            raise CoreError(
+                f"LABEL member {member!r} of supertype {label!r} needs 'typeField' and 'typeValue'",
+                code="INVALID_MAPPING",
+            )
+    return members
+
+
+def _member_type_filter(var: str, member: str, emap: dict[str, Any], bind_vars: dict[str, Any]) -> str:
+    tf_key = _pick_bind_key(f"{var}MemberTypeField", bind_vars)
+    tv_key = _pick_bind_key(f"{var}MemberTypeValue", bind_vars)
+    bind_vars[tf_key] = emap["typeField"]
+    bind_vars[tv_key] = emap["typeValue"]
+    return f"{var}[@{tf_key}] == @{tv_key}"
+
+
+def union_membership_filter(
+    var: str, label: str, resolver: MappingResolver, bind_vars: dict[str, Any]
+) -> str:
+    """An AQL boolean that is true when *var* is a document of one of *label*'s members.
+
+    Members in their own collections share one ``IN`` test over the collection
+    names; ``PARSE_IDENTIFIER(null).collection`` is ``null``, so a null *var*
+    (an unmatched OPTIONAL node) is not a member.
+    """
+    whole: list[str] = []
+    parts: list[str] = []
+    for member, emap in _union_members(label, resolver):
+        coll = _collection_of(member, emap)
+        if emap.get("style") == "COLLECTION":
+            if coll not in whole:
+                whole.append(coll)
+            continue
+        coll_key = _pick_bind_key(f"{var}MemberColl", bind_vars)
+        bind_vars[coll_key] = coll
+        parts.append(
+            f"(IS_SAME_COLLECTION(@{coll_key}, {var}) AND {_member_type_filter(var, member, emap, bind_vars)})"
+        )
+    if whole:
+        key = _pick_bind_key(f"{var}Members", bind_vars)
+        bind_vars[key] = whole
+        parts.insert(0, f"PARSE_IDENTIFIER({var}).collection IN @{key}")
+    return parts[0] if len(parts) == 1 else "(" + " OR ".join(parts) + ")"
+
+
+def union_scan_source(
+    var: str,
+    label: str,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    *,
+    filters: Sequence[str] = (),
+) -> str:
+    """An AQL expression over every document of *label*'s members, for ``FOR var IN <it>``.
+
+    Each branch declares *var* itself, so *filters* (written against *var*)
+    apply inside it unchanged; AQL accepts the outer ``FOR var`` declared
+    after the branches close.
+    """
+    branches: list[str] = []
+    seen: set[str] = set()
+    for member, emap in _union_members(label, resolver):
+        coll = _collection_of(member, emap)
+        member_filters = list(filters)
+        if emap.get("style") == "LABEL":
+            member_filters.insert(0, _member_type_filter(var, member, emap, bind_vars))
+        elif coll in seen:
+            continue
+        seen.add(coll)
+        key = _pick_bind_key(f"@{var}Member", bind_vars)
+        bind_vars[key] = coll
+        body = "".join(f" FILTER {f}" for f in member_filters)
+        branches.append(f"(FOR {var} IN {_aql_collection_ref(key)}{body} RETURN {var})")
+    if len(branches) == 1:
+        return branches[0]
+    return "UNION(" + ", ".join(branches) + ")"
+
+
+def node_collection_filter(
+    var: str,
+    label: str,
+    emap: dict[str, Any],
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    *,
+    key_base: str,
+) -> str:
+    """The check that *var* is in *label*'s collection — the members' for a ``UNION`` supertype."""
+    if emap.get("style") == "UNION":
+        return union_membership_filter(var, label, resolver, bind_vars)
+    key = _pick_bind_key(key_base, bind_vars)
+    bind_vars[key] = _collection_of(label, emap)
+    return f"IS_SAME_COLLECTION(@{key}, {var})"
+
+
+def node_scan_source(
+    var: str,
+    label: str,
+    emap: dict[str, Any],
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    *,
+    coll_key: str,
+    filters: Sequence[str] = (),
+) -> tuple[str, bool]:
+    """What ``FOR var IN …`` iterates for a node labelled *label*.
+
+    Returns ``(source, pushed)``. For a ``UNION`` supertype *source* is the
+    member union and *pushed* is true: *filters* are already applied inside it
+    and the caller must not apply them again. Otherwise *coll_key* is bound to
+    the label's collection, *source* is its ``@@`` reference, and *filters* are
+    left to the caller.
+    """
+    if emap.get("style") == "UNION":
+        return union_scan_source(var, label, resolver, bind_vars, filters=filters), True
+    bind_vars[coll_key] = _collection_of(label, emap)
+    return _aql_collection_ref(coll_key), False
