@@ -135,13 +135,15 @@ def _aql_bind_name(parameter: str) -> str:
 
 
 def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
-    """Best-effort variable rewrite for post-WITH scopes."""
+    """Best-effort variable rewrite for post-WITH scopes.
+
+    One pass over *text*, longest key first: a replacement is never rewritten
+    again. Substituting key by key did, so with ``{"a.name": "name", "name":
+    "name_g1"}`` an ``ORDER BY a.name`` became ``name`` and then ``name_g1`` —
+    the other column (LDBC BI3 sorted by ``person.id`` for ``forum.id``).
+    """
     if not text or not var_env:
         return text
-    out = text
-    for k in sorted(var_env.keys(), key=len, reverse=True):
-        v = var_env[k]
-        if k == v:
-            continue
-        out = re.sub(rf"\b{re.escape(k)}\b", v, out)
-    return out
+    keys = sorted(var_env.keys(), key=len, reverse=True)
+    pattern = re.compile(r"\b(?:" + "|".join(re.escape(k) for k in keys) + r")\b")
+    return pattern.sub(lambda m: var_env[m.group(0)], text)

@@ -8,6 +8,8 @@ from arango_query_core.extensions import ExtensionRegistry
 from arango_query_core.mapping import MappingResolver
 
 from arango_cypher import translate
+from arango_cypher._translate_v0.core import _unique_projection_key
+from arango_cypher._translate_v0.naming import _rewrite_vars
 from arango_cypher.api import TranspiledQuery
 from arango_cypher.translate_v0 import (
     _aql_collection_ref,
@@ -249,3 +251,16 @@ def test_compile_type_of_relationship_generic_reads_rel_type_field():
         _compile_type_of_relationship("FOLLOWS", "r", "GENERIC_WITH_TYPE", bind_vars={"relTypeField": "type"})
         == "r[@relTypeField]"
     )
+
+
+def test_rewrite_vars_never_rewrites_a_replacement():
+    """Key by key, ``a.name`` -> ``name`` was rewritten again to ``name_g1``."""
+    env = {"a.name": "name", "name": "name_g1", "b.name": "name_g1"}
+    assert _rewrite_vars("a.name ASC, b.name", env) == "name ASC, name_g1"
+
+
+def test_unique_projection_key_prefers_var_and_property_then_a_suffix():
+    used: set[str] = set()
+    assert _unique_projection_key("name", "a.name", used) == "name"
+    assert _unique_projection_key("name", "b.name", used) == "b_name"
+    assert _unique_projection_key("name", "upper(c.name)", used) == "name_2"

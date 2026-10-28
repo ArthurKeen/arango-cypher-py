@@ -1019,6 +1019,8 @@ def _translate_match_body(
 
     # Case B: relationship pattern (1+ hops)
     u_var, u_labels = _extract_node_var_and_labels(node, default_var="u")
+    if node.oC_Variable() is None:
+        u_var = _anonymous_var(u_var, node, set())
     u_prop_filters = _compile_node_pattern_properties(node, var=u_var, bind_vars=bind_vars)
 
     # Fast path: a fully-anonymous single hop (e.g. ``MATCH ()-[r]->()``) is an
@@ -1103,6 +1105,8 @@ def _translate_match_body(
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
         v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
+        if v_node.oC_Variable() is None:
+            v_var = _anonymous_var(v_var, v_node, forbidden_vars)
         v_bound = v_node.oC_Variable() is not None and v_var in forbidden_vars
         v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden_vars)
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
@@ -1110,8 +1114,8 @@ def _translate_match_body(
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
         detail = rel_pat.oC_RelationshipDetail()
         rel_named = detail is not None and detail.oC_Variable() is not None
-        if not rel_named and rel_var in forbidden_vars:
-            rel_var = _pick_fresh_var(rel_var, forbidden_vars=forbidden_vars)
+        if not rel_named:
+            rel_var = _anonymous_var(rel_var, rel_pat, forbidden_vars)
         elif rel_var in forbidden_vars:
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
         forbidden_vars.add(rel_var)
@@ -2413,7 +2417,8 @@ def _compile_bound_part(
         rel_type, rel_cy, rel_range = _extract_relationship_type_and_var(rel_pat, default_var=rel_default)
         _rdetail = rel_pat.oC_RelationshipDetail()
         rel_named = _rdetail is not None and _rdetail.oC_Variable() is not None
-        v_is_backref = v_cy in out_env
+        v_named = v_node.oC_Variable() is not None
+        v_is_backref = v_named and v_cy in out_env
 
         # A node or relationship already bound (by the WITH or an earlier
         # part) is not rebound: AQL rejects assigning a variable twice (ERR
@@ -2431,7 +2436,7 @@ def _compile_bound_part(
             backref_filters.append(f"{r_aql}._id == {out_env[rel_cy]}._id")
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=r_aql, bind_vars=bind_vars)
 
-        if not v_is_backref:
+        if v_named and not v_is_backref:
             out_env[v_cy] = v_aql
         if rel_named and not r_is_backref:
             out_env[rel_cy] = r_aql
@@ -2626,6 +2631,8 @@ def _compile_match_pipeline(
 
     # Relationship pattern (1+ hops)
     u_var, u_labels = _extract_node_var_and_labels(node, default_var="u")
+    if node.oC_Variable() is None:
+        u_var = _anonymous_var(u_var, node, set())
     u_prop_filters = _compile_node_pattern_properties(node, var=u_var, bind_vars=bind_vars)
 
     u_filters: list[str] = []
@@ -2676,6 +2683,8 @@ def _compile_match_pipeline(
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
         v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
+        if v_node.oC_Variable() is None:
+            v_var = _anonymous_var(v_var, v_node, forbidden)
         # A back-reference to an already-bound node (e.g. (p)-[:R]->(m)<-[:R2]-(p))
         # must traverse to a *fresh* variable and constrain it by _id, not re-open
         # a FOR loop on the bound name — AQL rejects the duplicate variable
@@ -2687,8 +2696,8 @@ def _compile_match_pipeline(
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
         detail = rel_pat.oC_RelationshipDetail()
         rel_named = detail is not None and detail.oC_Variable() is not None
-        if not rel_named and rel_var in forbidden:
-            rel_var = _pick_fresh_var(rel_var, forbidden_vars=forbidden)
+        if not rel_named:
+            rel_var = _anonymous_var(rel_var, rel_pat, forbidden)
         elif rel_var in forbidden:
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
         if rel_var in {u_var, v_var}:
@@ -3554,6 +3563,8 @@ def _append_return_aggregation(
             _t = _rewrite_vars(_t, var_env)
         live_names.update(_REFERENCED_IDENT_RE.findall(_t))
 
+    used_keys: set[str] = set()
+
     def _alloc(preferred: str) -> str:
         name = preferred
         i = 1
@@ -3574,7 +3585,7 @@ def _append_return_aggregation(
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = alias or f"expr{idx}"
+            key = _unique_projection_key(alias or f"expr{idx}", expr_txt, used_keys)
             compiled_collects.append((key, _alloc(key), collect_spec))
             continue
 
@@ -3584,7 +3595,7 @@ def _append_return_aggregation(
             fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
             fn_key = fn_match.group(1).lower() if fn_match else None
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = alias or fn_key or f"expr{idx}"
+            key = _unique_projection_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
             compiled_agg.append((key, _alloc(key), agg_expr))
             continue
 
@@ -3595,11 +3606,13 @@ def _append_return_aggregation(
         # (e.g. ``type(r)`` -> ``type``) rather than the compiled AQL, which
         # for non-trivial expressions like the ``type()`` runtime discriminator
         # would yield a malformed identifier (``...collection)``).
-        key = (
+        key = _unique_projection_key(
             alias
             or _infer_key(expr_txt)
             or _infer_key(expr)
-            or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}"
+            or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}",
+            expr_txt,
+            used_keys,
         )
         compiled_nonagg.append((key, _alloc(key), expr))
 
@@ -3668,22 +3681,31 @@ def _infer_key(expr: str) -> str | None:
     return None
 
 
+def _unique_projection_key(key: str, expr: str, used: set[str]) -> str:
+    """*key*, or a variant no earlier projection column uses, recorded in *used*.
+
+    Two columns inferred from the same property (``a.name, b.name``) would
+    both be ``name``, and an AQL object keeps only the last of two equal keys.
+    Prefer ``a.name`` → ``a_name``, then a numeric suffix.
+    """
+    if key in used:
+        m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", expr)
+        if m:
+            key = f"{m.group(1)}_{m.group(2)}"
+    if key in used:
+        i = 2
+        while f"{key}_{i}" in used:
+            i += 1
+        key = f"{key}_{i}"
+    used.add(key)
+    return key
+
+
 def _compile_return_object(compiled_items: list[tuple[str | None, str]]) -> str:
     obj_parts: list[str] = []
     used: set[str] = set()
     for alias, expr in compiled_items:
-        key = alias or _infer_key(expr) or f"expr{len(obj_parts) + 1}"
-        if key in used:
-            # Prefer `u.id` → `u_id` to avoid collisions when projecting same property from multiple vars.
-            m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", expr)
-            if m:
-                key = f"{m.group(1)}_{m.group(2)}"
-        if key in used:
-            i = 2
-            while f"{key}_{i}" in used:
-                i += 1
-            key = f"{key}_{i}"
-        used.add(key)
+        key = _unique_projection_key(alias or _infer_key(expr) or f"expr{len(obj_parts) + 1}", expr, used)
         obj_parts.append(f"{key}: {expr}")
     return "{" + ", ".join(obj_parts) + "}"
 
@@ -3717,6 +3739,37 @@ def _append_skip_limit(lines: list[str], skip_value: str | None, limit_value: st
         lines.append(f"  LIMIT {skip_value}, 1000000000")
         return
     lines.append(f"  LIMIT {limit_value}")
+
+
+def _query_variable_names(ctx: Any) -> set[str]:
+    """Every variable name written anywhere in the query that holds *ctx*."""
+    root = ctx
+    while getattr(root, "parentCtx", None) is not None:
+        root = root.parentCtx
+    names: set[str] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, CypherParser.OC_VariableContext):
+            names.add(node.getText().strip())
+            continue
+        stack.extend(getattr(node, "children", None) or [])
+    return names
+
+
+def _anonymous_var(default: str, ctx: Any, taken: set[str]) -> str:
+    """The AQL variable for an unnamed node or relationship.
+
+    *default* (``u``, ``v``, ``r``) unless an earlier part of the pattern
+    (*taken*) or any variable the query names uses it. Reusing a taken name
+    re-declared it (ERR 1511 — two anonymous nodes in LDBC BI3), and sharing
+    a user's name made a later ``(v)`` a back-reference to the unnamed node,
+    which silently joined the two and returned no rows.
+    """
+    named = _query_variable_names(ctx)
+    if default not in taken and default not in named:
+        return default
+    return _pick_fresh_var(default, forbidden_vars=taken | named)
 
 
 def _extract_node_var_and_labels(
