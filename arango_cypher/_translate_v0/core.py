@@ -42,6 +42,7 @@ from .hints import (
     _warn_missing_vci,
     _warn_multi_label_collection,
 )
+from .inserts import is_create_pipeline, translate_create_pipeline
 from .literals import _aql_string_from_cypher, _aql_string_literal
 from .multi_type import (
     MULTI_TYPE_SEPARATOR,
@@ -1627,6 +1628,8 @@ def _translate_multi_part_query(
     _has_updating = bool(mpq.oC_UpdatingClause()) or (_tail is not None and bool(_tail.oC_UpdatingClause()))
     if not _has_match and not _has_updating:
         return _translate_computational_multi_part(mpq, bind_vars=bind_vars)
+    if is_create_pipeline(mpq):
+        return translate_create_pipeline(mpq, resolver=resolver, bind_vars=bind_vars)
     if mpq.oC_UpdatingClause():
         raise CoreError("Updating clauses are not supported in v0", code="UNSUPPORTED")
 

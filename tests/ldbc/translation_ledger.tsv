@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 10, out_of_subset 5, syntax_error 4, translatable 39
-# lpg: fails_closed 10, out_of_subset 5, syntax_error 4, translatable 39
+# pg: fails_closed 6, out_of_subset 5, syntax_error 4, translatable 43
+# lpg: fails_closed 6, out_of_subset 5, syntax_error 4, translatable 43
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -89,22 +89,22 @@ translatable	IC8@lpg
 translatable	IC8@pg	
 translatable	IC9@lpg	
 translatable	IC9@pg	
-fails_closed	INS1@lpg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS1@pg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS1~schema-fix@lpg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS1~schema-fix@pg	UNSUPPORTED: Updating clauses are not supported in v0
+fails_closed	INS1@lpg	MAPPING_NOT_FOUND: No relationship mapping for: WORKS_AT
+fails_closed	INS1@pg	MAPPING_NOT_FOUND: No relationship mapping for: WORKS_AT
+translatable	INS1~schema-fix@lpg	
+translatable	INS1~schema-fix@pg	
 translatable	INS2@lpg	
 translatable	INS2@pg	
 translatable	INS3@lpg	
 translatable	INS3@pg	
-fails_closed	INS4@lpg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS4@pg	UNSUPPORTED: Updating clauses are not supported in v0
+translatable	INS4@lpg	
+translatable	INS4@pg	
 translatable	INS5@lpg	
 translatable	INS5@pg	
-fails_closed	INS6@lpg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS6@pg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS7@lpg	UNSUPPORTED: Updating clauses are not supported in v0
-fails_closed	INS7@pg	UNSUPPORTED: Updating clauses are not supported in v0
+translatable	INS6@lpg	
+translatable	INS6@pg	
+translatable	INS7@lpg	
+translatable	INS7@pg	
 translatable	INS8@lpg	
 translatable	INS8@pg	
 translatable	IS1@lpg	

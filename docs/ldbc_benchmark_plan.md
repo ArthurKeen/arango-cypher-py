@@ -798,11 +798,14 @@ beyond the fail-closed guard.
     (`-1` / empty).
 - **Unlocks:** IC1 IC13, and the IC14 existence check.
 
-#### WP-40: Write pipelines (M) — deletes implemented 2026-10-28
+#### WP-40: Write pipelines (M) — implemented 2026-10-28
 - **Status (2026-10-28): the deletes are done.** A DELETE-only query reads every
   matched row first, then writes each collection once (PRD §8.3). DEL1, DEL4,
-  DEL6 and DEL7 match the oracle on both layouts. The inserts (INS1/4/6/7)
-  still need the multi-statement decision (PRD §16).
+  DEL6 and DEL7 match the oracle on both layouts. The inserts are done too
+  (decided 2026-10-28: read first, one INSERT per collection, keys generated
+  up front): INS1~schema-fix, INS4, INS6 and INS7 match on both layouts; INS1
+  itself stays refused because it names `WORKS_AT`, which the schema lacks
+  (the upstream bug, ldbc/ldbc_snb_interactive_v2_impls#10).
 - **Scope:**
   - `MATCH … CREATE … WITH … UNWIND … MATCH … CREATE` (INS1 INS4 INS6 INS7).
   - `DETACH DELETE` over `OPTIONAL MATCH` variables (DEL1 DEL4).
