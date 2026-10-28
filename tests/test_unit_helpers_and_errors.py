@@ -224,6 +224,14 @@ def test_pick_bind_key_increments_numeric_suffix_until_free():
     assert _pick_bind_key("@collection", bind_vars) == "@collection3"
 
 
+def test_pick_bind_key_keeps_only_characters_aql_accepts_in_a_bind_name():
+    """A quoted or non-ASCII Cypher variable embedded in a key was ERR 1501."""
+    assert _pick_bind_key("`a b`TypeField", {}) == "_a_b_TypeField"
+    assert _pick_bind_key("@`a b`Member", {}) == "@_a_b_Member"
+    assert _pick_bind_key("äMembers", {}) == "_Members"
+    assert _pick_bind_key("`a b`Members", {"_a_b_Members": ["post"]}) == "_a_b_Members2"
+
+
 def test_aql_collection_ref_requires_at_prefix():
     with pytest.raises(CoreError) as e:
         _aql_collection_ref("collection")
