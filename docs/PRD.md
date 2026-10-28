@@ -566,7 +566,11 @@ An `UNWIND` before the first `MATCH` of such a pipeline is refused
 even when it is bound under another AQL name. Two unaliased columns inferred
 from the same property (`RETURN a.name, b.name`) are named `name` and `b_name`,
 with or without aggregation, and `ORDER BY` resolves each expression to its own
-column. `RETURN type(r)` on its own is a
+column. `ORDER BY` sorts null after every value ascending and before every
+value descending, as Cypher does (AQL sorts null below every value), through
+a leading "is null" sort key on each key that can be null. `RETURN DISTINCT`
+honours the sort direction, and a projection alias named like a variable
+(`RETURN a.name AS a ORDER BY a`) sorts by the alias. `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
 In a `UNION`, internal names that repeat across branches with different values

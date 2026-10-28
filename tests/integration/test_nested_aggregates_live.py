@@ -75,10 +75,10 @@ def test_a_function_of_collect_keeps_the_incoming_order(db: Any) -> None:
         "MATCH (n:User) WITH n ORDER BY n.age DESC "
         "WITH n.city AS city, head(collect(n.name)) AS oldest RETURN city, oldest ORDER BY city",
     )
-    assert rows == [
-        {"city": None, "oldest": "d"},
+    assert rows == [  # ascending: null last, as in Cypher
         {"city": "NYC", "oldest": "c"},
         {"city": "SF", "oldest": "b"},
+        {"city": None, "oldest": "d"},
     ]
 
 

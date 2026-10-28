@@ -259,12 +259,11 @@ cases:
       aql: |
         FOR n IN @@collection
           COLLECT city = n.city
-          SORT city
+          SORT (city == null), city
           LIMIT 1, 1
           RETURN city
       bind_vars:
         "@collection": users
-
   - id: C061
     name: skip without limit uses large count
     mapping_fixture: pg
@@ -274,12 +273,11 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          SORT n.id
+          SORT (n.id == null), n.id
           LIMIT 2, 1000000000
           RETURN n.id
       bind_vars:
         "@collection": users
-
   - id: C062
     name: function toUpper comparison
     mapping_fixture: pg

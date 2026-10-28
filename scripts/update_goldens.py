@@ -122,7 +122,8 @@ def _replace_case_aql(
         case_block = case_block[: bm.start()] + new_block + case_block[bm.end() :]
     else:
         quoted_re = re.compile(
-            rf"^([ \t]{{{aql_indent}}}aql:\s*)(\"(?:[^\"\\]|\\.)*\"|'(?:[^']|'')*')(\s*\n)",
+            # ``\\[\s\S]``: a long string is folded over lines ending in a backslash.
+            rf"^([ \t]{{{aql_indent}}}aql:\s*)(\"(?:[^\"\\]|\\[\s\S])*\"|'(?:[^']|'')*')(\s*\n)",
             re.MULTILINE,
         )
         qm = quoted_re.search(case_block)
