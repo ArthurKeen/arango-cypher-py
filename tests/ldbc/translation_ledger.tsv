@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 6, out_of_subset 5, syntax_error 4, translatable 43
-# lpg: fails_closed 6, out_of_subset 5, syntax_error 4, translatable 43
+# pg: fails_closed 6, out_of_subset 5, syntax_error 2, translatable 45
+# lpg: fails_closed 6, out_of_subset 5, syntax_error 2, translatable 45
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -67,12 +67,12 @@ translatable	IC11@lpg
 translatable	IC11@pg	
 translatable	IC12@lpg	
 translatable	IC12@pg	
-syntax_error	IC13@lpg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
-syntax_error	IC13@pg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+translatable	IC13@lpg	
+translatable	IC13@pg	
 out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
 out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
-syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
-syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+translatable	IC1@lpg	
+translatable	IC1@pg	
 translatable	IC2@lpg	
 translatable	IC2@pg	
 translatable	IC3@lpg	

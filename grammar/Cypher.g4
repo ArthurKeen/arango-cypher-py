@@ -226,7 +226,15 @@ oC_PatternPart
  ;
 
 oC_AnonymousPatternPart
- : oC_PatternElement ;
+ : oC_ShortestPathPattern
+ | oC_PatternElement
+ ;
+
+// Neo4j extension: shortestPath((a)-[*]-(b)) / allShortestPaths((a)-[*]-(b)).
+oC_ShortestPathPattern
+ : ( SHORTESTPATH SP? '(' SP? oC_PatternElement SP? ')' )
+ | ( ALLSHORTESTPATHS SP? '(' SP? oC_PatternElement SP? ')' )
+ ;
 
 oC_PatternElement
  : ( oC_NodePattern ( SP? oC_PatternElementChain )* )
@@ -670,7 +678,13 @@ oC_SymbolicName
  | ANY
  | NONE
  | SINGLE
+ | SHORTESTPATH
+ | ALLSHORTESTPATHS
  ;
+
+SHORTESTPATH : ( 'S' | 's' ) ( 'H' | 'h' ) ( 'O' | 'o' ) ( 'R' | 'r' ) ( 'T' | 't' ) ( 'E' | 'e' ) ( 'S' | 's' ) ( 'T' | 't' ) ( 'P' | 'p' ) ( 'A' | 'a' ) ( 'T' | 't' ) ( 'H' | 'h' ) ;
+
+ALLSHORTESTPATHS : ( 'A' | 'a' ) ( 'L' | 'l' ) ( 'L' | 'l' ) ( 'S' | 's' ) ( 'H' | 'h' ) ( 'O' | 'o' ) ( 'R' | 'r' ) ( 'T' | 't' ) ( 'E' | 'e' ) ( 'S' | 's' ) ( 'T' | 't' ) ( 'P' | 'p' ) ( 'A' | 'a' ) ( 'T' | 't' ) ( 'H' | 'h' ) ( 'S' | 's' ) ;
 
 FILTER : ( 'F' | 'f' ) ( 'I' | 'i' ) ( 'L' | 'l' ) ( 'T' | 't' ) ( 'E' | 'e' ) ( 'R' | 'r' ) ;
 

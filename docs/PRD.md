@@ -565,7 +565,13 @@ variable-length): on PG the traversal follows each type's edge collection, on
 LPG it tests the type field against the list, and `type(r)` is the type of
 the edge matched. Types mapped in different styles, or to different
 type-discriminated collections, are refused; so is a write to such a
-relationship and an edge scan `MATCH ()-[r:A|B]->()`. Aggregates follow Cypher's null semantics:
+relationship and an edge scan `MATCH ()-[r:A|B]->()`. `p = shortestPath((a)-[:R*]-(b))` between
+nodes bound earlier (another pattern part or a WITH) is a breadth-first
+traversal that keeps the first path reaching `b`, so it honours the type
+guard on LPG; a pair with no path yields no row, as in a MATCH. The path is
+`{nodes, edges}`, so `length(p)` and `nodes(p)` work on it. One relationship,
+any type and direction, minimum length 0 or 1; relationship properties are
+refused. The grammar is regenerated with `scripts/regen_antlr.sh`. Aggregates follow Cypher's null semantics:
 `count(x)`, `count(DISTINCT x)` and `collect(x)` skip nulls, and `sum()` over
 no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
@@ -747,10 +753,10 @@ represent — tracked as future work.
 ### 8.4 Not yet supported
 
 Generic Neo4j `CALL`
-procedures; temporal values and functions; native `shortestPath()` syntax
-(available via `CALL arango.shortest_path()`); and multi-part write pipelines
-other than CREATE (mid-pipeline `DELETE`/`SET` before a following `WITH`),
-and a write that reads what the same query wrote.
+procedures; temporal values and functions; `allShortestPaths()` and a
+`shortestPath()` whose endpoints are not bound earlier in the query; and
+multi-part write pipelines other than CREATE (mid-pipeline `DELETE`/`SET`
+before a following `WITH`), and a write that reads what the same query wrote.
 
 **Label hierarchies (supertypes)** — a label whose members live under other
 labels, such as LDBC's `Message` ⊇ `Post`, `Comment`. WP-35 adds them in stages

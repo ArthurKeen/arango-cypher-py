@@ -790,13 +790,16 @@ beyond the fail-closed guard.
   four-hop limit there is gone (which also unblocks BI14), and those hops now
   keep their relationships distinct.
 
-#### WP-39: `shortestPath()` / `allShortestPaths()` (M)
+#### WP-39: `shortestPath()` / `allShortestPaths()` (M) — `shortestPath()` implemented 2026-10-28
 - **Scope:**
   - Add the grammar rule (regenerate ANTLR).
   - Lower to AQL `SHORTEST_PATH` / `ALL_SHORTEST_PATHS` / `K_SHORTEST_PATHS`.
   - Support `length(path)` and `nodes(path)`, and the "no path" case
     (`-1` / empty).
 - **Unlocks:** IC1 IC13, and the IC14 existence check.
+- **Status (2026-10-28):** `shortestPath()` between bound nodes is a
+  breadth-first traversal (`_translate_v0/shortest_path.py`); IC1 and IC13 match
+  the oracle on both layouts. `allShortestPaths()` is still refused.
 
 #### WP-40: Write pipelines (M) — implemented 2026-10-28
 - **Status (2026-10-28): the deletes are done.** A DELETE-only query reads every

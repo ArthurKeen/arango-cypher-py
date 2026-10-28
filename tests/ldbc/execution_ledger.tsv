@@ -2,8 +2,8 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: fails_closed 6, matches_oracle 43, out_of_subset 5, syntax_error 4
-# lpg: fails_closed 6, matches_oracle 43, out_of_subset 5, syntax_error 4
+# pg: fails_closed 6, matches_oracle 45, out_of_subset 5, syntax_error 2
+# lpg: fails_closed 6, matches_oracle 45, out_of_subset 5, syntax_error 2
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 matches_oracle	BI11@lpg	3 binding(s)
@@ -66,12 +66,12 @@ matches_oracle	IC11@lpg	4 binding(s)
 matches_oracle	IC11@pg	4 binding(s)
 matches_oracle	IC12@lpg	3 binding(s)
 matches_oracle	IC12@pg	3 binding(s)
-syntax_error	IC13@lpg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
-syntax_error	IC13@pg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
+matches_oracle	IC13@lpg	3 binding(s)
+matches_oracle	IC13@pg	3 binding(s)
 out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
 out_of_subset	IC14@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)
-syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
-syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
+matches_oracle	IC1@lpg	4 binding(s)
+matches_oracle	IC1@pg	4 binding(s)
 matches_oracle	IC2@lpg	3 binding(s)
 matches_oracle	IC2@pg	3 binding(s)
 matches_oracle	IC3@lpg	4 binding(s)
