@@ -901,37 +901,26 @@ def _translate_create_query(
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
 
-def _compile_create(
-    create_ctx: CypherParser.OC_CreateContext,
-    *,
-    resolver: MappingResolver,
-    bind_vars: dict[str, Any],
-    var_env: dict[str, str],
-    lines: list[str],
-    indent: str,
-    has_return: bool,
-    var_collections: dict[str, str] | None = None,
-    writes: PropertyWrites | None = None,
-) -> None:
-    """Compile a single CREATE clause into AQL INSERT lines.
+@dataclass
+class CreateOp:
+    """One node or relationship a CREATE pattern makes, in pattern order."""
 
-    *writes* are SET/REMOVE items on the created variables, folded into the
-    documents being inserted.
-    """
+    kind: str  # "node" or "rel"
+    var: str
+    labels: list[str] | None = None
+    node_ctx: Any = None
+    rel_pat: Any = None
+    from_var: str = ""
+    to_var: str = ""
+
+
+def create_ops(create_ctx: CypherParser.OC_CreateContext, var_env: dict[str, str]) -> list[CreateOp]:
+    """The nodes and relationships a CREATE makes. A node already in
+    *var_env* is referenced, not created; each created node is added to it."""
     pattern = create_ctx.oC_Pattern()
     parts = pattern.oC_PatternPart() or []
 
-    @dataclass
-    class _CreateOp:
-        kind: str  # "node" or "rel"
-        var: str
-        labels: list[str] | None = None
-        node_ctx: Any = None
-        rel_pat: Any = None
-        from_var: str = ""
-        to_var: str = ""
-
-    ops: list[_CreateOp] = []
+    ops: list[CreateOp] = []
     create_counter = 0
     anon_counter = 0
 
@@ -955,7 +944,7 @@ def _compile_create(
         start_var = _unique_anon(start_var)
 
         if start_var not in var_env:
-            ops.append(_CreateOp(kind="node", var=start_var, labels=start_labels, node_ctx=node))
+            ops.append(CreateOp(kind="node", var=start_var, labels=start_labels, node_ctx=node))
             var_env[start_var] = start_var
 
         current_var = start_var
@@ -969,7 +958,7 @@ def _compile_create(
             end_var = _unique_anon(end_var)
 
             if end_var not in var_env:
-                ops.append(_CreateOp(kind="node", var=end_var, labels=end_labels, node_ctx=end_node))
+                ops.append(CreateOp(kind="node", var=end_var, labels=end_labels, node_ctx=end_node))
                 var_env[end_var] = end_var
 
             detail = rel_pat.oC_RelationshipDetail()
@@ -987,7 +976,7 @@ def _compile_create(
                 from_v, to_v = current_var, end_var
 
             ops.append(
-                _CreateOp(
+                CreateOp(
                     kind="rel",
                     var=rel_var_name,
                     rel_pat=rel_pat,
@@ -997,6 +986,28 @@ def _compile_create(
             )
 
             current_var = end_var
+
+    return ops
+
+
+def _compile_create(
+    create_ctx: CypherParser.OC_CreateContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+    var_env: dict[str, str],
+    lines: list[str],
+    indent: str,
+    has_return: bool,
+    var_collections: dict[str, str] | None = None,
+    writes: PropertyWrites | None = None,
+) -> None:
+    """Compile a single CREATE clause into AQL INSERT lines.
+
+    *writes* are SET/REMOVE items on the created variables, folded into the
+    documents being inserted.
+    """
+    ops = create_ops(create_ctx, var_env)
 
     for i, op in enumerate(ops):
         is_last = i == len(ops) - 1
@@ -1063,6 +1074,29 @@ def _compile_create_node(
     writes: PropertyWrites | None = None,
 ) -> None:
     """Compile a single node INSERT."""
+    doc, coll_key, extra_fields = create_node_doc(labels, node_ctx, resolver=resolver, bind_vars=bind_vars)
+    if writes is not None:
+        doc = writes.folded_into(var, doc, extra_fields)
+    coll_ref = _aql_collection_ref(coll_key)
+    if var_collections is not None:
+        var_collections[var] = coll_key
+
+    if needs_let:
+        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
+    else:
+        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+
+
+def create_node_doc(
+    labels: list[str],
+    node_ctx: CypherParser.OC_NodePatternContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> tuple[str, str, list[str]]:
+    """The document a created node is inserted as: ``(doc, collection bind
+    key, mapping fields)``, the fields being the type discriminator and
+    supertype labels the mapping requires."""
     param_ref = _create_props_param_ref(node_ctx.oC_Properties(), bind_vars)
     props = [] if param_ref else _compile_create_props(node_ctx.oC_Properties(), bind_vars)
     extra_fields: list[str] = []
@@ -1100,17 +1134,7 @@ def _compile_create_node(
             bind_vars[lv_key] = values
             extra_fields.append(f"{labels_field}: @{lv_key}")
 
-    doc = _build_insert_doc(props, extra_fields, base=param_ref)
-    if writes is not None:
-        doc = writes.folded_into(var, doc, extra_fields)
-    coll_ref = _aql_collection_ref(coll_key)
-    if var_collections is not None:
-        var_collections[var] = coll_key
-
-    if needs_let:
-        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
-    else:
-        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+    return _build_insert_doc(props, extra_fields, base=param_ref), coll_key, extra_fields
 
 
 def _compile_create_rel(
@@ -1128,6 +1152,32 @@ def _compile_create_rel(
     writes: PropertyWrites | None = None,
 ) -> None:
     """Compile a single relationship INSERT."""
+    doc, edge_coll_key, extra_fields = create_rel_doc(
+        rel_pat, from_var, to_var, resolver=resolver, bind_vars=bind_vars
+    )
+    if writes is not None:
+        doc = writes.folded_into(var, doc, extra_fields)
+    coll_ref = _aql_collection_ref(edge_coll_key)
+    if var_collections is not None:
+        var_collections[var] = edge_coll_key
+
+    if needs_let:
+        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
+    else:
+        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+
+
+def create_rel_doc(
+    rel_pat: CypherParser.OC_RelationshipPatternContext,
+    from_var: str,
+    to_var: str,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> tuple[str, str, list[str]]:
+    """The document a created relationship is inserted as: ``(doc, edge
+    collection bind key, mapping fields)``, the fields being ``_from``,
+    ``_to`` and the type discriminator."""
     detail = rel_pat.oC_RelationshipDetail()
     if detail is None:
         raise CoreError("Relationship type is required for CREATE", code="UNSUPPORTED")
@@ -1176,17 +1226,7 @@ def _compile_create_rel(
     rel_props_ctx = detail.oC_Properties()
     param_ref = _create_props_param_ref(rel_props_ctx, bind_vars)
     props = [] if param_ref else _compile_create_rel_props(rel_pat, bind_vars)
-    doc = _build_insert_doc(props, extra_fields, base=param_ref)
-    if writes is not None:
-        doc = writes.folded_into(var, doc, extra_fields)
-    coll_ref = _aql_collection_ref(edge_coll_key)
-    if var_collections is not None:
-        var_collections[var] = edge_coll_key
-
-    if needs_let:
-        lines.append(f"{indent}LET {var} = FIRST(INSERT {doc} INTO {coll_ref} RETURN NEW)")
-    else:
-        lines.append(f"{indent}INSERT {doc} INTO {coll_ref}")
+    return _build_insert_doc(props, extra_fields, base=param_ref), edge_coll_key, extra_fields
 
 
 def _compile_create_props(
