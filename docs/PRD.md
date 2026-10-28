@@ -611,6 +611,17 @@ other string (AQL's `TO_BOOL('false')` is true). `toString(null)` is null
 (`TO_STRING(null)` is `""`). An aggregate's argument compiles like any
 expression (`sum(toInteger(x))`, `count(n.x = 1)`).
 
+A pattern comprehension (`[(a)-[:R]->(b:L)-[:S]->(c) WHERE … | expr]`)
+matches its whole pattern, as a pattern predicate does: every hop with its
+type, direction, range and properties, and each end node's labels
+(collection membership on PG, supertypes included) and properties. It must
+start at a bound variable (from the query or an enclosing comprehension,
+quantifier or `reduce()`). A named node or relationship already bound is
+matched, not rebound; one that is not is introduced by the comprehension,
+and a named variable-length relationship is its list of edges. A named path
+(`[p = (a)-->(b) | p]`) is `{nodes, edges}`, as in MATCH. `exists()` of a
+pattern is the pattern predicate itself.
+
 ### 8.3 Supported subset (write)
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and

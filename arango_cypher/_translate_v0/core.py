@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from arango_query_core import (
@@ -4755,41 +4756,42 @@ def _compile_count_subquery(
     return f"LENGTH({sub})"
 
 
-def _compile_pattern_predicate(
+def _compile_pattern_hops(
     ctx: CypherParser.OC_RelationshipsPatternContext,
     bind_vars: dict[str, Any],
-) -> str:
-    """Compile a pattern predicate like ``(n)-[:KNOWS]->(m)`` to an AQL
-    existence subquery::
+    *,
+    prefix: str,
+    introduces: Callable[[str], bool],
+    path_var: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """Compile a relationship pattern that starts at a bound variable to nested
+    traversal loops, for a pattern predicate or a pattern comprehension.
 
-        (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND n @@ppEdge
-                  FILTER _pp_v._id == m._id … LIMIT 1 RETURN 1) > 0)
-
-    The whole pattern is honoured: one nested traversal per relationship, with
-    each hop's relationship type, relationship properties, and end node — a
-    named end node is the variable already bound outside (a pattern predicate
-    cannot introduce one), labels become the mapping's discriminator, and
-    property maps become filters. Labels or properties on the start node are
-    checked on the bound start variable.
-
-    Before this, only the first hop was compiled and the end node's variable,
-    a collection-style label and any properties were dropped, so
-    ``NOT (a)-[:KNOWS]-(b)`` meant "a knows nobody" (LDBC BI18 returned no
-    rows; docs/ldbc_benchmark_plan.md §3.5).
+    Returns the filters on the start node (its labels and properties, checked
+    on the bound variable) and one ``FOR … FILTER …`` loop per relationship,
+    honouring each hop's type, direction, range and properties and its end
+    node's labels and properties. A named end node or relationship that
+    *introduces* says is new becomes the loop variable (a named
+    variable-length relationship is its list of edges); any other named one is
+    already bound and is matched by ``_id``. One relationship never matches
+    twice within the pattern. A *path_var* is bound after the last loop to
+    ``{nodes, edges}``, as a named path in MATCH is.
     """
     start_node = ctx.oC_NodePattern()
     chains = ctx.oC_PatternElementChain() or []
     if not chains:
-        raise CoreError("Pattern predicate requires at least one relationship", code="UNSUPPORTED")
+        raise CoreError("A pattern needs at least one relationship here", code="UNSUPPORTED")
 
     resolver = _active_resolver.get()
     if resolver is None:
-        raise CoreError("Pattern predicates require a mapping resolver", code="UNSUPPORTED")
-
-    start_var, _ = _extract_node_var_and_labels(start_node, default_var="_pp_start")
-    if start_var == "_pp_start":
         raise CoreError(
-            "A pattern predicate must start at a variable bound earlier in the query",
+            "Pattern predicates and comprehensions require a mapping resolver", code="UNSUPPORTED"
+        )
+
+    start_var, _ = _extract_node_var_and_labels(start_node, default_var=f"_{prefix}_start")
+    if start_var == f"_{prefix}_start":
+        raise CoreError(
+            "A pattern predicate or comprehension must start at a variable bound earlier in the query",
             code="UNSUPPORTED",
         )
     head_filters: list[str] = []
@@ -4801,39 +4803,53 @@ def _compile_pattern_predicate(
 
     loops: list[str] = []
     single_hop_edges: list[str] = []
+    hop_paths: list[str] = []
     prev = start_var
     for i, chain in enumerate(chains):
         rel_pat = chain.oC_RelationshipPattern()
         target_node = chain.oC_NodePattern()
         if rel_pat is None or target_node is None:
-            raise CoreError("Invalid pattern predicate", code="UNSUPPORTED")
+            raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
         suffix = "" if i == 0 else f"_{i}"
-        pp_v, pp_e = f"_pp_v{suffix}", f"_pp_e{suffix}"
 
-        rel_type, _, rel_range = _extract_relationship_type_and_var(rel_pat, default_var=f"_pp_r{suffix}")
+        rel_type, rel_var, rel_range = _extract_relationship_type_and_var(
+            rel_pat, default_var=f"_{prefix}_r{suffix}"
+        )
+        target_var, _ = _extract_node_var_and_labels(target_node, default_var=f"_{prefix}_t{suffix}")
+        rel_named = rel_var != f"_{prefix}_r{suffix}"
+        target_named = target_var != f"_{prefix}_t{suffix}"
+        rmin, rmax = rel_range
+        single = (rmin, rmax) == (1, 1)
+        introduced_rel = rel_named and introduces(rel_var)
+        loop_e = rel_var if introduced_rel and single else f"_{prefix}_e{suffix}"
+        loop_v = target_var if target_named and introduces(target_var) else f"_{prefix}_v{suffix}"
         direction = _relationship_direction(rel_pat)
         r_map = _resolve_relationship_for_pattern(resolver, rel_type)
-        edge_key = _pick_bind_key("@ppEdge", bind_vars)
+        typed_edges = r_map.get("style") == "GENERIC_WITH_TYPE"
+        needs_path = path_var is not None or (not single and introduced_rel)
+        hop_path = f"_{prefix}_p{suffix}" if needs_path else None
+
+        edge_key = _pick_bind_key(f"@{prefix}Edge", bind_vars)
         bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
 
         filters: list[str] = []
-        if r_map.get("style") == "GENERIC_WITH_TYPE":
-            rtf = _pick_bind_key("ppRelTF", bind_vars)
-            rtv = _pick_bind_key("ppRelTV", bind_vars)
+        if typed_edges:
+            rtf = _pick_bind_key(f"{prefix}RelTF", bind_vars)
+            rtv = _pick_bind_key(f"{prefix}RelTV", bind_vars)
             bind_vars[rtf] = r_map.get("typeField")
             bind_vars[rtv] = r_map.get("typeValue")
-            filters.append(f"{pp_e}[@{rtf}] == @{rtv}")
-        filters += _compile_relationship_pattern_properties(rel_pat, var=pp_e, bind_vars=bind_vars)
+            # ``_guard_varlength_edge_types`` extends this last-edge test to
+            # every edge of a variable-length hop with a PRUNE.
+            filters.append(f"{loop_e}[@{rtf}] == @{rtv}")
+        filters += _compile_relationship_pattern_properties(rel_pat, var=loop_e, bind_vars=bind_vars)
 
-        rmin, rmax = rel_range
-        if (rmin, rmax) == (1, 1):
+        if single:
             # Cypher never matches one relationship twice within a pattern.
-            filters += [f"{pp_e}._id != {other}._id" for other in single_hop_edges]
-            single_hop_edges.append(pp_e)
+            filters += [f"{loop_e}._id != {other}._id" for other in single_hop_edges]
+            single_hop_edges.append(loop_e)
 
-        target_var, _ = _extract_node_var_and_labels(target_node, default_var=f"_pp_t{suffix}")
-        if target_var != f"_pp_t{suffix}":
-            filters.append(f"{pp_v}._id == {target_var}._id")
+        if target_named and loop_v != target_var:
+            filters.append(f"{loop_v}._id == {target_var}._id")
         labels_ctx = target_node.oC_NodeLabels()
         if labels_ctx is not None:
             labels = [
@@ -4850,15 +4866,52 @@ def _compile_pattern_predicate(
                 and resolver.resolve_entity(labels[0]).get("style") == "COLLECTION"
                 and resolver.edge_constrains_target(rel_type, labels[0], direction)
             )
-            pred = None if guaranteed else _compile_label_predicate(pp_v, labels_ctx, bind_vars)
+            pred = None if guaranteed else _compile_label_predicate(loop_v, labels_ctx, bind_vars)
             if pred is not None:
                 filters.append(pred)
-        filters += _compile_node_pattern_properties(target_node, var=pp_v, bind_vars=bind_vars)
+        filters += _compile_node_pattern_properties(target_node, var=loop_v, bind_vars=bind_vars)
 
-        loop = f"FOR {pp_v}, {pp_e} IN {rmin}..{rmax} {direction} {prev} {_aql_collection_ref(edge_key)}"
-        loops.append(loop + "".join(f" FILTER {f}" for f in filters))
-        prev = pp_v
+        loop_vars = f"{loop_v}, {loop_e}" + (f", {hop_path}" if hop_path else "")
+        loop = f"FOR {loop_vars} IN {rmin}..{rmax} {direction} {prev} {_aql_collection_ref(edge_key)}"
+        loop += "".join(f" FILTER {f}" for f in filters)
+        if introduced_rel and not single:
+            loop += f" LET {rel_var} = {hop_path}.edges"
+        loops.append(loop)
+        if hop_path:
+            hop_paths.append(hop_path)
+        prev = loop_v
+    if path_var is not None:
+        nodes = _concat_lists([f"[{start_var}]", *(f"SLICE({hp}.vertices, 1)" for hp in hop_paths)])
+        edges = _concat_lists([f"{hp}.edges" for hp in hop_paths])
+        loops[-1] += f" LET {path_var} = {{nodes: {nodes}, edges: {edges}}}"
+    return head_filters, loops
 
+
+def _concat_lists(parts: list[str]) -> str:
+    """AQL concatenation of list expressions (``UNION`` keeps duplicates)."""
+    return parts[0] if len(parts) == 1 else f"UNION({', '.join(parts)})"
+
+
+def _compile_pattern_predicate(
+    ctx: CypherParser.OC_RelationshipsPatternContext,
+    bind_vars: dict[str, Any],
+) -> str:
+    """Compile a pattern predicate like ``(n)-[:KNOWS]->(m)`` to an AQL
+    existence subquery::
+
+        (LENGTH(FOR _pp_v, _pp_e IN 1..1 OUTBOUND n @@ppEdge
+                  FILTER _pp_v._id == m._id … LIMIT 1 RETURN 1) > 0)
+
+    The whole pattern is honoured (:func:`_compile_pattern_hops`). A pattern
+    predicate cannot introduce a variable, so every named node is the one
+    bound outside.
+
+    Before this, only the first hop was compiled and the end node's variable,
+    a collection-style label and any properties were dropped, so
+    ``NOT (a)-[:KNOWS]-(b)`` meant "a knows nobody" (LDBC BI18 returned no
+    rows; docs/ldbc_benchmark_plan.md §3.5).
+    """
+    head_filters, loops = _compile_pattern_hops(ctx, bind_vars, prefix="pp", introduces=lambda _name: False)
     exists = f"(LENGTH({' '.join(loops)} LIMIT 1 RETURN 1) > 0)"
     if head_filters:
         return "(" + " AND ".join([*head_filters, exists]) + ")"
@@ -5014,89 +5067,72 @@ def _compile_pattern_comprehension(
     ctx: CypherParser.OC_PatternComprehensionContext,
     bind_vars: dict[str, Any],
 ) -> str:
-    """Compile ``[(a)-[:REL]->(b) WHERE cond | expr]`` to AQL subquery.
+    """Compile ``[(a)-[:REL]->(b) WHERE cond | expr]`` to an AQL subquery::
 
-    Generates::
-        (FOR _pc_v, _pc_e IN 1..1 OUTBOUND a @@edge
-            FILTER ... RETURN expr)
+        (FOR b, _pc_e IN 1..1 OUTBOUND a @@pcEdge FILTER … FILTER cond RETURN expr)
+
+    The whole pattern is honoured (:func:`_compile_pattern_hops`). A named
+    node or relationship that is not bound outside is introduced by the
+    comprehension; one that is bound (``[(tag)<-[i:HAS_INTEREST]-(person) | i]``
+    with ``person`` in scope) is matched, not rebound.
+
+    Before this, only the first hop was compiled, a bound end node was
+    declared again (ERR 1511) and a collection-style label on the end node
+    was ignored, so ``[(t)<-[:HAS_TAG]-(m:Message)-[:HAS_CREATOR]->(p) | m]``
+    listed every tagged forum, post and comment (LDBC BI8).
     """
+    path_var = ctx.oC_Variable().getText().strip() if ctx.oC_Variable() is not None else None
+    in_scope = set(_active_user_vars.get()) | _enclosing_local_vars(ctx)
+    head_filters, loops = _compile_pattern_hops(
+        ctx.oC_RelationshipsPattern(),
+        bind_vars,
+        prefix="pc",
+        introduces=lambda name: name not in in_scope,
+        path_var=path_var,
+    )
+    # Grammar: ( WHERE oC_Expression )? '|' oC_Expression
+    exprs = ctx.oC_Expression()
+    filters = list(loops)
+    if ctx.WHERE() is not None:
+        filters.append(f"FILTER {_compile_where(exprs[0], bind_vars)}")
+    projection = _compile_expression(exprs[-1], bind_vars)
+    sub = f"({' '.join(filters)} RETURN {projection})"
+    if head_filters:
+        return f"(({' AND '.join(head_filters)}) ? {sub} : [])"
+    return sub
+
+
+def _enclosing_local_vars(ctx: Any) -> set[str]:
+    """Variables bound around *ctx* by an enclosing list comprehension,
+    quantifier, ``reduce()`` or pattern comprehension (``[x IN xs | …]``)."""
+    names: set[str] = set()
+    node = ctx.parentCtx
+    while node is not None:
+        if isinstance(node, CypherParser.OC_ListComprehensionContext):
+            names.add(node.oC_FilterExpression().oC_IdInColl().oC_Variable().getText().strip())
+        elif isinstance(node, CypherParser.OC_AtomContext) and node.oC_FilterExpression() is not None:
+            names.add(node.oC_FilterExpression().oC_IdInColl().oC_Variable().getText().strip())
+        elif isinstance(node, CypherParser.OC_ReduceExpressionContext):
+            names.add(node.oC_Variable().getText().strip())
+            names.add(node.oC_IdInColl().oC_Variable().getText().strip())
+        elif isinstance(node, CypherParser.OC_PatternComprehensionContext):
+            names.update(_pattern_comprehension_names(node))
+        node = node.parentCtx
+    return names
+
+
+def _pattern_comprehension_names(ctx: CypherParser.OC_PatternComprehensionContext) -> set[str]:
+    """Node and relationship variables named in a pattern comprehension's pattern."""
+    names: set[str] = set()
     rel_pattern = ctx.oC_RelationshipsPattern()
-    start_node = rel_pattern.oC_NodePattern()
-    chains = rel_pattern.oC_PatternElementChain() or []
-    if not chains:
-        raise CoreError("Pattern comprehension requires a relationship", code="UNSUPPORTED")
-
-    start_var, _ = _extract_node_var_and_labels(start_node, default_var="_pc_start")
-    chain = chains[0]
-    rel_pat = chain.oC_RelationshipPattern()
-    target_node = chain.oC_NodePattern()
-    if rel_pat is None:
-        raise CoreError("Invalid pattern comprehension", code="UNSUPPORTED")
-
-    rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_pc_r")
-    direction = _relationship_direction(rel_pat)
-
-    resolver = _active_resolver.get()
-    if resolver is None:
-        raise CoreError("Pattern comprehension requires a mapping resolver", code="UNSUPPORTED")
-
-    r_map = _resolve_relationship_for_pattern(resolver, rel_type)
-    edge_key = _pick_bind_key("@pcEdge", bind_vars)
-    bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
-
-    target_var, t_labels = _extract_node_var_and_labels(target_node, default_var="_pc_v")
-    pc_v = target_var if target_var != "_pc_v" else "_pc_v"
-    pc_e = rel_var if rel_var != "_pc_r" else "_pc_e"
-    filters: list[str] = []
-
-    r_style = r_map.get("style")
-    if r_style == "GENERIC_WITH_TYPE":
-        rtf = _pick_bind_key("pcRelTF", bind_vars)
-        rtv = _pick_bind_key("pcRelTV", bind_vars)
-        bind_vars[rtf] = r_map.get("typeField")
-        bind_vars[rtv] = r_map.get("typeValue")
-        filters.append(f"{pc_e}[@{rtf}] == @{rtv}")
-
-    if t_labels:
-        t_primary = _pick_primary_entity_label(t_labels, resolver)
-        try:
-            t_map = resolver.resolve_entity(_strip_label_backticks(t_primary))
-            if t_map.get("style") == "LABEL":
-                ttf = _pick_bind_key("pcTTF", bind_vars)
-                ttv = _pick_bind_key("pcTTV", bind_vars)
-                bind_vars[ttf] = t_map.get("typeField")
-                bind_vars[ttv] = t_map.get("typeValue")
-                filters.append(f"{pc_v}[@{ttf}] == @{ttv}")
-        except CoreError:
-            pass
-
-    all_exprs = ctx.oC_Expression()
-    if not isinstance(all_exprs, list):
-        all_exprs = [all_exprs] if all_exprs else []
-
-    where_node = None
-    for child in ctx.children or []:
-        text = getattr(child, "symbol", None)
-        if text and hasattr(text, "text") and text.text == "WHERE":
-            where_node = all_exprs[0] if all_exprs else None
-            break
-
-    projection_expr = all_exprs[-1] if all_exprs else pc_v
-    projection = _compile_expression(projection_expr, bind_vars) if projection_expr else pc_v
-
-    if where_node is not None and len(all_exprs) > 1:
-        where_compiled = _compile_where(all_exprs[0], bind_vars)
-        filters.append(where_compiled)
-        projection = _compile_expression(all_exprs[-1], bind_vars)
-
-    rmin, rmax = rel_range
-    edge_ref = _aql_collection_ref(edge_key)
-    sub = f"FOR {pc_v}, {pc_e} IN {rmin}..{rmax} {direction} {start_var} {edge_ref}"
-    for f in filters:
-        sub += f" FILTER {f}"
-    sub += f" RETURN {projection}"
-
-    return f"({sub})"
+    nodes = [rel_pattern.oC_NodePattern()]
+    for chain in rel_pattern.oC_PatternElementChain() or []:
+        nodes.append(chain.oC_NodePattern())
+        detail = chain.oC_RelationshipPattern().oC_RelationshipDetail()
+        if detail is not None and detail.oC_Variable() is not None:
+            names.add(detail.oC_Variable().getText().strip())
+    names.update(n.oC_Variable().getText().strip() for n in nodes if n.oC_Variable() is not None)
+    return names
 
 
 def _compile_case(
@@ -5542,6 +5578,10 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "exists":
             if len(compiled_args) != 1:
                 raise CoreError("exists expects 1 arg", code="UNSUPPORTED")
+            if _is_two_valued(args[0]):
+                # exists((a)-->(b)) is the pattern predicate itself; ``!= null``
+                # of a boolean was always true.
+                return compiled_args[0]
             return f"({compiled_args[0]} != null)"
         if fn_norm == "abs":
             if len(compiled_args) != 1:
