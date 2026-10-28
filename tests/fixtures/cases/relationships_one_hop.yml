@@ -99,7 +99,7 @@ cases:
   params:
     id: u1
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (u.id == @id)\n    RETURN\
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FILTER (@id != null AND u.id == @id)\n    RETURN\
       \ v"
     bind_vars:
       id: u1
@@ -177,15 +177,15 @@ cases:
       FOR u IN @@uCollection
         FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
           FILTER IS_SAME_COLLECTION(@vCollection, v)
-          FILTER ((((u.active == true)) == false OR ((v.active == true)) == false) ? false : ((((u.active == true)) == true AND ((v.active == true)) == true) ? true : null))
+          FILTER ((u.active == true) AND (v.active == true))
           RETURN {u: u, v: v}
     bind_vars:
-      '@uCollection': users
-      '@edgeCollection': follows
+      "@uCollection": users
+      "@edgeCollection": follows
       vCollection: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places
 - id: C031
   name: outbound follows one hop (LPG generic edges)
   mapping_fixture: lpg

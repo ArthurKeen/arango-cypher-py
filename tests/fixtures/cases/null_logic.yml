@@ -1,0 +1,85 @@
+version: 1
+cases:
+- id: C821
+  name: equality with a literal null is never true
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE n.name = null RETURN n.name AS name
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (null != null AND n.name == null)\n  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C822
+  name: equality with a parameter guards the parameter, which ArangoDB folds before using an index
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE n.name = $name RETURN n.name AS name
+  params:
+    name: a
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (@name != null AND n.name == @name)\n  RETURN {name: n.name}"
+    bind_vars:
+      name: a
+      '@collection': users
+- id: C823
+  name: inequality guards every nullable operand
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE n.name <> 'b' RETURN n.name AS name
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n.name != null AND n.name != 'b')\n  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C824
+  name: NOT of a comparison negates the operator and keeps the null guard
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE NOT n.age > 30 RETURN n.name AS name
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n.age != null AND n.age <= 30)\n  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C825
+  name: NOT over OR applies De Morgan in a filter
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE NOT (n.age < 20 OR n.city = 'SF') RETURN n.name AS name
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER ((n.age != null AND n.age >= 20) AND (n.city != null AND n.city != 'SF'))\n\
+      \  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C826
+  name: AND and OR in a filter stay plain conjunctions
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE (n.city = 'SF' OR n.city = 'NYC') AND n.age > 3 RETURN n.name AS name
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (((n.city == 'SF') OR (n.city == 'NYC')) AND (n.age != null AND n.age\
+      \ > 3))\n  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C827
+  name: a returned comparison is null when an operand is null
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN n.age > 30 AS older, NOT n.active AS inactive
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN {older: ((n.age == null) ? null : (n.age > 30)), inactive: (n.active ==\
+      \ null ? null : (NOT n.active))}"
+    bind_vars:
+      '@collection': users
+- id: C828
+  name: IN and string operators guard null operands
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WHERE NOT n.name IN $names AND n.city STARTS WITH 'S' RETURN n.name AS name
+  params:
+    names: &id001
+    - a
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER ((n.name != null AND @names != null AND n.name NOT IN @names) AND (n.city\
+      \ != null AND STARTS_WITH(n.city, 'S')))\n  RETURN {name: n.name}"
+    bind_vars:
+      names: *id001
+      '@collection': users

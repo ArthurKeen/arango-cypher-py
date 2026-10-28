@@ -129,10 +129,10 @@ cases:
 
     '
   expected:
-    aql: "FOR u IN @@collection\n  COLLECT city = u.city\n  FOR x IN @@tailCollection\n    FILTER (x.city == city)\n    SORT city, x.id\n    RETURN {city: city, id: x.id}"
+    aql: "FOR u IN @@collection\n  COLLECT city = u.city\n  FOR x IN @@tailCollection\n    FILTER (city != null AND x.city == city)\n    SORT city, x.id\n    RETURN {city: city, id: x.id}\n"
     bind_vars:
-      '@collection': users
-      '@tailCollection': users
+      "@collection": users
+      "@tailCollection": users
 - id: C042
   name: with distinct scalar then fresh match traversal
   mapping_fixture: pg
@@ -152,7 +152,7 @@ cases:
     '
   expected:
     aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  COLLECT city = u.city\n  FOR x IN @@tailCollection\n    FOR y, r IN 1..1 OUTBOUND x @@edgeCollection\n      FILTER IS_SAME_COLLECTION(@vCollection,\
-      \ y)\n      FILTER (x.city == city)\n      SORT city, y.id\n      RETURN {city: city, id: y.id}"
+      \ y)\n      FILTER (city != null AND x.city == city)\n      SORT city, y.id\n      RETURN {city: city, id: y.id}"
     bind_vars:
       '@collection': users
       '@tailCollection': users

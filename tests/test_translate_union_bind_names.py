@@ -31,7 +31,7 @@ def test_a_shared_user_parameter_with_one_value_stays_one_bind_variable() -> Non
     q = "MATCH (n:User) WHERE n.name = $q RETURN n.name AS x UNION MATCH (n:Person) WHERE n.name = $q RETURN n.name AS x"
     t = translate(q, mapping=mapping_bundle_for("pg"), params={"q": "alice"})
     assert t.bind_vars["q"] == "alice"
-    assert t.aql.count("@q") == 2
+    assert t.aql.count("n.name == @q") == 2
     assert not any(k.startswith("q_u") for k in t.bind_vars)
 
 

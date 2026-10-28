@@ -44,11 +44,11 @@ cases:
   params:
     q: alice
   expected:
-    aql: "FOR _u IN UNION(\n  (FOR n IN @@collection\n  FILTER (n.name == @q)\n  RETURN {name: n.name}),\n  (FOR n IN @@collection_u1\n  FILTER (n.name == @q)\n  RETURN {name: n.name}),\n  (FOR n IN @@collection\n  RETURN {name: n.id})\n  )\n  RETURN _u"
+    aql: "FOR _u IN UNION(\n  (FOR n IN @@collection\n  FILTER (@q != null AND n.name == @q)\n  RETURN {name: n.name}),\n  (FOR n IN @@collection_u1\n  FILTER (@q != null AND n.name == @q)\n  RETURN {name: n.name}),\n  (FOR n IN @@collection\n  RETURN {name: n.id})\n  )\n  RETURN _u\n"
     bind_vars:
       q: alice
-      '@collection': users
-      '@collection_u1': persons
+      "@collection": users
+      "@collection_u1": persons
 - id: C809
   name: UNION over LPG labels renames the second branch's type value, not the shared collection
   mapping_fixture: lpg

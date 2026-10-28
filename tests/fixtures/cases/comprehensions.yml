@@ -8,9 +8,9 @@ cases:
 
     '
   expected:
-    aql: "FOR p IN @@collection\n  RETURN (FOR x IN p.roles FILTER (x != \"extra\") RETURN x)"
+    aql: "FOR p IN @@collection\n  RETURN (FOR x IN p.roles FILTER (x != null AND x != \"extra\") RETURN x)\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C501
   name: List comprehension with map only (no WHERE)
   mapping_fixture: movies_pg

@@ -9,11 +9,10 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER STARTS_WITH(n.name, 'A')
+          FILTER (n.name != null AND STARTS_WITH(n.name, 'A'))
           RETURN n
       bind_vars:
         "@collection": users
-
   - id: C218
     name: ENDS WITH in WHERE
     mapping_fixture: pg
@@ -23,11 +22,10 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER (RIGHT(n.name, LENGTH('ce')) == 'ce')
+          FILTER (n.name != null AND RIGHT(n.name, LENGTH('ce')) == 'ce')
           RETURN n
       bind_vars:
         "@collection": users
-
   - id: C219
     name: CONTAINS in WHERE
     mapping_fixture: pg
@@ -37,11 +35,10 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER CONTAINS(n.name, 'li')
+          FILTER (n.name != null AND CONTAINS(n.name, 'li'))
           RETURN n
       bind_vars:
         "@collection": users
-
   - id: C220
     name: STARTS WITH in RETURN projection
     mapping_fixture: pg
@@ -51,6 +48,6 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {startsA: STARTS_WITH(n.name, 'A')}
+          RETURN {startsA: ((n.name == null) ? null : STARTS_WITH(n.name, 'A'))}
       bind_vars:
         "@collection": users
