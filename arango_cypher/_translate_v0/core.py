@@ -2402,7 +2402,7 @@ def _compile_bound_part(
 
         coll_key = _pick_bind_key("@tailCollection", bind_vars)
         tail_filters: list[str] = []
-        tail_props = _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars)
+        tail_props = _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars, var_env=out_env)
         if label is None:
             bind_vars[coll_key] = _infer_unlabeled_collection(resolver)
             tail_source = _aql_collection_ref(coll_key)
@@ -2470,7 +2470,9 @@ def _compile_bound_part(
             backref_filters.append(f"{v_aql}._id == {out_env[v_cy]}._id")
         if r_is_backref:
             backref_filters.append(f"{r_aql}._id == {out_env[rel_cy]}._id")
-        r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=r_aql, bind_vars=bind_vars)
+        r_prop_filters = _compile_relationship_pattern_properties(
+            rel_pat, var=r_aql, bind_vars=bind_vars, var_env=out_env
+        )
 
         if v_named and not v_is_backref:
             out_env[v_cy] = v_aql
@@ -2575,7 +2577,7 @@ def _compile_bound_part(
             lines.append(f"    FILTER {f}")
 
         # Inline properties on traversed node.
-        for f in _compile_node_pattern_properties(v_node, var=v_aql, bind_vars=bind_vars):
+        for f in _compile_node_pattern_properties(v_node, var=v_aql, bind_vars=bind_vars, var_env=out_env):
             lines.append(f"    FILTER {f}")
 
         current_aql = out_env[v_cy] if v_is_backref else v_aql
@@ -4346,13 +4348,19 @@ def _untyped_rel_type_expr(ref: str, resolver: MappingResolver | None) -> str:
 
 
 def _compile_node_pattern_properties(
-    node_pat: CypherParser.OC_NodePatternContext, *, var: str, bind_vars: dict[str, Any]
+    node_pat: CypherParser.OC_NodePatternContext,
+    *,
+    var: str,
+    bind_vars: dict[str, Any],
+    var_env: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Compile inline node properties in patterns, e.g. (n:User {id: "u1"}).
 
     v0 subset: only supports map literals with simple expressions for values.
-    Parameterized maps (e.g. {..} via $param) are NOT_IMPLEMENTED.
+    Parameterized maps (e.g. {..} via $param) are NOT_IMPLEMENTED. In a MATCH
+    after WITH, *var_env* renames the variables a value refers to
+    (``{id: knownTagId}`` once WITH has bound it as ``knownTagId_1``).
     """
     props_ctx = node_pat.oC_Properties()
     if props_ctx is None:
@@ -4372,6 +4380,8 @@ def _compile_node_pattern_properties(
         if not key:
             raise CoreError("Invalid node properties map", code="UNSUPPORTED")
         expr = _compile_expression(v_ctx, bind_vars)
+        if var_env:
+            expr = _rewrite_vars(expr, var_env)
         # Use case-insensitive comparison for string literals
         if expr.startswith('"') or expr.startswith("'"):
             out.append(f"(LOWER({var}.{key}) == LOWER({expr}))")
@@ -4381,7 +4391,11 @@ def _compile_node_pattern_properties(
 
 
 def _compile_relationship_pattern_properties(
-    rel_pat: CypherParser.OC_RelationshipPatternContext, *, var: str, bind_vars: dict[str, Any]
+    rel_pat: CypherParser.OC_RelationshipPatternContext,
+    *,
+    var: str,
+    bind_vars: dict[str, Any],
+    var_env: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Compile inline relationship properties in patterns, e.g. -[:ACTED_IN {role: "Forrest"}]->
@@ -4412,6 +4426,8 @@ def _compile_relationship_pattern_properties(
         if not key:
             raise CoreError("Invalid relationship properties map", code="UNSUPPORTED")
         expr = _compile_expression(v_ctx, bind_vars)
+        if var_env:
+            expr = _rewrite_vars(expr, var_env)
         out.append(f"({var}.{key} == {expr})")
     return out
 

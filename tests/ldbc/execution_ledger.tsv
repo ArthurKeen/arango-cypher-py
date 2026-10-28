@@ -2,8 +2,8 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 2, fails_closed 18, matches_oracle 29, out_of_subset 5, syntax_error 4
-# lpg: execution_error 3, fails_closed 14, matches_oracle 32, out_of_subset 5, syntax_error 4
+# pg: execution_error 1, fails_closed 18, matches_oracle 30, out_of_subset 5, syntax_error 4
+# lpg: execution_error 2, fails_closed 14, matches_oracle 33, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 matches_oracle	BI11@lpg	3 binding(s)
@@ -80,8 +80,8 @@ matches_oracle	IC4@lpg	4 binding(s)
 matches_oracle	IC4@pg	4 binding(s)
 matches_oracle	IC5@lpg	3 binding(s)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
-execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
-execution_error	IC6@pg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
+matches_oracle	IC6@lpg	4 binding(s)
+matches_oracle	IC6@pg	4 binding(s)
 matches_oracle	IC7@lpg	4 binding(s)
 matches_oracle	IC7@pg	4 binding(s)
 matches_oracle	IC8@lpg	3 binding(s)
