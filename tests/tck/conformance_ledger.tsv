@@ -709,7 +709,7 @@ translatable	clauses/return-orderby/ReturnOrderBy1/[7] ORDER BY should order flo
 translatable	clauses/return-orderby/ReturnOrderBy1/[8] ORDER BY DESC should order floats in the expected order
 translatable	clauses/return-orderby/ReturnOrderBy1/[9] ORDER BY should order lists in the expected order
 translatable	clauses/return-orderby/ReturnOrderBy2/[10] Returned columns do not change from using ORDER BY
-translate_fail	clauses/return-orderby/ReturnOrderBy2/[11] Aggregates ordered by arithmetics
+translatable	clauses/return-orderby/ReturnOrderBy2/[11] Aggregates ordered by arithmetics
 translatable	clauses/return-orderby/ReturnOrderBy2/[12] Aggregation of named paths
 translatable	clauses/return-orderby/ReturnOrderBy2/[13] Fail when sorting on variable removed by DISTINCT
 correct_rejection	clauses/return-orderby/ReturnOrderBy2/[14] Fail on aggregation in ORDER BY after RETURN
@@ -764,7 +764,7 @@ translatable	clauses/return-skip-limit/ReturnSkipLimit3/[2] Get rows in the midd
 translatable	clauses/return-skip-limit/ReturnSkipLimit3/[3] Limiting amount of rows when there are fewer left than the LIMIT argument
 translatable	clauses/return/Return1/[1] Returning a list property
 translatable	clauses/return/Return1/[2] Fail when returning an undefined variable
-translate_fail	clauses/return/Return2/[10] Return count aggregation over an empty graph
+translatable	clauses/return/Return2/[10] Return count aggregation over an empty graph
 translatable	clauses/return/Return2/[11] RETURN does not lose precision on large integers
 translatable	clauses/return/Return2/[12] Projecting a list of nodes and relationships
 translatable	clauses/return/Return2/[13] Projecting a map of nodes and relationships
@@ -786,7 +786,7 @@ translatable	clauses/return/Return3/[1] Returning multiple expressions
 translatable	clauses/return/Return3/[2] Returning multiple node property values
 translatable	clauses/return/Return3/[3] Projecting nodes and relationships
 translatable	clauses/return/Return4/[10] Fail when returning multiple columns with same name
-translate_fail	clauses/return/Return4/[11] Reusing variable names in RETURN
+translatable	clauses/return/Return4/[11] Reusing variable names in RETURN
 translatable	clauses/return/Return4/[1] Honour the column name for RETURN items
 translatable	clauses/return/Return4/[2] Support column renaming
 translatable	clauses/return/Return4/[3] Aliasing expressions
@@ -795,7 +795,7 @@ translatable	clauses/return/Return4/[5] Keeping used expression 2
 translatable	clauses/return/Return4/[6] Keeping used expression 3
 translatable	clauses/return/Return4/[7] Keeping used expression 4
 translatable	clauses/return/Return4/[8] Support column renaming for aggregations
-translate_fail	clauses/return/Return4/[9] Handle subexpression in aggregation also occurring as standalone expression with nested aggregation in a literal map
+translatable	clauses/return/Return4/[9] Handle subexpression in aggregation also occurring as standalone expression with nested aggregation in a literal map
 translatable	clauses/return/Return5/[1] DISTINCT inside aggregation should work with lists in maps
 translatable	clauses/return/Return5/[2] DISTINCT on nullable values
 translatable	clauses/return/Return5/[3] DISTINCT inside aggregation should work with nested lists in maps
@@ -808,20 +808,20 @@ translatable	clauses/return/Return6/[13] Returning the minimum length of paths
 correct_rejection	clauses/return/Return6/[14] Aggregates in aggregates
 correct_rejection	clauses/return/Return6/[15] Using `rand()` in aggregations
 translatable	clauses/return/Return6/[16] Aggregation on complex expressions
-translate_fail	clauses/return/Return6/[17] Handle constants and parameters inside an expression which contains an aggregation expression
+translatable	clauses/return/Return6/[17] Handle constants and parameters inside an expression which contains an aggregation expression
 translate_fail	clauses/return/Return6/[18] Handle returned variables inside an expression which contains an aggregation expression
 translate_fail	clauses/return/Return6/[19] Handle returned property accesses inside an expression which contains an aggregation expression
 translatable	clauses/return/Return6/[1] Return count aggregation over nodes
 correct_rejection	clauses/return/Return6/[20] Fail if not returned variables are used inside an expression which contains an aggregation expression
 correct_rejection	clauses/return/Return6/[21] Fail if more complex expressions, even if returned, are used inside expression which contains an aggregation expression
-translate_fail	clauses/return/Return6/[2] Projecting an arithmetic expression with aggregation
+translatable	clauses/return/Return6/[2] Projecting an arithmetic expression with aggregation
 translatable	clauses/return/Return6/[3] Aggregating by a list property has a correct definition of equality
-translate_fail	clauses/return/Return6/[4] Support multiple divisions in aggregate function
-translate_fail	clauses/return/Return6/[5] Aggregates inside normal functions
-translate_fail	clauses/return/Return6/[6] Handle aggregates inside non-aggregate expressions
+translatable	clauses/return/Return6/[4] Support multiple divisions in aggregate function
+translatable	clauses/return/Return6/[5] Aggregates inside normal functions
+translatable	clauses/return/Return6/[6] Handle aggregates inside non-aggregate expressions
 translatable	clauses/return/Return6/[7] Aggregate on property
 translatable	clauses/return/Return6/[8] Handle aggregation on functions
-translate_fail	clauses/return/Return6/[9] Aggregates with arithmetics
+translatable	clauses/return/Return6/[9] Aggregates with arithmetics
 translatable	clauses/return/Return7/[1] Return all variables
 correct_rejection	clauses/return/Return7/[2] Fail when using RETURN * without variables in scope
 translatable	clauses/return/Return8/[1] Return aggregation after With filtering
@@ -1238,7 +1238,7 @@ translatable	clauses/with/With4/[2] Aliasing expression to new variable name
 translatable	clauses/with/With4/[3] Aliasing expression to existing variable name
 translatable	clauses/with/With4/[4] Fail when forwarding multiple aliases with the same name
 translatable	clauses/with/With4/[5] Fail when not aliasing expressions in WITH
-translate_fail	clauses/with/With4/[6] Reusing variable names in WITH
+translatable	clauses/with/With4/[6] Reusing variable names in WITH
 translate_fail	clauses/with/With4/[7] Multiple aliasing and backreferencing
 translatable	clauses/with/With5/[1] DISTINCT on an expression
 translatable	clauses/with/With5/[2] Handling DISTINCT with lists in maps
@@ -1246,7 +1246,7 @@ translatable	clauses/with/With6/[1] Implicit grouping with single expression as 
 translate_fail	clauses/with/With6/[2] Implicit grouping with single relationship variable as grouping key and single aggregation
 translatable	clauses/with/With6/[3] Implicit grouping with multiple node and relationship variables as grouping key and single aggregation
 translatable	clauses/with/With6/[4] Implicit grouping with single path variable as grouping key and single aggregation
-translate_fail	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
+translatable	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
 translate_fail	clauses/with/With6/[6] Handle projected variables inside an expression which contains an aggregation expression
 translate_fail	clauses/with/With6/[7] Handle projected property accesses inside an expression which contains an aggregation expression
 correct_rejection	clauses/with/With6/[8] Fail if not projected variables are used inside an expression which contains an aggregation expression
@@ -1657,7 +1657,7 @@ translatable	expressions/list/List11/[2] Create list from `range()` with explici
 translatable	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=1234, end=1236, step=1, list=[1234, 1235, 1236]]
 translatable	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=1381, end=-3412, step=-1298, list=[1381, 83, -1215, -2513]]
 translatable	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=6, end=10, step=1, list=[6, 7, 8, 9, 10]]
-translate_fail	expressions/list/List11/[3] Create an empty list if range direction and step direction are inconsistent
+translatable	expressions/list/List11/[3] Create an empty list if range direction and step direction are inconsistent
 translatable	expressions/list/List11/[4] Fail on invalid arguments for `range()` [start=-2, end=8, step=0]
 translatable	expressions/list/List11/[4] Fail on invalid arguments for `range()` [start=0, end=0, step=0]
 translatable	expressions/list/List11/[4] Fail on invalid arguments for `range()` [start=2, end=-8, step=0]
@@ -1686,9 +1686,9 @@ translatable	expressions/list/List11/[5] Fail on invalid argument types for `ran
 translatable	expressions/list/List11/[5] Fail on invalid argument types for `range()` [start={start: 0}, end=1, step=1]
 translate_fail	expressions/list/List12/[1] Collect and extract using a list comprehension
 translate_fail	expressions/list/List12/[2] Collect and filter using a list comprehension
-translate_fail	expressions/list/List12/[3] Size of list comprehension
-translate_fail	expressions/list/List12/[4] Returning a list comprehension
-translate_fail	expressions/list/List12/[5] Using a list comprehension in a WITH
+translatable	expressions/list/List12/[3] Size of list comprehension
+translatable	expressions/list/List12/[4] Returning a list comprehension
+translatable	expressions/list/List12/[5] Using a list comprehension in a WITH
 translatable	expressions/list/List12/[6] Using a list comprehension in a WHERE
 correct_rejection	expressions/list/List12/[7] Fail when using aggregation in list comprehension
 translatable	expressions/list/List2/[10] List slice with parameterised range

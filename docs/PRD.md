@@ -622,6 +622,17 @@ and a named variable-length relationship is its list of edges. A named path
 (`[p = (a)-->(b) | p]`) is `{nodes, edges}`, as in MATCH. `exists()` of a
 pattern is the pattern predicate itself.
 
+An aggregate may be nested in a projection expression (`head(collect(x))`,
+`100 * count(*) + count(x)`, `list + collect(x)`, `[y IN collect(x) | …]`):
+each aggregate call is grouped as a variable of its own and the expression
+is evaluated after grouping, with grouping keys referring to their group
+variables. A projection with `collect()` and another aggregate groups
+`INTO` rows (`PUSH` is not a valid `COLLECT AGGREGATE` expression on
+ArangoDB 3.11). An aggregate where a list comprehension, quantifier,
+`reduce()` or pattern comprehension binds its own variable
+(`[x IN xs | count(*)]`) is refused, as Cypher raises InvalidAggregation; the
+list such a construct iterates over may aggregate.
+
 ### 8.3 Supported subset (write)
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and

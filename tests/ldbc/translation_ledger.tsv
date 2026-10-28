@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 20, out_of_subset 5, syntax_error 4, translatable 29
-# lpg: fails_closed 16, out_of_subset 5, syntax_error 4, translatable 33
+# pg: fails_closed 18, out_of_subset 5, syntax_error 4, translatable 31
+# lpg: fails_closed 14, out_of_subset 5, syntax_error 4, translatable 35
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -41,8 +41,8 @@ translatable	BI6@lpg
 translatable	BI6@pg	
 translatable	BI7@lpg	
 translatable	BI7@pg	
-fails_closed	BI8@lpg	UNSUPPORTED: Unsupported function in v0: collect
-fails_closed	BI8@pg	UNSUPPORTED: Unsupported function in v0: collect
+translatable	BI8@lpg	
+translatable	BI8@pg	
 translatable	BI9@lpg	
 translatable	BI9@pg	
 fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
@@ -83,8 +83,8 @@ translatable	IC5@lpg
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 translatable	IC6@lpg	
 translatable	IC6@pg	
-fails_closed	IC7@lpg	UNSUPPORTED: Unsupported function in v0: collect
-fails_closed	IC7@pg	UNSUPPORTED: Unsupported function in v0: collect
+translatable	IC7@lpg	
+translatable	IC7@pg	
 translatable	IC8@lpg	
 translatable	IC8@pg	
 translatable	IC9@lpg	

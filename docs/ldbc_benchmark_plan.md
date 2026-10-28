@@ -768,10 +768,16 @@ beyond the fail-closed guard.
   - **LDBC:** IC4 (both layouts), and IS2, IC3, IC6 and BI11 (LPG; BI11 also
     on PG) now translate. They then meet the defects in §3.5.
 
-#### WP-37: Aggregates nested in expressions (S)
+#### WP-37: Aggregates nested in expressions (S) — implemented 2026-10-28
 - **Scope:** `head(collect(…))`, `size(collect(…))` and similar. Hoist the
   aggregate into `COLLECT … AGGREGATE` / `INTO`, then apply the function.
 - **Unlocks:** IC7 BI8.
+- **Status (2026-10-28): implemented.** Each nested aggregate is a COLLECT
+  variable and the expression a post-COLLECT `LET`; `collect()` beside another
+  aggregate groups `INTO` rows (`PUSH` in `AGGREGATE` was ERR 1574). Executing
+  IC7 and BI8 against the oracle found more defects, fixed alongside:
+  `toInteger()` did not truncate (#58); pattern comprehensions compiled only
+  their first hop, ignored PG end labels and redeclared bound nodes (#59).
 
 #### WP-38: Multi-type relationship hops `[:A|B]` (M)
 - **Scope:** closes the PRD §8.4 gap.

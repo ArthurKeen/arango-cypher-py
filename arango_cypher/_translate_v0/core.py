@@ -14,7 +14,7 @@ from arango_query_core import (
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
-from .aggregates import lower_aggregate
+from .aggregates import aggregate_variable, aggregate_variables, lower_aggregate, nested_aggregates
 from .arithmetic import (
     _numeric_type,
     _static_type,
@@ -3004,15 +3004,15 @@ def _collect_post_expr(raw_var: str, spec: dict[str, Any]) -> str:
 
 def _aggregate_clause(
     compiled_agg: list[tuple[str, str, str]],
-    compiled_collects: list[tuple[str, str, dict[str, Any]]],
     reserve: Any,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """``COLLECT … AGGREGATE`` assignments and post-COLLECT ``LET``s for a
     projection's aggregates, with Cypher's null semantics.
 
-    Each aggregate is lowered by :func:`lower_aggregate`; each ``collect()``
-    gathers into a temp and is finished (nulls dropped, DISTINCT, slice) by
-    :func:`_collect_post_expr`. *reserve* returns a fresh, now-used name.
+    Each aggregate is lowered by :func:`lower_aggregate`. A projection with a
+    ``collect()`` goes through :func:`_collect_into_rows` instead: ``PUSH`` is
+    not a valid AGGREGATE expression on ArangoDB 3.11 (ERR 1574). *reserve*
+    returns a fresh, now-used name.
     """
     pieces: list[str] = []
     post_lets: list[tuple[str, str]] = []
@@ -3021,12 +3021,78 @@ def _aggregate_clause(
         pieces.extend(agg)
         if post is not None:
             post_lets.append((aql, post))
-    for _key, aql, spec in compiled_collects:
-        temp = reserve(_affix_name(aql, prefix="_", suffix="_grp"))
-        fn = "UNIQUE" if spec.get("distinct") else "PUSH"
-        pieces.append(f"{temp} = {fn}({spec['inner']})")
-        post_lets.append((aql, _collect_post_expr(temp, spec)))
     return pieces, post_lets
+
+
+def _collect_into_rows(
+    group_parts: str,
+    compiled_agg: list[tuple[str, str, str]],
+    compiled_collects: list[tuple[str, str, dict[str, Any]]],
+    rows_var: str,
+) -> tuple[str, list[tuple[str, str]]]:
+    """The ``COLLECT … INTO`` line and the ``LET``s that finish each aggregate.
+
+    For a projection with a ``collect()``: each collect input and each other
+    aggregate's input is kept in the group's rows, and the aggregates are
+    computed from the rows after grouping (:func:`_aggregate_from_collected_rows`).
+    """
+    projection_parts = [f"{aql}: {spec['inner']}" for _, aql, spec in compiled_collects]
+    aggregate_fields: list[tuple[str, str, str | None]] = []
+    for _key, aql_var, agg_expr in compiled_agg:
+        field: str | None = None
+        if agg_expr != "COUNT(1)":
+            field = _affix_name(aql_var, prefix="_", suffix="_input")
+            projection_parts.append(f"{field}: {agg_expr[agg_expr.find('(') + 1 : -1]}")
+        aggregate_fields.append((aql_var, agg_expr, field))
+    line = (
+        f"  COLLECT {group_parts or '_collect_group = 1'} INTO {rows_var} = {{{', '.join(projection_parts)}}}"
+    )
+    lets = [(aql, _collect_post_expr(f"{rows_var}[*].{aql}", spec)) for _, aql, spec in compiled_collects]
+    lets += [
+        (aql, _aggregate_from_collected_rows(agg_expr, rows_var, field))
+        for aql, agg_expr, field in aggregate_fields
+    ]
+    return line, lets
+
+
+def _hoist_nested_aggregates(
+    expr_ctx: Any,
+    *,
+    incoming_env: dict[str, str] | None,
+    bind_vars: dict[str, Any],
+    reserve: Callable[[str], str],
+    compiled_agg: list[tuple[str, str, str]],
+    compiled_collects: list[tuple[str, str, dict[str, Any]]],
+) -> dict[int, str]:
+    """Add each aggregate nested in a projection expression to the COLLECT.
+
+    ``head(collect(x))``, ``100 * count(x)``, ``list + collect(x)``: each
+    aggregate call becomes a COLLECT variable of its own, and the expression
+    is evaluated after grouping with the call standing for that variable
+    (:func:`aggregate_variables`). Returns node id → variable; empty when the
+    expression has no aggregate.
+    """
+    variables: dict[int, str] = {}
+    for node in nested_aggregates(expr_ctx):
+        text = node.getText().strip()
+        if incoming_env:
+            text = _rewrite_vars(text, incoming_env)
+        aql_var = reserve("_agg")
+        spec = _parse_collect(text)
+        if spec is not None:
+            compiled_collects.append((aql_var, aql_var, _compile_collect_inner(spec, bind_vars)))
+        else:
+            agg = _compile_agg_expr(text, bind_vars)
+            if agg is None:
+                raise CoreError(f"Unsupported aggregate in an expression: {text}", code="UNSUPPORTED")
+            compiled_agg.append((aql_var, aql_var, agg[1]))
+        variables[id(node)] = aql_var
+    return variables
+
+
+def _grouped_expression_vars(compiled_nonagg: list[tuple[str, str, str]]) -> dict[str, str]:
+    """Grouping expression → the variable COLLECT binds it to (when renamed)."""
+    return {expr: aql for _, aql, expr in compiled_nonagg if expr != aql}
 
 
 def _aggregate_from_collected_rows(agg_expr: str, rows_var: str, field: str | None) -> str:
@@ -3104,6 +3170,10 @@ def _apply_with(
     # collect() → AGGREGATE PUSH/UNIQUE parts; a list so multiple collect()
     # coexist (AQL allows many AGGREGATE parts, only one INTO).
     compiled_collects: list[tuple[str, str, dict[str, Any]]] = []  # (cypher_var, aql_var, spec)
+    # Expressions over nested aggregates, evaluated after grouping, and the
+    # COLLECT variables of those aggregates, which are not projected.
+    compiled_post: list[tuple[str, str, str]] = []  # (cypher_var, aql_var, expr)
+    hidden: set[str] = set()
     pre_existing = set(forbidden_vars)
 
     def pick_name(cypher_var: str) -> str:
@@ -3113,6 +3183,11 @@ def _apply_with(
         while _affix_name(cypher_var, suffix=f"_{i}") in forbidden_vars:
             i += 1
         return _affix_name(cypher_var, suffix=f"_{i}")
+
+    def reserve(name: str) -> str:
+        picked = pick_name(name)
+        forbidden_vars.add(picked)
+        return picked
 
     for it in items:
         expr_ctx = it.oC_Expression()
@@ -3138,6 +3213,26 @@ def _apply_with(
             aql_var = pick_name(cypher_var)
             forbidden_vars.add(aql_var)
             compiled_agg.append((cypher_var, aql_var, agg_expr))
+            continue
+
+        nested = _hoist_nested_aggregates(
+            expr_ctx,
+            incoming_env=incoming_env,
+            bind_vars=bind_vars,
+            reserve=reserve,
+            compiled_agg=compiled_agg,
+            compiled_collects=compiled_collects,
+        )
+        if nested:
+            hidden.update(nested.values())
+            with aggregate_variables(nested):
+                post = _compile_expression(expr_ctx, bind_vars)
+            if incoming_env:
+                post = _rewrite_vars(post, incoming_env)
+            cypher_var = (
+                alias or _infer_key(expr_txt) or f"expr{len(compiled_nonagg) + len(compiled_post) + 1}"
+            )
+            compiled_post.append((cypher_var, reserve(cypher_var), post))
             continue
 
         expr = _compile_expression(expr_ctx, bind_vars)
@@ -3183,9 +3278,10 @@ def _apply_with(
     skip_value, limit_value = _parse_skip_limit(proj, bind_vars)
 
     env = {cy: aql for cy, aql, _ in compiled_nonagg}
-    env.update({cy: aql for cy, aql, _ in compiled_agg})
+    env.update({cy: aql for cy, aql, _ in compiled_agg if cy not in hidden})
+    env.update({cy: aql for cy, aql, _ in compiled_post})
     if order_ctx is not None and incoming_env is not None:
-        projected = set(env) | {cy for cy, _, _ in compiled_collects}
+        projected = set(env) | {cy for cy, _, _ in compiled_collects if cy not in hidden}
         _refuse_out_of_scope_sort_vars(order_ctx, visible=set(incoming_env) | projected)
 
     # AQL 3.11 does not accept PUSH()/UNIQUE() as COLLECT AGGREGATE
@@ -3193,27 +3289,14 @@ def _apply_with(
     # in the INTO projection and derive its list after grouping instead.
     if compiled_collects:
         group_parts = ", ".join(f"{aql} = {expr}" for _, aql, expr in compiled_nonagg)
-        rows_var = pick_name("_collect_rows")
-        forbidden_vars.add(rows_var)
-        projection_parts = [f"{aql}: {spec['inner']}" for _, aql, spec in compiled_collects]
-        aggregate_fields: list[tuple[str, str, str | None]] = []
-        for cypher_var, aql_var, agg_expr in compiled_agg:
-            field: str | None = None
-            if agg_expr != "COUNT(1)":
-                field = _affix_name(aql_var, prefix="_", suffix="_input")
-                inner = agg_expr[agg_expr.find("(") + 1 : -1]
-                projection_parts.append(f"{field}: {inner}")
-            aggregate_fields.append((cypher_var, aql_var, field))
-        collect_line = f"  COLLECT {group_parts or '_collect_group = 1'} INTO {rows_var}"
-        collect_line += f" = {{{', '.join(projection_parts)}}}"
+        collect_line, collect_lets = _collect_into_rows(
+            group_parts, compiled_agg, compiled_collects, reserve("_collect_rows")
+        )
         lines.append(collect_line)
-        for cypher_var, aql_var, spec in compiled_collects:
-            lines.append(f"  LET {aql_var} = {_collect_post_expr(f'{rows_var}[*].{aql_var}', spec)}")
-            env[cypher_var] = aql_var
-        for cypher_var, aql_var, field in aggregate_fields:
-            agg_expr = next(expr for cy, aql, expr in compiled_agg if (cy, aql) == (cypher_var, aql_var))
-            lines.append(f"  LET {aql_var} = {_aggregate_from_collected_rows(agg_expr, rows_var, field)}")
-            env[cypher_var] = aql_var
+        for aql_var, finish in collect_lets:
+            lines.append(f"  LET {aql_var} = {finish}")
+        env.update({cy: aql for cy, aql, _spec in compiled_collects if cy not in hidden})
+        _append_post_aggregate_lets(lines, compiled_post, compiled_nonagg)
 
         with_filter = _rewrite_vars(with_filter_raw, env) if with_filter_raw else None
         if with_filter:
@@ -3228,17 +3311,9 @@ def _apply_with(
     # AGGREGATE PUSH (UNIQUE for DISTINCT); a trailing slice/index becomes a
     # post-COLLECT LET over a PUSH temp. Multiple collect() coexist as multiple
     # AGGREGATE parts.
-    if compiled_agg or compiled_collects:
+    if compiled_agg:
         group_parts = ", ".join(f"{aql} = {expr}" for _, aql, expr in compiled_nonagg)
-
-        def reserve(name: str) -> str:
-            picked = pick_name(name)
-            forbidden_vars.add(picked)
-            return picked
-
-        agg_pieces, post_lets = _aggregate_clause(compiled_agg, compiled_collects, reserve)
-        for cy, aql, _spec in compiled_collects:
-            env[cy] = aql
+        agg_pieces, post_lets = _aggregate_clause(compiled_agg, reserve)
         agg_parts = ", ".join(agg_pieces)
 
         collect_line = "  COLLECT"
@@ -3250,6 +3325,7 @@ def _apply_with(
         lines.append(collect_line)
         for pk, pe in post_lets:
             lines.append(f"  LET {pk} = {pe}")
+        _append_post_aggregate_lets(lines, compiled_post, compiled_nonagg)
 
         with_filter = _rewrite_vars(with_filter_raw, env) if with_filter_raw else None
         if with_filter:
@@ -3281,6 +3357,21 @@ def _apply_with(
 
     _active_user_vars.set(list(env.keys()))
     return env
+
+
+def _append_post_aggregate_lets(
+    lines: list[str],
+    compiled_post: list[tuple[str, str, str]],
+    compiled_nonagg: list[tuple[str, str, str]],
+) -> None:
+    """``LET`` each expression over nested aggregates, after the COLLECT.
+
+    Its grouping-key references are rewritten to the variables COLLECT bound
+    them to (``WITH tag, list + collect(x)`` may group ``tag`` as ``tag_1``).
+    """
+    group_vars = _grouped_expression_vars(compiled_nonagg)
+    for _cypher_var, aql_var, expr in compiled_post:
+        lines.append(f"  LET {aql_var} = {_rewrite_vars(expr, group_vars)}")
 
 
 def _refuse_out_of_scope_sort_vars(order_ctx: Any, *, visible: set[str]) -> None:
@@ -3459,6 +3550,9 @@ def _append_return(
         if _aggregate_call(expr_txt) is not None or _parse_collect(expr_txt) is not None:
             has_agg = True
             break
+        if nested_aggregates(it.oC_Expression()):
+            has_agg = True
+            break
 
     if has_agg:
         if is_star:
@@ -3574,6 +3668,13 @@ def _append_return_aggregation(
     # single slot) so multiple collect() in one projection are supported —
     # AQL allows many AGGREGATE parts but only one INTO.
     compiled_collects: list[tuple[str, str, dict[str, Any]]] = []
+    # Expressions over nested aggregates (``head(collect(x))``), evaluated
+    # after grouping, and the COLLECT variables of those aggregates.
+    compiled_post: list[tuple[str, str, str]] = []
+    hidden: set[str] = set()
+    # Grouping expression (with renamed variables) → its form in Cypher names:
+    # ``ORDER BY person.id`` must find ``person_3.id``'s group variable.
+    cypher_level: dict[str, str] = {}
 
     # Names live *before* the COLLECT: the enclosing FOR variables. A COLLECT
     # group/aggregate/INTO variable must not reuse any of them. ``var_env`` carries
@@ -3624,9 +3725,31 @@ def _append_return_aggregation(
             compiled_agg.append((key, _alloc(key), agg_expr))
             continue
 
+        nested = _hoist_nested_aggregates(
+            expr_ctx,
+            incoming_env=var_env,
+            bind_vars=bind_vars,
+            reserve=_alloc,
+            compiled_agg=compiled_agg,
+            compiled_collects=compiled_collects,
+        )
+        if nested:
+            hidden.update(nested.values())
+            with aggregate_variables(nested):
+                post = _compile_expression(expr_ctx, bind_vars)
+            if var_env:
+                post = _rewrite_vars(post, var_env)
+            idx = len(compiled_nonagg) + len(compiled_post) + 1
+            key = _unique_projection_key(alias or _infer_key(expr_txt) or f"expr{idx}", expr_txt, used_keys)
+            compiled_post.append((key, _alloc(key), post))
+            continue
+
         expr = _compile_expression(expr_ctx, bind_vars)
+        cypher_level[expr] = expr
         if var_env:
-            expr = _rewrite_vars(expr, var_env)
+            renamed = _rewrite_vars(expr, var_env)
+            cypher_level[renamed] = cypher_level.pop(expr)
+            expr = renamed
         # Infer the COLLECT group key from the original Cypher expression
         # (e.g. ``type(r)`` -> ``type``) rather than the compiled AQL, which
         # for non-trivial expressions like the ``type()`` runtime discriminator
@@ -3643,18 +3766,17 @@ def _append_return_aggregation(
 
     group_parts = ", ".join(f"{aql} = {e}" for _k, aql, e in compiled_nonagg)
 
-    if compiled_collects and not compiled_agg:
-        rows_var = _alloc("_collect_rows")
-        projection_parts = ", ".join(f"{aql}: {spec['inner']}" for _k, aql, spec in compiled_collects)
-        collect_line = f"  COLLECT {group_parts or '_collect_group = 1'} INTO {rows_var}"
-        lines.append(f"{collect_line} = {{{projection_parts}}}")
-        for _key, aql, spec in compiled_collects:
-            lines.append(f"  LET {aql} = {_collect_post_expr(f'{rows_var}[*].{aql}', spec)}")
+    if compiled_collects:
+        # PUSH is not a valid AGGREGATE expression on ArangoDB 3.11 (ERR 1574),
+        # so a projection with a collect() groups INTO rows.
+        collect_line, collect_lets = _collect_into_rows(
+            group_parts, compiled_agg, compiled_collects, _alloc("_collect_rows")
+        )
+        lines.append(collect_line)
+        for aql, finish in collect_lets:
+            lines.append(f"  LET {aql} = {finish}")
     else:
-        # AQL supports aggregate functions such as COUNT/SUM directly. ``collect``
-        # is handled by the INTO-projection path above because PUSH/UNIQUE are
-        # not valid COLLECT AGGREGATE expressions in ArangoDB 3.11.
-        agg_pieces, post_lets = _aggregate_clause(compiled_agg, compiled_collects, _alloc)
+        agg_pieces, post_lets = _aggregate_clause(compiled_agg, _alloc)
         agg_parts = ", ".join(agg_pieces)
 
         collect_line = "  COLLECT"
@@ -3666,27 +3788,33 @@ def _append_return_aggregation(
         lines.append(collect_line)
         for pk, pe in post_lets:
             lines.append(f"  LET {pk} = {pe}")
+    _append_post_aggregate_lets(lines, compiled_post, compiled_nonagg)
 
     # ORDER BY / RETURN env: map both the projection key and the original grouped
     # expression to the (possibly reallocated) AQL variable. After
     # ``COLLECT name = p.name`` the Cypher variable ``p`` is out of scope, so an
     # ORDER BY referring to ``p.name`` must resolve to the group var.
     agg_env: dict[str, str] = {}
-    for key, aql, _e in compiled_nonagg + compiled_agg:
-        agg_env[key] = aql
+    for key, aql, _e in compiled_nonagg + compiled_agg + compiled_post:
+        if key not in hidden:
+            agg_env[key] = aql
     for key, aql, _s in compiled_collects:
-        agg_env[key] = aql
+        if key not in hidden:
+            agg_env[key] = aql
     for _key, aql, expr in compiled_nonagg:
         if expr not in agg_env:
             agg_env[expr] = aql
+        if cypher_level.get(expr, expr) not in agg_env:
+            agg_env[cypher_level.get(expr, expr)] = aql
 
     if order_ctx is not None:
         lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=agg_env))
     _append_skip_limit(lines, skip_value, limit_value)
 
     all_items: list[tuple[str, str]] = [(k, aql) for k, aql, _ in compiled_nonagg]
-    all_items += [(k, aql) for k, aql, _ in compiled_agg]
-    all_items += [(k, aql) for k, aql, _ in compiled_collects]
+    all_items += [(k, aql) for k, aql, _ in compiled_agg if k not in hidden]
+    all_items += [(k, aql) for k, aql, _ in compiled_collects if k not in hidden]
+    all_items += [(k, aql) for k, aql, _ in compiled_post]
     if len(all_items) == 1:
         lines.append(f"  RETURN {all_items[0][1]}")
     else:
@@ -5198,6 +5326,11 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         # An operand in a predicate position (``WHERE n.active``): compile it
         # as a value, then test it. See ``three_valued`` for the modes.
         return _test_truth(_compile_value(ctx, bind_vars), mode, two_valued=_is_two_valued(ctx))
+
+    aggregate_var = aggregate_variable(ctx)
+    if aggregate_var is not None:
+        # An aggregate nested in a projection: see ``_hoist_nested_aggregates``.
+        return aggregate_var
 
     if isinstance(ctx, CypherParser.OC_ExpressionContext):
         return _compile_expression(ctx.oC_OrExpression(), bind_vars)
