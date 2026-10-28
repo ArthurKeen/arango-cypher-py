@@ -694,7 +694,28 @@ beyond the fail-closed guard.
 
 ### Phase 1 — Correctness gaps, ordered by operations unlocked
 
-#### WP-35: Label hierarchies (supertypes) ⚡ (L)
+#### WP-35: Label hierarchies (supertypes) ⚡ (L) — implemented 2026-10-26 (LPG) and 2026-10-27 (PG)
+- **Status:**
+  - **Core.** arango-query-core 0.2.5 carries the hierarchy: `subtypes`,
+    `SUPERTYPE_STYLES` (`MULTI_LABEL`, `UNION`), `is_supertype` and
+    `supertype_members`.
+  - **LPG (stage 1).** Supertypes map as `MULTI_LABEL` over the labels array.
+    LPG translatable went from 19 to 33, and LPG matches_oracle from 15 to 25,
+    including BI12, BI5 and IC9. No cell is `translates_wrong`.
+  - **PG (stage 2, 2026-10-27).** Supertypes map as `UNION` over the members'
+    collections (`arango_cypher/_translate_v0/supertypes.py`). A scan becomes
+    a `UNION` of per-member subqueries, with the inline properties pushed into
+    each branch. A traversal target tests membership unless the edge already
+    guarantees it. PG translatable went from 16 to 29, and PG matches_oracle
+    from 13 to 23 (BI5, BI7, BI9, BI12, IC2, IC8, IC9, IS4, IS5, IS6). No cell
+    is `translates_wrong`.
+  - **Newly loud:** BI3 (ERR 1511), BI6 (`like` is an AQL keyword) and IS7
+    (raw `CASE WHEN`), on both layouts. DEL6 fails with ERR 1202 on LPG; on PG
+    it is refused, because a write to a union-matched variable names no single
+    collection.
+  - **Fixed on the way:** with a `COLLECTION` primary label, an extra supertype
+    label was only warned about, so `(x:Person:Message)` returned every Person.
+    It is now tested, and an extra supertype the primary implies adds no filter.
 - **Upstream (`arango-query-core`):**
   - Conceptual `subtypeOf` / `supertypes` in `MappingBundle`.
   - A physical `labelsField` for LPG.

@@ -8,7 +8,7 @@ from arango_query_core import CoreError, MappingResolver
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 from tests.ldbc import mappings
-from tests.ldbc.loader import lpg_indexes, pg_indexes
+from tests.ldbc.loader import lpg_indexes, pg_collection, pg_indexes
 from tests.ldbc.schema import CONCRETE_LABELS, REL_TYPES, SUPERTYPES
 
 
@@ -27,16 +27,25 @@ def test_check_mode_reports_current_fixtures():
 @pytest.mark.parametrize("layout", ["pg", "lpg"])
 def test_every_concrete_label_and_type_resolves(layout):
     r = MappingResolver(mapping_bundle_for(f"ldbc_{layout}"))
-    assert sorted(r.all_entity_labels()) == sorted(CONCRETE_LABELS)
+    assert set(r.all_entity_labels()) == set(CONCRETE_LABELS) | set(SUPERTYPES)
     assert sorted(r.all_relationship_types()) == sorted(REL_TYPES)
 
 
-@pytest.mark.parametrize("layout", ["pg", "lpg"])
 @pytest.mark.parametrize("supertype", sorted(SUPERTYPES))
-def test_supertypes_fail_closed(layout, supertype):
-    with pytest.raises(CoreError) as exc:
-        translate(f"MATCH (n:{supertype}) RETURN n.id", mapping=mapping_bundle_for(f"ldbc_{layout}"))
-    assert exc.value.code == "MAPPING_NOT_FOUND"
+def test_lpg_supertypes_are_multi_label_over_their_members(supertype):
+    r = MappingResolver(mapping_bundle_for("ldbc_lpg"))
+    assert r.resolve_entity(supertype)["style"] == "MULTI_LABEL"
+    assert r.supertype_members(supertype) == list(SUPERTYPES[supertype])
+
+
+@pytest.mark.parametrize("supertype", sorted(SUPERTYPES))
+def test_pg_supertypes_are_a_union_of_their_members(supertype):
+    r = MappingResolver(mapping_bundle_for("ldbc_pg"))
+    assert r.resolve_entity(supertype)["style"] == "UNION"
+    assert r.supertype_members(supertype) == list(SUPERTYPES[supertype])
+    q = translate(f"MATCH (n:{supertype}) RETURN n.id", mapping=mapping_bundle_for("ldbc_pg"))
+    members = sorted(v for k, v in q.bind_vars.items() if k.startswith("@nMember"))
+    assert members == sorted(pg_collection(m) for m in SUPERTYPES[supertype]), q.aql
 
 
 def test_polymorphic_relationships_declare_union_endpoints():
@@ -47,7 +56,13 @@ def test_polymorphic_relationships_declare_union_endpoints():
 
 def test_indexes_match_what_the_loader_creates():
     pg = mappings.build("pg")["physicalMapping"]["entities"]
-    declared = {(e["collectionName"], tuple(i["fields"])) for e in pg.values() for i in e["indexes"]}
+    # A UNION supertype has no collection; its members' entries carry the indexes.
+    declared = {
+        (e["collectionName"], tuple(i["fields"]))
+        for e in pg.values()
+        if e["style"] != "UNION"
+        for i in e["indexes"]
+    }
     assert declared == {(s.collection, s.fields) for s in pg_indexes()}
 
     lpg = mappings.build("lpg")["physicalMapping"]

@@ -14,11 +14,13 @@ dependencies = [
   # shared mechanism `nl2cypher.postconditions` re-exports). 0.2.4 adds what
   # nl_to_cypher needs to run on NLQueryEngine alone (issue #24): the
   # normalize seam, generate(user_hint=), retry_provider_errors, and fence
-  # extraction anywhere in a response. For
+  # extraction anywhere in a response. 0.2.5 adds label hierarchies
+  # (supertypes: MULTI_LABEL/UNION styles, is_supertype, supertype_members),
+  # which the LPG supertype translation needs (WP-35). For
   # co-development against the sibling checkout, `pip install -e
   # ../arango-query-core` first — pip skips index resolution when the
   # requirement is already satisfied.
-  "arango-query-core>=0.2.4,<0.3.0",
+  "arango-query-core>=0.2.5,<0.3.0",
   "python-arango>=8.1.1",
   # Imported directly by service/platform_auth.py to classify the decode
   # errors python-arango raises for a forwarded platform JWT; python-arango

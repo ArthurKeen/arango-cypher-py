@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from arango_query_core import (
+    SUPERTYPE_STYLES,
     AqlQuery,
     CoreError,
     MappingBundle,
@@ -46,6 +47,7 @@ from .state import (
     _active_warnings,
     _HopMeta,
 )
+from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
 from .temporal_guard import reject_temporal_accessor
 from .unwind import _translate_standalone_unwind
 from .writes import (
@@ -414,13 +416,11 @@ def _emit_single_hop(
             and resolver.edge_constrains_target(h.rel_type, h.v_primary, h.direction)
         )
         if not skip_coll_filter:
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
-            bind_vars[vcoll_key] = h.v_map.get("collectionName")
-            if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                raise CoreError(
-                    f"Invalid entity mapping collectionName for: {h.v_primary}", code="INVALID_MAPPING"
+            v_filters.append(
+                node_collection_filter(
+                    h.v_trav, str(h.v_primary), h.v_map, resolver, bind_vars, key_base="vCollection"
                 )
-            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+            )
 
     rmin, rmax = h.rel_range
     trav_line = f"  FOR {h.v_trav}, {h.rel_var} IN {rmin}..{rmax} {h.direction} {current_var} {_aql_collection_ref(h.edge_key)}"
@@ -440,11 +440,16 @@ def _emit_single_hop(
             bind_vars[vtf_key] = h.v_map.get("typeField")
             bind_vars[vtv_key] = h.v_map.get("typeValue")
             v_filters.append(f"{h.v_trav}[@{vtf_key}] == @{vtv_key}")
-            v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary))
+            v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars))
+        elif v_style == "MULTI_LABEL":
+            v_filters.append(_multi_label_filter(h.v_trav, h.v_map, bind_vars))
+            v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars))
+        elif v_style == "UNION":
+            v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars))
         elif v_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
-        elif len(h.v_labels) > 1:
-            _warn_multi_label_collection(h.v_labels, h.v_primary)
+        else:
+            v_filters.extend(_collection_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars))
 
     r_filters: list[str] = []
     if h.r_style == "GENERIC_WITH_TYPE":
@@ -586,13 +591,10 @@ def _emit_vertex_filters_for_hop(
         and resolver.edge_constrains_target(h.rel_type, h.v_primary, h.direction)
     )
     if not skip_coll_filter:
-        vcoll_key = _pick_bind_key("vCollection", bind_vars)
-        bind_vars[vcoll_key] = h.v_map.get("collectionName")
-        if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-            raise CoreError(
-                f"Invalid entity mapping collectionName for: {h.v_primary}", code="INVALID_MAPPING"
-            )
-        lines.append(f"    FILTER IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+        coll_filter = node_collection_filter(
+            h.v_trav, str(h.v_primary), h.v_map, resolver, bind_vars, key_base="vCollection"
+        )
+        lines.append(f"    FILTER {coll_filter}")
 
     if h.v_primary is not None:
         v_style = h.v_map.get("style")
@@ -602,12 +604,20 @@ def _emit_vertex_filters_for_hop(
             bind_vars[vtf_key] = h.v_map.get("typeField")
             bind_vars[vtv_key] = h.v_map.get("typeValue")
             lines.append(f"    FILTER {h.v_trav}[@{vtf_key}] == @{vtv_key}")
-            for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary):
+            for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars):
+                lines.append(f"    FILTER {f}")
+        elif v_style == "MULTI_LABEL":
+            lines.append(f"    FILTER {_multi_label_filter(h.v_trav, h.v_map, bind_vars)}")
+            for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars):
+                lines.append(f"    FILTER {f}")
+        elif v_style == "UNION":
+            for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars):
                 lines.append(f"    FILTER {f}")
         elif v_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
-        elif len(h.v_labels) > 1:
-            _warn_multi_label_collection(h.v_labels, h.v_primary)
+        else:
+            for f in _collection_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars):
+                lines.append(f"    FILTER {f}")
 
 
 def _emit_edge_type_filters_for_hop(
@@ -927,8 +937,7 @@ def _translate_match_body(
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
             entity_style = entity_mapping.get("style")
             if entity_style == "COLLECTION":
-                if len(labels) > 1:
-                    _warn_multi_label_collection(labels, primary)
+                base_filters.extend(_collection_label_filters(var, labels, primary, bind_vars))
                 bind_vars["@collection"] = entity_mapping["collectionName"]
                 for_line = f"FOR {var} IN @@collection"
             elif entity_style == "LABEL":
@@ -937,7 +946,25 @@ def _translate_match_body(
                 bind_vars["typeValue"] = entity_mapping["typeValue"]
                 for_line = f"FOR {var} IN @@collection"
                 base_filters.append(f"{var}[@typeField] == @typeValue")
-                base_filters.extend(_extra_label_filters(var, labels, primary))
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
+            elif entity_style == "MULTI_LABEL":
+                bind_vars["@collection"] = entity_mapping["collectionName"]
+                for_line = f"FOR {var} IN @@collection"
+                base_filters.append(_multi_label_filter(var, entity_mapping, bind_vars))
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
+            elif entity_style == "UNION":
+                source, _ = node_scan_source(
+                    var,
+                    primary,
+                    entity_mapping,
+                    resolver,
+                    bind_vars,
+                    coll_key="@collection",
+                    filters=prop_filters,
+                )
+                for_line = f"FOR {var} IN {source}"
+                prop_filters = []
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
             else:
                 raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
 
@@ -950,7 +977,7 @@ def _translate_match_body(
 
         # Build AQL
         lines = [for_line]
-        if labels:
+        if labels and entity_style != "UNION":
             idx_hint = _build_collection_index_hint(primary, prop_filters, resolver)
             if idx_hint:
                 lines.append(f"  {idx_hint}")
@@ -1027,27 +1054,35 @@ def _translate_match_body(
                     u_labels = [_inferred_u]
 
     u_filters: list[str] = []
+    u_source = "@@uCollection"
     if not u_labels:
         bind_vars["@uCollection"] = _infer_unlabeled_collection(resolver)
     else:
         u_primary = _pick_primary_entity_label(u_labels, resolver)
         u_map = resolver.resolve_entity(_strip_label_backticks(u_primary))
-        bind_vars["@uCollection"] = u_map.get("collectionName")
-        if not isinstance(bind_vars["@uCollection"], str) or not bind_vars["@uCollection"]:
-            raise CoreError(f"Invalid entity mapping collectionName for: {u_primary}", code="INVALID_MAPPING")
+        u_source, pushed = node_scan_source(
+            u_var, u_primary, u_map, resolver, bind_vars, coll_key="@uCollection", filters=u_prop_filters
+        )
+        if pushed:
+            u_prop_filters = []
 
         u_style = u_map.get("style")
         if u_style == "LABEL":
             bind_vars["uTypeField"] = u_map.get("typeField")
             bind_vars["uTypeValue"] = u_map.get("typeValue")
             u_filters.append(f"{u_var}[@uTypeField] == @uTypeValue")
-            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary))
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
+        elif u_style == "MULTI_LABEL":
+            u_filters.append(_multi_label_filter(u_var, u_map, bind_vars))
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
+        elif u_style == "UNION":
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
         elif u_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {u_style}", code="INVALID_MAPPING")
-        elif len(u_labels) > 1:
-            _warn_multi_label_collection(u_labels, u_primary)
+        else:
+            u_filters.extend(_collection_label_filters(u_var, u_labels, u_primary, bind_vars))
 
-    lines = [f"FOR {u_var} IN @@uCollection"]
+    lines = [f"FOR {u_var} IN {u_source}"]
     for f in u_filters:
         lines.append(f"  FILTER {f}")
     for f in u_prop_filters:
@@ -1966,13 +2001,11 @@ def _compile_match_multi_parts_from_parts(
             and resolver.edge_constrains_target(via_edge, primary, edge_direction)
         )
         if not skip_coll_filter:
-            coll_key = _pick_bind_key(f"{var}Collection", bind_vars)
-            bind_vars[coll_key] = entity_mapping.get("collectionName")
-            if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
-                raise CoreError(
-                    f"Invalid entity mapping collectionName for: {primary}", code="INVALID_MAPPING"
+            add_filter(
+                node_collection_filter(
+                    var, primary, entity_mapping, resolver, bind_vars, key_base=f"{var}Collection"
                 )
-            add_filter(f"IS_SAME_COLLECTION(@{coll_key}, {var})")
+            )
 
         if entity_style == "LABEL":
             tf_key = _pick_bind_key(f"{var}TypeField", bind_vars)
@@ -1980,12 +2013,20 @@ def _compile_match_multi_parts_from_parts(
             bind_vars[tf_key] = entity_mapping.get("typeField")
             bind_vars[tv_key] = entity_mapping.get("typeValue")
             add_filter(f"{var}[@{tf_key}] == @{tv_key}")
-            for extra in _extra_label_filters(var, labels, primary):
-                add_filter(extra.strip("()"))
+            for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                add_filter(extra)
+        elif entity_style == "MULTI_LABEL":
+            add_filter(_multi_label_filter(var, entity_mapping, bind_vars))
+            for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                add_filter(extra)
+        elif entity_style == "UNION":
+            for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                add_filter(extra)
         elif entity_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
-        elif len(labels) > 1:
-            _warn_multi_label_collection(labels, primary)
+        else:
+            for extra in _collection_label_filters(var, labels, primary, bind_vars, bare=True):
+                add_filter(extra)
         bound_labels[var] = primary
 
     def emit_rel_type_filter(rel_var: str, rel_type: str | None) -> str | None:
@@ -2052,12 +2093,12 @@ def _compile_match_multi_parts_from_parts(
                 entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
                 entity_style = entity_mapping.get("style")
 
-                bind_vars[coll_key] = entity_mapping.get("collectionName")
-                if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
-                    raise CoreError(
-                        f"Invalid entity mapping collectionName for: {primary}", code="INVALID_MAPPING"
-                    )
-                add_for(f"FOR {var} IN {_aql_collection_ref(coll_key)}")
+                source, pushed = node_scan_source(
+                    var, primary, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=prop_filters
+                )
+                if pushed:
+                    prop_filters = []
+                add_for(f"FOR {var} IN {source}")
 
                 if entity_style == "LABEL":
                     tf_key = _pick_bind_key(f"{var}TypeField", bind_vars)
@@ -2065,14 +2106,22 @@ def _compile_match_multi_parts_from_parts(
                     bind_vars[tf_key] = entity_mapping.get("typeField")
                     bind_vars[tv_key] = entity_mapping.get("typeValue")
                     add_filter(f"{var}[@{tf_key}] == @{tv_key}")
-                    for extra in _extra_label_filters(var, labels, primary):
-                        add_filter(extra.strip("()"))
+                    for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                        add_filter(extra)
+                elif entity_style == "MULTI_LABEL":
+                    add_filter(_multi_label_filter(var, entity_mapping, bind_vars))
+                    for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                        add_filter(extra)
+                elif entity_style == "UNION":
+                    for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
+                        add_filter(extra)
                 elif entity_style != "COLLECTION":
                     raise CoreError(
                         f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING"
                     )
-                elif len(labels) > 1:
-                    _warn_multi_label_collection(labels, primary)
+                else:
+                    for extra in _collection_label_filters(var, labels, primary, bind_vars, bare=True):
+                        add_filter(extra)
 
             for f in prop_filters:
                 add_filter(f)
@@ -2093,18 +2142,19 @@ def _compile_match_multi_parts_from_parts(
                 add_filter(f)
         else:
             ucoll_key = _pick_bind_key(f"@{u_var}Collection", bind_vars)
-            add_for(f"FOR {u_var} IN {_aql_collection_ref(ucoll_key)}")
             if not u_labels:
                 bind_vars[ucoll_key] = _infer_unlabeled_collection(resolver)
+                add_for(f"FOR {u_var} IN {_aql_collection_ref(ucoll_key)}")
             else:
                 u_primary = _pick_primary_entity_label(u_labels, resolver)
                 u_map = resolver.resolve_entity(_strip_label_backticks(u_primary))
                 u_style = u_map.get("style")
-                bind_vars[ucoll_key] = u_map.get("collectionName")
-                if not isinstance(bind_vars[ucoll_key], str) or not bind_vars[ucoll_key]:
-                    raise CoreError(
-                        f"Invalid entity mapping collectionName for: {u_primary}", code="INVALID_MAPPING"
-                    )
+                u_source, pushed = node_scan_source(
+                    u_var, u_primary, u_map, resolver, bind_vars, coll_key=ucoll_key, filters=u_prop_filters
+                )
+                if pushed:
+                    u_prop_filters = []
+                add_for(f"FOR {u_var} IN {u_source}")
 
                 if u_style == "LABEL":
                     tf_key = _pick_bind_key(f"{u_var}TypeField", bind_vars)
@@ -2112,12 +2162,20 @@ def _compile_match_multi_parts_from_parts(
                     bind_vars[tf_key] = u_map.get("typeField")
                     bind_vars[tv_key] = u_map.get("typeValue")
                     add_filter(f"{u_var}[@{tf_key}] == @{tv_key}")
-                    for extra in _extra_label_filters(u_var, u_labels, u_primary):
-                        add_filter(extra.strip("()"))
+                    for extra in _extra_label_filters(u_var, u_labels, u_primary, bind_vars, bare=True):
+                        add_filter(extra)
+                elif u_style == "MULTI_LABEL":
+                    add_filter(_multi_label_filter(u_var, u_map, bind_vars))
+                    for extra in _extra_label_filters(u_var, u_labels, u_primary, bind_vars, bare=True):
+                        add_filter(extra)
+                elif u_style == "UNION":
+                    for extra in _extra_label_filters(u_var, u_labels, u_primary, bind_vars, bare=True):
+                        add_filter(extra)
                 elif u_style != "COLLECTION":
                     raise CoreError(f"Unsupported entity mapping style: {u_style}", code="INVALID_MAPPING")
-                elif len(u_labels) > 1:
-                    _warn_multi_label_collection(u_labels, u_primary)
+                else:
+                    for extra in _collection_label_filters(u_var, u_labels, u_primary, bind_vars, bare=True):
+                        add_filter(extra)
             for f in u_prop_filters:
                 add_filter(f)
             forbidden.add(u_var)
@@ -2304,14 +2362,18 @@ def _compile_bound_part(
 
         coll_key = _pick_bind_key("@tailCollection", bind_vars)
         tail_filters: list[str] = []
+        tail_props = _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars)
         if label is None:
             bind_vars[coll_key] = _infer_unlabeled_collection(resolver)
+            tail_source = _aql_collection_ref(coll_key)
         else:
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(label))
             entity_style = entity_mapping.get("style")
-            bind_vars[coll_key] = entity_mapping.get("collectionName")
-            if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
-                raise CoreError(f"Invalid entity mapping collectionName for: {label}", code="INVALID_MAPPING")
+            tail_source, pushed = node_scan_source(
+                u_aql, label, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=tail_props
+            )
+            if pushed:
+                tail_props = []
 
             if entity_style == "LABEL":
                 tf_key = _pick_bind_key("tailTypeField", bind_vars)
@@ -2319,15 +2381,17 @@ def _compile_bound_part(
                 bind_vars[tf_key] = entity_mapping.get("typeField")
                 bind_vars[tv_key] = entity_mapping.get("typeValue")
                 tail_filters.append(f"{u_aql}[@{tf_key}] == @{tv_key}")
-            elif entity_style != "COLLECTION":
+            elif entity_style == "MULTI_LABEL":
+                tail_filters.append(_multi_label_filter(u_aql, entity_mapping, bind_vars))
+            elif entity_style not in ("COLLECTION", "UNION"):
                 raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
 
-        lines.append(f"  FOR {u_aql} IN {_aql_collection_ref(coll_key)}")
+        lines.append(f"  FOR {u_aql} IN {tail_source}")
         for f in tail_filters:
             lines.append(f"    FILTER {f}")
 
         # Inline properties on fresh scan node.
-        for f in _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars):
+        for f in tail_props:
             lines.append(f"    FILTER {f}")
 
     if not chains:
@@ -2408,16 +2472,16 @@ def _compile_bound_part(
             and rel_type is not None
             and resolver.edge_constrains_target(rel_type, v_primary, direction)
         )
+        coll_filter: str | None = None
         if not skip_coll_filter:
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
             if v_map is None:
+                vcoll_key = _pick_bind_key("vCollection", bind_vars)
                 bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+                coll_filter = f"IS_SAME_COLLECTION(@{vcoll_key}, {v_aql})"
             else:
-                bind_vars[vcoll_key] = v_map.get("collectionName")
-                if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                    raise CoreError(
-                        f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING"
-                    )
+                coll_filter = node_collection_filter(
+                    v_aql, str(v_primary), v_map, resolver, bind_vars, key_base="vCollection"
+                )
 
         rmin, rmax = rel_range
         lines.append(
@@ -2425,8 +2489,8 @@ def _compile_bound_part(
         )
 
         v_filters: list[str] = []
-        if not skip_coll_filter:
-            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_aql})")
+        if coll_filter is not None:
+            v_filters.append(coll_filter)
         if v_map is not None and v_primary is not None:
             v_style = v_map.get("style")
             if v_style == "LABEL":
@@ -2435,9 +2499,16 @@ def _compile_bound_part(
                 bind_vars[vtf_key] = v_map.get("typeField")
                 bind_vars[vtv_key] = v_map.get("typeValue")
                 v_filters.append(f"{v_aql}[@{vtf_key}] == @{vtv_key}")
-                v_filters.extend(_extra_label_filters(v_aql, v_labels, v_primary))
+                v_filters.extend(_extra_label_filters(v_aql, v_labels, v_primary, bind_vars))
+            elif v_style == "MULTI_LABEL":
+                v_filters.append(_multi_label_filter(v_aql, v_map, bind_vars))
+                v_filters.extend(_extra_label_filters(v_aql, v_labels, v_primary, bind_vars))
+            elif v_style == "UNION":
+                v_filters.extend(_extra_label_filters(v_aql, v_labels, v_primary, bind_vars))
             elif v_style != "COLLECTION":
                 raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
+            else:
+                v_filters.extend(_collection_label_filters(v_aql, v_labels, v_primary, bind_vars))
 
         r_filters: list[str] = []
         r_style = r_map.get("style")
@@ -2508,8 +2579,7 @@ def _compile_match_pipeline(
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))
             entity_style = entity_mapping.get("style")
             if entity_style == "COLLECTION":
-                if len(labels) > 1:
-                    _warn_multi_label_collection(labels, primary)
+                base_filters.extend(_collection_label_filters(var, labels, primary, bind_vars))
                 bind_vars["@collection"] = entity_mapping["collectionName"]
                 lines = [f"FOR {var} IN @@collection"]
             elif entity_style == "LABEL":
@@ -2518,7 +2588,25 @@ def _compile_match_pipeline(
                 bind_vars["typeValue"] = entity_mapping["typeValue"]
                 lines = [f"FOR {var} IN @@collection"]
                 base_filters.append(f"{var}[@typeField] == @typeValue")
-                base_filters.extend(_extra_label_filters(var, labels, primary))
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
+            elif entity_style == "MULTI_LABEL":
+                bind_vars["@collection"] = entity_mapping["collectionName"]
+                lines = [f"FOR {var} IN @@collection"]
+                base_filters.append(_multi_label_filter(var, entity_mapping, bind_vars))
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
+            elif entity_style == "UNION":
+                source, _ = node_scan_source(
+                    var,
+                    primary,
+                    entity_mapping,
+                    resolver,
+                    bind_vars,
+                    coll_key="@collection",
+                    filters=prop_filters,
+                )
+                lines = [f"FOR {var} IN {source}"]
+                prop_filters = []
+                base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
             else:
                 raise CoreError(f"Unsupported entity mapping style: {entity_style}", code="INVALID_MAPPING")
 
@@ -2528,7 +2616,7 @@ def _compile_match_pipeline(
         if user_filter:
             filters.append(user_filter)
         filters.extend(prop_filters)
-        if labels:
+        if labels and entity_style != "UNION":
             idx_hint = _build_collection_index_hint(primary, prop_filters, resolver)
             if idx_hint:
                 lines.append(f"  {idx_hint}")
@@ -2541,26 +2629,36 @@ def _compile_match_pipeline(
     u_prop_filters = _compile_node_pattern_properties(node, var=u_var, bind_vars=bind_vars)
 
     u_filters: list[str] = []
+    u_source = "@@uCollection"
     if not u_labels:
         bind_vars["@uCollection"] = _infer_unlabeled_collection(resolver)
     else:
         u_primary = _pick_primary_entity_label(u_labels, resolver)
         u_map = resolver.resolve_entity(_strip_label_backticks(u_primary))
 
-        bind_vars["@uCollection"] = u_map.get("collectionName")
-        if not isinstance(bind_vars["@uCollection"], str) or not bind_vars["@uCollection"]:
-            raise CoreError(f"Invalid entity mapping collectionName for: {u_primary}", code="INVALID_MAPPING")
+        u_source, pushed = node_scan_source(
+            u_var, u_primary, u_map, resolver, bind_vars, coll_key="@uCollection", filters=u_prop_filters
+        )
+        if pushed:
+            u_prop_filters = []
 
         u_style = u_map.get("style")
         if u_style == "LABEL":
             bind_vars["uTypeField"] = u_map.get("typeField")
             bind_vars["uTypeValue"] = u_map.get("typeValue")
             u_filters.append(f"{u_var}[@uTypeField] == @uTypeValue")
-            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary))
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
+        elif u_style == "MULTI_LABEL":
+            u_filters.append(_multi_label_filter(u_var, u_map, bind_vars))
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
+        elif u_style == "UNION":
+            u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
         elif u_style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {u_style}", code="INVALID_MAPPING")
+        else:
+            u_filters.extend(_collection_label_filters(u_var, u_labels, u_primary, bind_vars))
 
-    lines = [f"FOR {u_var} IN @@uCollection"]
+    lines = [f"FOR {u_var} IN {u_source}"]
     for f in u_filters:
         lines.append(f"  FILTER {f}")
     for f in u_prop_filters:
@@ -2630,16 +2728,16 @@ def _compile_match_pipeline(
             and rel_type is not None
             and resolver.edge_constrains_target(rel_type, v_primary, direction)
         )
+        coll_filter: str | None = None
         if not skip_coll_filter:
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
             if v_map is None:
+                vcoll_key = _pick_bind_key("vCollection", bind_vars)
                 bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
+                coll_filter = f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})"
             else:
-                bind_vars[vcoll_key] = v_map.get("collectionName")
-                if not isinstance(bind_vars[vcoll_key], str) or not bind_vars[vcoll_key]:
-                    raise CoreError(
-                        f"Invalid entity mapping collectionName for: {v_primary}", code="INVALID_MAPPING"
-                    )
+                coll_filter = node_collection_filter(
+                    v_trav, str(v_primary), v_map, resolver, bind_vars, key_base="vCollection"
+                )
 
         rmin, rmax = rel_range
         if rmin != rmax:
@@ -2651,8 +2749,8 @@ def _compile_match_pipeline(
         v_filters: list[str] = []
         if v_bound:
             v_filters.append(f"{v_trav}._id == {v_var}._id")
-        if not skip_coll_filter:
-            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})")
+        if coll_filter is not None:
+            v_filters.append(coll_filter)
         if v_map is not None and v_primary is not None:
             v_style = v_map.get("style")
             if v_style == "LABEL":
@@ -2661,11 +2759,16 @@ def _compile_match_pipeline(
                 bind_vars[vtf_key] = v_map.get("typeField")
                 bind_vars[vtv_key] = v_map.get("typeValue")
                 v_filters.append(f"{v_trav}[@{vtf_key}] == @{vtv_key}")
-                v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary))
+                v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary, bind_vars))
+            elif v_style == "MULTI_LABEL":
+                v_filters.append(_multi_label_filter(v_trav, v_map, bind_vars))
+                v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary, bind_vars))
+            elif v_style == "UNION":
+                v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary, bind_vars))
             elif v_style != "COLLECTION":
                 raise CoreError(f"Unsupported entity mapping style: {v_style}", code="INVALID_MAPPING")
-            elif len(v_labels) > 1:
-                _warn_multi_label_collection(v_labels, v_primary)
+            else:
+                v_filters.extend(_collection_label_filters(v_trav, v_labels, v_primary, bind_vars))
 
         r_filters: list[str] = []
         r_style = r_map.get("style")
@@ -3658,6 +3761,14 @@ def _pick_primary_entity_label(labels: list[str], resolver: MappingResolver) -> 
         raise CoreError("A single label is required in v0 subset", code="UNSUPPORTED")
     if len(valid) == 1:
         return valid[0]
+    # A concrete label implies its supertypes (``(p:Post:Message)`` is a Post),
+    # is more selective, and is the only one that can be created; the
+    # supertype stays as an extra label filter.
+    concrete = [lab for lab in valid if not resolver.is_supertype(_strip_label_backticks(lab))]
+    if concrete:
+        valid = concrete
+        if len(valid) == 1:
+            return valid[0]
 
     best: str | None = None
     best_count: int | None = None
@@ -3672,13 +3783,99 @@ def _pick_primary_entity_label(labels: list[str], resolver: MappingResolver) -> 
     return valid[-1]
 
 
-def _extra_label_filters(var: str, labels: list[str], primary: str) -> list[str]:
+def _supertype_mapping(resolver: MappingResolver | None, label: str) -> dict[str, Any] | None:
+    """*label*'s entity mapping when it is a supertype, else ``None`` (unmapped included)."""
+    if resolver is None:
+        return None
+    try:
+        emap = resolver.resolve_entity(label)
+    except CoreError as e:
+        if e.code == "MAPPING_NOT_FOUND":
+            return None
+        raise
+    return emap if emap.get("style") in SUPERTYPE_STYLES else None
+
+
+def _label_implies(resolver: MappingResolver, label: str, supertype: str) -> bool:
+    """Whether every *label* node is a *supertype* node (``Post`` implies ``Message``)."""
+    members = set(resolver.supertype_members(supertype))
+    if resolver.is_supertype(label):
+        return set(resolver.supertype_members(label)) <= members
+    return label in members
+
+
+def _collection_label_filters(
+    var: str, labels: list[str], primary: str, bind_vars: dict[str, Any], *, bare: bool = False
+) -> list[str]:
+    """Extra-label filters for a node whose *primary* label is ``COLLECTION``-mapped.
+
+    A document lives in one collection, so another concrete label cannot be
+    checked and is only warned about. A supertype label can: it is implied by
+    *primary* (no filter) or tested like any supertype — ``(x:Person:Message)``
+    is no Person, not every Person.
+    """
+    resolver = _active_resolver.get()
+    supers = [
+        lab
+        for lab in labels
+        if lab != primary and _supertype_mapping(resolver, _strip_label_backticks(lab)) is not None
+    ]
+    unverifiable = [lab for lab in labels if lab not in supers]
+    if len(unverifiable) > 1:
+        _warn_multi_label_collection(unverifiable, primary)
+    return _extra_label_filters(var, supers, primary, bind_vars, bare=bare)
+
+
+def _extra_label_filters(
+    var: str, labels: list[str], primary: str, bind_vars: dict[str, Any], *, bare: bool = False
+) -> list[str]:
+    """Filters for a node's labels other than *primary*, which its scan or collection check covers.
+
+    A supertype that *primary* implies (``(p:Post:Message)``: every Post is a
+    Message) adds nothing. Another supertype adds its own test: the labels
+    array for ``MULTI_LABEL``, the member collections for ``UNION``. Any other
+    label is tested against a ``labels`` array. *bare* drops the outer
+    parentheses for callers that emit each filter as its own ``FILTER``.
+    """
+    resolver = _active_resolver.get()
+    primary_name = _strip_label_backticks(primary)
     out: list[str] = []
     for lab in labels:
         if lab == primary:
             continue
-        out.append(f"({_aql_string_literal(lab)} IN {var}.labels)")
+        name = _strip_label_backticks(lab)
+        emap = _supertype_mapping(resolver, name)
+        if resolver is not None and emap is not None:
+            if _label_implies(resolver, primary_name, name):
+                continue
+            if emap.get("style") == "UNION":
+                out.append(union_membership_filter(var, name, resolver, bind_vars))
+            else:
+                out.append(_multi_label_filter(var, emap, bind_vars))
+            continue
+        test = f"{_aql_string_literal(lab)} IN {var}.labels"
+        out.append(test if bare else f"({test})")
     return out
+
+
+def _multi_label_filter(var: str, emap: dict[str, Any], bind_vars: dict[str, Any]) -> str:
+    """The filter for a ``MULTI_LABEL`` supertype: ``@labelValue IN var[@labelsField]``.
+
+    A supertype in a shared collection (LDBC's ``Message`` over ``nodes``) is
+    every document whose labels array lists it (arango-query-core
+    ``SUPERTYPE_STYLES``).
+    """
+    lf, lv = emap.get("labelsField"), emap.get("labelValue")
+    if not (isinstance(lf, str) and lf and isinstance(lv, str) and lv):
+        raise CoreError(
+            "MULTI_LABEL entity mapping requires non-empty 'labelsField' and 'labelValue'",
+            code="INVALID_MAPPING",
+        )
+    lf_key = _pick_bind_key("labelsField", bind_vars)
+    lv_key = _pick_bind_key("labelValue", bind_vars)
+    bind_vars[lf_key] = lf
+    bind_vars[lv_key] = lv
+    return f"@{lv_key} IN {var}[@{lf_key}]"
 
 
 def _compile_label_predicate(
@@ -3714,6 +3911,12 @@ def _compile_label_predicate(
             raise CoreError("Invalid label in predicate", code="UNSUPPORTED")
         mapping = resolver.resolve_entity(_strip_label_backticks(label))
         style = mapping.get("style")
+        if style == "MULTI_LABEL":
+            parts.append(_multi_label_filter(var, mapping, bind_vars))
+            continue
+        if style == "UNION":
+            parts.append(union_membership_filter(var, label, resolver, bind_vars))
+            continue
         if style in ("LABEL", "GENERIC_WITH_TYPE"):
             tf = mapping.get("typeField")
             tv = mapping.get("typeValue")
@@ -3805,7 +4008,7 @@ def _infer_unlabeled_collection(resolver: MappingResolver) -> str:
     # unlabeled ``MATCH (n)`` means the domain graph, so resolve to the single
     # type-discriminated collection when there is exactly one — the side
     # stores are intentionally excluded.
-    core_colls = _collections({"LABEL", "GENERIC_WITH_TYPE"})
+    core_colls = _collections({"LABEL", "GENERIC_WITH_TYPE", "MULTI_LABEL"})
     if len(core_colls) == 1:
         primary = next(iter(core_colls))
         excluded = sorted(all_colls - core_colls)
@@ -4237,9 +4440,11 @@ def _compile_single_node_subquery_body(
     emap = resolver.resolve_entity(_strip_label_backticks(primary))
     style = emap.get("style")
     coll_key = _pick_bind_key("@sqNodeColl", bind_vars)
-    bind_vars[coll_key] = emap.get("collectionName")
-    if not isinstance(bind_vars[coll_key], str) or not bind_vars[coll_key]:
-        raise CoreError(f"Invalid entity mapping collectionName for: {primary}", code="INVALID_MAPPING")
+    # A UNION supertype applies the node's inline properties inside its member branches.
+    pushed = (
+        _compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars) if style == "UNION" else []
+    )
+    source, _ = node_scan_source(var, primary, emap, resolver, bind_vars, coll_key=coll_key, filters=pushed)
 
     filters: list[str] = []
     if style == "LABEL":
@@ -4248,17 +4453,23 @@ def _compile_single_node_subquery_body(
         bind_vars[tf] = emap.get("typeField")
         bind_vars[tv] = emap.get("typeValue")
         filters.append(f"{var}[@{tf}] == @{tv}")
-        filters.extend(f.strip("()") for f in _extra_label_filters(var, labels, primary))
+        filters.extend(_extra_label_filters(var, labels, primary, bind_vars, bare=True))
+    elif style == "MULTI_LABEL":
+        filters.append(_multi_label_filter(var, emap, bind_vars))
+        filters.extend(_extra_label_filters(var, labels, primary, bind_vars, bare=True))
+    elif style == "UNION":
+        filters.extend(_extra_label_filters(var, labels, primary, bind_vars, bare=True))
     elif style != "COLLECTION":
         raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
-    elif len(labels) > 1:
-        _warn_multi_label_collection(labels, primary)
+    else:
+        filters.extend(_collection_label_filters(var, labels, primary, bind_vars, bare=True))
 
-    filters.extend(_compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars))
+    if style != "UNION":
+        filters.extend(_compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars))
     if where_ctx is not None:
         filters.append(_compile_where(where_ctx.oC_Expression(), bind_vars))
 
-    sub = f"FOR {var} IN {_aql_collection_ref(coll_key)}"
+    sub = f"FOR {var} IN {source}"
     for f in filters:
         sub += f" FILTER {f}"
     return sub + " RETURN 1"
