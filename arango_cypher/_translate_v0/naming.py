@@ -139,7 +139,7 @@ def _quote_aql_reserved_names(tree: Any) -> None:
                 leaf = leaf.children[0]
             symbol = getattr(leaf, "symbol", None)
             text = symbol.text if symbol is not None else None
-            if text and not text.startswith("`") and text.lower() in _AQL_RESERVED:
+            if symbol is not None and text and not text.startswith("`") and text.lower() in _AQL_RESERVED:
                 symbol.text = f"`{text}`"
             continue
         stack.extend(getattr(node, "children", None) or [])
