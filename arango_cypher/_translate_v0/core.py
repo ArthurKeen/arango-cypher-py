@@ -51,6 +51,16 @@ from .state import (
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
 from .temporal_guard import reject_temporal_accessor
+from .three_valued import (
+    _PREDICATE_MODE,
+    _compile_comparison,
+    _is_predicate_transparent,
+    _is_two_valued,
+    _negate_mode,
+    _negate_value,
+    _test_truth,
+    _three_valued,
+)
 from .unwind import _translate_standalone_unwind
 from .writes import (
     _translate_create_query,
@@ -4412,55 +4422,22 @@ def _extract_interleaved_op(ctx: Any, term_index: int, valid_ops: set[str]) -> s
     return next(iter(valid_ops))
 
 
-_OBVIOUS_NON_NULL_RE = re.compile(
-    r"""
-    ^\s*
-    (?:
-        -?\d+(?:\.\d+)?           # numeric literal
-        | "(?:[^"\\]|\\.)*"       # double-quoted string literal
-        | '(?:[^'\\]|\\.)*'       # single-quoted string literal
-        | true | false            # booleans (non-null)
-    )
-    \s*$
-    """,
-    re.VERBOSE,
-)
-
-
-def _compile_one_comparison(left: str, op: str, right: str) -> str:
-    """Compile a single ``left <op> right`` comparison to guarded AQL.
-
-    Cypher uses 3-valued logic: an ordered comparison against ``null`` returns
-    ``null`` (treated as false in WHERE). AQL coerces ``null`` to the lowest
-    sortable value (``null < 1950`` is true there), so ordered comparisons get
-    an explicit ``!= null`` guard on each non-obvious operand. Equality /
-    inequality already match Cypher semantics in AQL.
-    """
-    aql_op = {"=": "==", "<>": "!=", "<": "<", "<=": "<=", ">": ">", ">=": ">="}.get(op)
-    if not aql_op:
-        raise CoreError(f"Unsupported comparison op: {op}", code="UNSUPPORTED")
-    if aql_op in {"<", "<=", ">", ">="}:
-        guards: list[str] = []
-        if not _is_obvious_non_null(left):
-            guards.append(f"{left} != null")
-        if not _is_obvious_non_null(right):
-            guards.append(f"{right} != null")
-        if guards:
-            return "(" + " AND ".join(guards + [f"{left} {aql_op} {right}"]) + ")"
-    return f"({left} {aql_op} {right})"
-
-
-def _is_obvious_non_null(expr: str) -> bool:
-    """True when *expr* is a textual form that AQL evaluates as non-null.
-
-    Used to suppress redundant ``!= null`` guards on comparison operands
-    that are clearly numeric/string/boolean literals.
-    """
-    return bool(_OBVIOUS_NON_NULL_RE.match(expr))
-
-
 def _compile_where(expr_ctx: CypherParser.OC_ExpressionContext, bind_vars: dict[str, Any]) -> str:
-    return _compile_expression(expr_ctx, bind_vars)
+    """Compile a predicate whose value only a FILTER observes (true vs not true)."""
+    return _compile_in_mode(expr_ctx, bind_vars, "true")
+
+
+def _compile_value(ctx: Any, bind_vars: dict[str, Any]) -> str:
+    """Compile *ctx* as a value, whatever predicate mode encloses it."""
+    return _compile_in_mode(ctx, bind_vars, None)
+
+
+def _compile_in_mode(ctx: Any, bind_vars: dict[str, Any], mode: str | None) -> str:
+    token = _PREDICATE_MODE.set(mode)
+    try:
+        return _compile_expression(ctx, bind_vars)
+    finally:
+        _PREDICATE_MODE.reset(token)
 
 
 def _compile_single_node_subquery_body(
@@ -4740,7 +4717,7 @@ def _compile_subquery_body(
 
     where_ctx = match_ctx.oC_Where()
     if where_ctx is not None:
-        where_cond = _compile_expression(where_ctx.oC_Expression(), bind_vars)
+        where_cond = _compile_where(where_ctx.oC_Expression(), bind_vars)
         filters.append(where_cond)
 
     rmin, rmax = rel_range
@@ -4915,7 +4892,7 @@ def _compile_quantifier(
     var_name = id_in_coll.oC_Variable().getText().strip()
     list_expr = _compile_expression(id_in_coll.oC_Expression(), bind_vars)
     where = filt_expr.oC_Where()
-    cond = _compile_expression(where.oC_Expression(), bind_vars) if where is not None else "true"
+    cond = _compile_where(where.oC_Expression(), bind_vars) if where is not None else "true"
 
     if kind == "all":
         body = f"FOR {var_name} IN {list_expr} FILTER NOT ({cond}) RETURN 1"
@@ -5024,7 +5001,7 @@ def _compile_list_comprehension(
     where = filt_expr.oC_Where()
     filter_clause = ""
     if where is not None:
-        cond = _compile_expression(where.oC_Expression(), bind_vars)
+        cond = _compile_where(where.oC_Expression(), bind_vars)
         filter_clause = f" FILTER {cond}"
 
     map_expr = ctx.oC_Expression()
@@ -5111,7 +5088,7 @@ def _compile_pattern_comprehension(
     projection = _compile_expression(projection_expr, bind_vars) if projection_expr else pc_v
 
     if where_node is not None and len(all_exprs) > 1:
-        where_compiled = _compile_expression(all_exprs[0], bind_vars)
+        where_compiled = _compile_where(all_exprs[0], bind_vars)
         filters.append(where_compiled)
         projection = _compile_expression(all_exprs[-1], bind_vars)
 
@@ -5160,7 +5137,11 @@ def _compile_case(
         alt_exprs = alt.oC_Expression()
         when_e = _compile_expression(alt_exprs[0], bind_vars)
         then_e = _compile_expression(alt_exprs[1], bind_vars)
-        cond = f"({test_expr} != null AND {test_expr} == {when_e})" if test_expr is not None else when_e
+        if test_expr is not None:
+            cond = _compile_comparison(test_expr, "=", when_e, "true")
+        else:
+            # A ternary's condition is a test: a null one takes the next branch.
+            cond = _compile_where(alt_exprs[0], bind_vars)
         branches.append((cond, then_e))
 
     out = "null"
@@ -5175,6 +5156,12 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
     # We only implement what the v0.1 basic corpus needs.
     # For everything else, fail fast with a structured error.
 
+    mode = _PREDICATE_MODE.get()
+    if mode is not None and not _is_predicate_transparent(ctx):
+        # An operand in a predicate position (``WHERE n.active``): compile it
+        # as a value, then test it. See ``three_valued`` for the modes.
+        return _test_truth(_compile_value(ctx, bind_vars), mode, two_valued=_is_two_valued(ctx))
+
     if isinstance(ctx, CypherParser.OC_ExpressionContext):
         return _compile_expression(ctx.oC_OrExpression(), bind_vars)
 
@@ -5183,6 +5170,10 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if len(parts) == 1:
             return _compile_expression(parts[0], bind_vars)
         _reject_obvious_non_boolean_literals(parts, "OR")
+        if mode is not None:
+            # "a OR b" is true when either is; it is false when both are.
+            joiner = " OR " if mode == "true" else " AND "
+            return "(" + joiner.join(_compile_expression(part, bind_vars) for part in parts) + ")"
         return _compile_cypher_boolean_fold([_compile_expression(part, bind_vars) for part in parts], "OR")
 
     if isinstance(ctx, CypherParser.OC_XorExpressionContext):
@@ -5192,43 +5183,51 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         # AQL has no XOR operator.  Preserve Cypher's three-valued semantics:
         # an XOR with a null operand is null; otherwise it is boolean inequality.
         _reject_obvious_non_boolean_literals(parts, "XOR")
-        compiled = [_compile_expression(part, bind_vars) for part in parts]
+        compiled = [_compile_value(part, bind_vars) for part in parts]
         result = compiled[0]
         for right in compiled[1:]:
             result = f"((({result}) == null OR ({right}) == null) ? null : (({result}) != ({right})))"
-        return result
+        return _test_truth(result, mode, two_valued=False)
     if isinstance(ctx, CypherParser.OC_AndExpressionContext):
         parts = ctx.oC_NotExpression()
         if len(parts) == 1:
             return _compile_expression(parts[0], bind_vars)
         _reject_obvious_non_boolean_literals(parts, "AND")
+        if mode is not None:
+            # "a AND b" is true when both are; it is false when either is.
+            joiner = " AND " if mode == "true" else " OR "
+            return "(" + joiner.join(_compile_expression(part, bind_vars) for part in parts) + ")"
         return _compile_cypher_boolean_fold([_compile_expression(part, bind_vars) for part in parts], "AND")
 
     if isinstance(ctx, CypherParser.OC_NotExpressionContext):
         # Grammar: (NOT SP?)* comparison
-        inner = _compile_expression(ctx.oC_ComparisonExpression(), bind_vars)
-        n_nots = len(ctx.NOT())
-        if n_nots % 2 == 1:
-            return f"(NOT {inner})"
+        cmp_ctx = ctx.oC_ComparisonExpression()
+        negated = len(ctx.NOT()) % 2 == 1
+        if mode is not None:
+            # "NOT x" is true exactly when x is false: flip the test.
+            return _compile_in_mode(cmp_ctx, bind_vars, _negate_mode(mode) if negated else mode)
+        inner = _compile_expression(cmp_ctx, bind_vars)
+        if negated:
+            return _negate_value(inner, two_valued=_is_two_valued(cmp_ctx))
         return inner
 
     if isinstance(ctx, CypherParser.OC_ComparisonExpressionContext):
-        left = _compile_expression(ctx.oC_AddOrSubtractExpression(), bind_vars)
         partials = ctx.oC_PartialComparisonExpression()
         if not partials:
-            return left
+            return _compile_expression(ctx.oC_AddOrSubtractExpression(), bind_vars)
         # A chained comparison ``a < b < c`` means ``a < b AND b < c``
         # (openCypher §Comparison): compile each adjacent pair and AND them.
-        conjuncts: list[str] = []
-        prev = left
-        for p in partials:
-            op = p.getChild(0).getText()
-            right = _compile_expression(p.oC_AddOrSubtractExpression(), bind_vars)
-            conjuncts.append(_compile_one_comparison(prev, op, right))
-            prev = right
+        operands = [_compile_value(ctx.oC_AddOrSubtractExpression(), bind_vars)]
+        operands += [_compile_value(p.oC_AddOrSubtractExpression(), bind_vars) for p in partials]
+        conjuncts = [
+            _compile_comparison(operands[i], p.getChild(0).getText(), operands[i + 1], mode)
+            for i, p in enumerate(partials)
+        ]
         if len(conjuncts) == 1:
             return conjuncts[0]
-        return "(" + " AND ".join(conjuncts) + ")"
+        if mode is None:
+            return _compile_cypher_boolean_fold(conjuncts, "AND")
+        return "(" + (" AND " if mode == "true" else " OR ").join(conjuncts) + ")"
 
     if isinstance(ctx, CypherParser.OC_AddOrSubtractExpressionContext):
         terms = ctx.oC_MultiplyDivideModuloExpression()
@@ -5273,28 +5272,37 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         return inner
 
     if isinstance(ctx, CypherParser.OC_StringListNullOperatorExpressionContext):
-        base = _compile_expression(ctx.oC_PropertyOrLabelsExpression(), bind_vars)
-        # Handle null operator: IS NULL / IS NOT NULL
         null_ops = ctx.oC_NullOperatorExpression()
+        list_ops = ctx.oC_ListOperatorExpression()
+        string_ops = ctx.oC_StringOperatorExpression()
+        if not (null_ops or list_ops or string_ops):
+            return _compile_expression(ctx.oC_PropertyOrLabelsExpression(), bind_vars)
+        if mode is not None and list_ops and all(lop.IN() is None for lop in list_ops):
+            # A subscript or slice is a value, not a predicate: test it.
+            return _test_truth(_compile_value(ctx, bind_vars), mode, two_valued=False)
+        base = _compile_value(ctx.oC_PropertyOrLabelsExpression(), bind_vars)
+        # Handle null operator: IS NULL / IS NOT NULL
         if null_ops:
             if len(null_ops) != 1:
                 raise CoreError("Multiple null operators not supported in v0", code="UNSUPPORTED")
             t = null_ops[0].getText().upper().replace(" ", "")
-            if t == "ISNULL":
-                return f"({base} == null)"
-            if t == "ISNOTNULL":
-                return f"({base} != null)"
-            raise CoreError(f"Unsupported null operator: {t}", code="UNSUPPORTED")
+            if t not in {"ISNULL", "ISNOTNULL"}:
+                raise CoreError(f"Unsupported null operator: {t}", code="UNSUPPORTED")
+            is_null = (t == "ISNULL") != (mode == "false")
+            return f"({base} == null)" if is_null else f"({base} != null)"
 
-        list_ops = ctx.oC_ListOperatorExpression()
         if list_ops:
             if len(list_ops) != 1:
                 raise CoreError("Multiple list operators not supported in v0", code="UNSUPPORTED")
             lop = list_ops[0]
-            # "expr IN listExpr"
+            # "expr IN listExpr". Cypher's ``null IN list`` is null, AQL's
+            # ``null IN [null]`` is true; ``x IN null`` is null too, but AQL's
+            # false already fails a FILTER, so the "true" test guards x only.
             if lop.IN() is not None:
-                right = _compile_expression(lop.oC_PropertyOrLabelsExpression(), bind_vars)
-                return f"({base} IN {right})"
+                right = _compile_value(lop.oC_PropertyOrLabelsExpression(), bind_vars)
+                holds, fails = f"{base} IN {right}", f"{base} NOT IN {right}"
+                in_operands = (base,) if mode == "true" else (base, right)
+                return _three_valued(holds, fails, in_operands, mode)
             # List subscript "expr[i]" and slice "expr[i..j]" / "[i..]" / "[..j]".
             # The grammar's list operator covers both; distinguish by the ".."
             # token in the operator's own text (it never includes the base).
@@ -5337,7 +5345,6 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             idx = _compile_expression(exprs[0], bind_vars)
             return f"({base})[{idx}]"
 
-        string_ops = ctx.oC_StringOperatorExpression()
         if string_ops:
             if len(string_ops) != 1:
                 raise CoreError(
@@ -5345,16 +5352,20 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
                     code="UNSUPPORTED",
                 )
             sop = string_ops[0]
-            rhs = _compile_expression(sop.oC_PropertyOrLabelsExpression(), bind_vars)
+            rhs = _compile_value(sop.oC_PropertyOrLabelsExpression(), bind_vars)
             if sop.STARTS() is not None:
-                return f"STARTS_WITH({base}, {rhs})"
-            if sop.ENDS() is not None:
-                return f"(RIGHT({base}, LENGTH({rhs})) == {rhs})"
-            if sop.CONTAINS() is not None:
-                return f"CONTAINS({base}, {rhs})"
-            if sop.getText().startswith("=~") or "=~" in sop.getText():
-                return f"REGEX_TEST({base}, {rhs})"
-            raise CoreError("Unknown string operator", code="UNSUPPORTED")
+                test = f"STARTS_WITH({base}, {rhs})"
+            elif sop.ENDS() is not None:
+                test = f"RIGHT({base}, LENGTH({rhs})) == {rhs}"
+            elif sop.CONTAINS() is not None:
+                test = f"CONTAINS({base}, {rhs})"
+            elif "=~" in sop.getText():
+                test = f"REGEX_TEST({base}, {rhs})"
+            else:
+                raise CoreError("Unknown string operator", code="UNSUPPORTED")
+            # AQL reads a null operand as "" (CONTAINS('abc', null) is true);
+            # in Cypher the test is null.
+            return _three_valued(test, f"NOT {test}", (base, rhs), mode)
 
         return base
 

@@ -22,12 +22,10 @@ cases:
     - u1
     - u2
   expected:
-    aql: "FOR id IN @ids\n  FOR n IN @@collection\n    FILTER (n.id == id)\n    RETURN {name: n.name}"
+    aql: "FOR id IN @ids\n  FOR n IN @@collection\n    FILTER (id != null AND n.id == id)\n    RETURN {name: n.name}\n"
     bind_vars:
-      '@collection': users
-      ids:
-      - u1
-      - u2
+      ids: [u1, u2]
+      "@collection": users
 - id: C224
   name: MATCH then UNWIND property
   mapping_fixture: pg

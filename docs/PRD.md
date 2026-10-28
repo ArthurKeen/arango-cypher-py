@@ -572,6 +572,21 @@ self-loop once.
 In a `UNION`, internal names that repeat across branches with different values
 are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
+Predicates follow Cypher's three-valued logic (true / false / null), which
+AQL's two-valued operators do not: AQL's `null == null` and `null != 'x'` are
+true, and `NOT null` is true. A comparison (`=`, `<>`, `<`, …), `IN` or
+string operator (`STARTS WITH`, `ENDS WITH`, `CONTAINS`, `=~`) with a null
+operand is null, so `WHERE n.x = null` and `WHERE n.x = $p` with a null `$p`
+match nothing, and `WHERE NOT n.name = 'b'` and `WHERE n.name <> 'b'` drop
+rows whose `name` is null. `NOT` of null is null. A predicate in a filter
+(`WHERE`, a comprehension's or quantifier's `WHERE`, a `CASE WHEN` condition)
+compiles to the two-valued test the filter observes, with De Morgan's laws
+under `NOT`; an equality keeps its plain `n.p == @v` form beside a null guard
+on the parameter, so ArangoDB still serves it from an index. A predicate
+whose value is returned or stored keeps null (`RETURN n.age > 30` is null for
+a null `age`). The quantifiers `any`/`all`/`none`/`single` treat a null
+element predicate as not true rather than returning null.
+
 ### 8.3 Supported subset (write)
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and

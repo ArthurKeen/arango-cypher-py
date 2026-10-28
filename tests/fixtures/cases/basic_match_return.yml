@@ -25,12 +25,11 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.id == @id)
+          FILTER (@id != null AND n.id == @id)
           RETURN n
       bind_vars:
-        "@collection": users
         id: u1
-
+        "@collection": users
   - id: C003
     name: is not null
     mapping_fixture: pg
@@ -82,11 +81,10 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.city IN ["Boston","NYC"])
+          FILTER (n.city != null AND n.city IN ["Boston","NYC"])
           RETURN n
       bind_vars:
         "@collection": users
-
   - id: C007
     name: coalesce boolean predicate
     mapping_fixture: pg
@@ -151,7 +149,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER ((((n.city == "SF")) == true OR ((n.city == "NYC")) == true) ? true : ((((n.city == "SF")) == false AND ((n.city == "NYC")) == false) ? false : null))
+          FILTER ((n.city == "SF") OR (n.city == "NYC"))
           RETURN n.id
       bind_vars:
         "@collection": users
@@ -164,11 +162,10 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (NOT (n.active == true))
+          FILTER (n.active != null AND n.active != true)
           RETURN n.id
       bind_vars:
         "@collection": users
-
   - id: C050
     name: xor expression
     mapping_fixture: pg
@@ -178,7 +175,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER ((((n.active == true)) == null OR ((n.city == "SF")) == null) ? null : (((n.active == true)) != ((n.city == "SF"))))
+          FILTER (((((n.active == null) ? null : (n.active == true))) == null OR (((n.city == null) ? null : (n.city == "SF"))) == null) ? null : ((((n.active == null) ? null : (n.active == true))) != (((n.city == null) ? null : (n.city == "SF")))))
           RETURN n.id
       bind_vars:
         "@collection": users
@@ -204,7 +201,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (((((((n.city == "SF")) == true OR ((n.city == "NYC")) == true) ? true : ((((n.city == "SF")) == false AND ((n.city == "NYC")) == false) ? false : null))) == false OR ((n.active == true)) == false) ? false : (((((((n.city == "SF")) == true OR ((n.city == "NYC")) == true) ? true : ((((n.city == "SF")) == false AND ((n.city == "NYC")) == false) ? false : null))) == true AND ((n.active == true)) == true) ? true : null))
+          FILTER (((n.city == "SF") OR (n.city == "NYC")) AND (n.active == true))
           RETURN n.id
       bind_vars:
         "@collection": users
@@ -233,12 +230,11 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (n.city IN @cities)
+          FILTER (n.city != null AND n.city IN @cities)
           RETURN n.id
       bind_vars:
+        cities: [SF, NYC]
         "@collection": users
-        cities: ["SF", "NYC"]
-
   - id: C056
     name: string escaping in literals
     mapping_fixture: pg

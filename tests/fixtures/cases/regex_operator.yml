@@ -8,9 +8,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER REGEX_TEST(n.name, '.*Alice.*')\n  RETURN n.name\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name != null AND REGEX_TEST(n.name, '.*Alice.*'))\n  RETURN n.name\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C301
   name: regex negated
   mapping_fixture: pg
@@ -19,9 +19,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (NOT REGEX_TEST(n.name, '.*Bob.*'))\n  RETURN n.name\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name != null AND NOT REGEX_TEST(n.name, '.*Bob.*'))\n  RETURN n.name\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C302
   name: regex combined with AND
   mapping_fixture: pg
@@ -30,7 +30,7 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (((REGEX_TEST(n.name, '^A')) == false OR ((n.age != null AND n.age > 20)) == false) ? false : (((REGEX_TEST(n.name, '^A')) == true AND ((n.age != null AND n.age > 20)) == true) ? true : null))\n  RETURN n\n"
+    aql: "FOR n IN @@collection\n  FILTER ((n.name != null AND REGEX_TEST(n.name, '^A')) AND (n.age != null AND n.age > 20))\n  RETURN n\n"
     bind_vars:
       "@collection": persons
 - id: C303
@@ -41,8 +41,8 @@ cases:
 
     '
   expected:
-    aql: "FOR p IN @@collection\n  FILTER p[@typeField] == @typeValue\n  FILTER REGEX_TEST(p.name, '.*Tom.*')\n  RETURN p.name\n"
+    aql: "FOR p IN @@collection\n  FILTER p[@typeField] == @typeValue\n  FILTER (p.name != null AND REGEX_TEST(p.name, '.*Tom.*'))\n  RETURN p.name\n"
     bind_vars:
-      '@collection': nodes
+      "@collection": nodes
       typeField: type
       typeValue: Person
