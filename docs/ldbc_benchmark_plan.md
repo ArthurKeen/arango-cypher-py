@@ -321,6 +321,8 @@ silently:
     behind.
 - **A `CASE` in a `WITH` projection is emitted as raw `CASE WHEN … END` in a
   `LET`.** AQL has no such expression (ERR 1501; IC3 and IC4).
+  - **Fixed 2026-10-27:** every `CASE` was affected, not only those in a `WITH`
+    (IS7 has one in its `RETURN`). `CASE` now compiles to nested ternaries.
 - **A variable is used after a `COLLECT` has dropped it, or before its `LET`.**
   - IC4 groups by `tag` after `COLLECT tag_1 = tag`.
   - IC5 sorts by `forum.id` after `COLLECT`, and filters on `otherPersons`
@@ -713,6 +715,18 @@ beyond the fail-closed guard.
     (raw `CASE WHEN`), on both layouts. DEL6 fails with ERR 1202 on LPG; on PG
     it is refused, because a write to a union-matched variable names no single
     collection.
+  - **The three loud cells, fixed 2026-10-27.** BI3, BI6 and IS7 now match the
+    oracle on both layouts, as do IC4 on both layouts and IC3 on LPG. PG
+    matches_oracle went from 23 to 27 and LPG from 25 to 30, and no cell is
+    `translates_wrong`. The causes:
+    - `CASE` was emitted verbatim (IS7, IC3, IC4).
+    - Every unnamed node was called `v`, so two of them clashed (BI3). A node
+      the user named `v`, `u` or `r` later in a pattern joined the unnamed
+      one, which silently returned no rows; there was no LDBC cell for this.
+    - The grouped `RETURN forum.id, person.id` emitted two `id` keys, and its
+      `ORDER BY forum.id` sorted by `person.id` (BI3). Neither raised an error.
+    - Names AQL reserves (`like` in BI6, but also `filter`, `sort`, `in`, …)
+      were emitted bare.
   - **Fixed on the way:** with a `COLLECTION` primary label, an extra supertype
     label was only warned about, so `(x:Person:Message)` returned every Person.
     It is now tested, and an extra supertype the primary implies adds no filter.

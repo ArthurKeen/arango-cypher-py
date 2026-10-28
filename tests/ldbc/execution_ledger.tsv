@@ -2,8 +2,8 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 6, fails_closed 20, matches_oracle 23, out_of_subset 5, syntax_error 4
-# lpg: execution_error 8, fails_closed 16, matches_oracle 25, out_of_subset 5, syntax_error 4
+# pg: execution_error 2, fails_closed 20, matches_oracle 27, out_of_subset 5, syntax_error 4
+# lpg: execution_error 3, fails_closed 16, matches_oracle 30, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 matches_oracle	BI11@lpg	3 binding(s)
@@ -30,14 +30,14 @@ out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph 
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI2@pg	UNSUPPORTED: Unsupported function in v0: duration
-execution_error	BI3@lpg	ERR 1511: AQL: variable 'v' is assigned multiple times (while parsing)
-execution_error	BI3@pg	ERR 1511: AQL: variable 'v' is assigned multiple times (while parsing)
+matches_oracle	BI3@lpg	4 binding(s)
+matches_oracle	BI3@pg	4 binding(s)
 syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
 syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
 matches_oracle	BI5@lpg	4 binding(s)
 matches_oracle	BI5@pg	4 binding(s)
-execution_error	BI6@lpg	ERR 1501: AQL: syntax error, unexpected like operator, expecting identifier near 'like IN 1..1 INBOUND message2 @@...' at position 25:26 (w…
-execution_error	BI6@pg	ERR 1501: AQL: syntax error, unexpected like operator, expecting identifier near 'like IN 1..1 INBOUND message2 @@...' at position 16:26 (w…
+matches_oracle	BI6@lpg	4 binding(s)
+matches_oracle	BI6@pg	4 binding(s)
 matches_oracle	BI7@lpg	4 binding(s)
 matches_oracle	BI7@pg	4 binding(s)
 fails_closed	BI8@lpg	UNSUPPORTED: Unsupported function in v0: collect
@@ -74,10 +74,10 @@ syntax_error	IC1@lpg	Cypher syntax error at 8:20: no viable alternative at input
 syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 'MATCH path = shortestPath'
 matches_oracle	IC2@lpg	3 binding(s)
 matches_oracle	IC2@pg	3 binding(s)
-execution_error	IC3@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN (country_1 == countryX_2) T...' at position 35:39 (while parsing)
+matches_oracle	IC3@lpg	4 binding(s)
 fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
-execution_error	IC4@lpg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 15:26 (while parsing)
-execution_error	IC4@pg	ERR 1501: AQL: syntax error, unexpected identifier near 'WHEN ((@endDate != null AND post...' at position 9:26 (while parsing)
+matches_oracle	IC4@lpg	4 binding(s)
+matches_oracle	IC4@pg	4 binding(s)
 matches_oracle	IC5@lpg	3 binding(s)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
@@ -118,5 +118,5 @@ matches_oracle	IS5@lpg	3 binding(s)
 matches_oracle	IS5@pg	3 binding(s)
 matches_oracle	IS6@lpg	3 binding(s)
 matches_oracle	IS6@pg	3 binding(s)
-execution_error	IS7@lpg	ERR 1501: AQL: syntax error, unexpected identifier, expecting } near 'WHEN (r_3 == null) THEN false EL...' at position 25:235 (while parsin…
-execution_error	IS7@pg	ERR 1501: AQL: syntax error, unexpected identifier, expecting } near 'WHEN (r_3 == null) THEN false EL...' at position 16:235 (while parsin…
+matches_oracle	IS7@lpg	3 binding(s)
+matches_oracle	IS7@pg	3 binding(s)
