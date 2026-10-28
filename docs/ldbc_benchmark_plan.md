@@ -794,7 +794,11 @@ beyond the fail-closed guard.
     (`-1` / empty).
 - **Unlocks:** IC1 IC13, and the IC14 existence check.
 
-#### WP-40: Write pipelines (M)
+#### WP-40: Write pipelines (M) — deletes implemented 2026-10-28
+- **Status (2026-10-28): the deletes are done.** A DELETE-only query reads every
+  matched row first, then writes each collection once (PRD §8.3). DEL1, DEL4,
+  DEL6 and DEL7 match the oracle on both layouts. The inserts (INS1/4/6/7)
+  still need the multi-statement decision (PRD §16).
 - **Scope:**
   - `MATCH … CREATE … WITH … UNWIND … MATCH … CREATE` (INS1 INS4 INS6 INS7).
   - `DETACH DELETE` over `OPTIONAL MATCH` variables (DEL1 DEL4).

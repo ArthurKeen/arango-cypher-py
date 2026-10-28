@@ -32,7 +32,7 @@ def test_delete_keeps_the_end_node_property_filter(layout):
 
 def test_delete_keeps_a_collection_style_end_label_on_a_polymorphic_edge():
     q = _t(_DEL2, "pg")
-    m = re.search(r"FILTER \(IS_SAME_COLLECTION\(@(\w+), v\)\)", q.aql)
+    m = re.search(r"FILTER \(?IS_SAME_COLLECTION\(@(\w+), v\)", q.aql)
     assert m, q.aql
     assert q.bind_vars[m.group(1)] == "post"
 
@@ -50,11 +50,6 @@ def test_relationship_properties_are_filters():
 @pytest.mark.parametrize(
     "cypher,fragment",
     [
-        (
-            "MATCH (a:Person {id: 1}) MATCH (a)-[k:KNOWS]->(b:Person {id: 2}) DELETE k",
-            "more than one reading clause",
-        ),
-        ("MATCH (a:Person {id: 1}), (b:Person {id: 2}) DELETE a", "several pattern parts"),
         ("MATCH (a:Person {id: 1}) UNWIND [1, 2] AS x SET a.n = x", "more than one reading clause"),
     ],
 )

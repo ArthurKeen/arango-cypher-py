@@ -128,8 +128,6 @@ def test_exists_subquery_over_a_supertype():
     "cypher",
     [
         "MATCH (m:Message {id: 1}) SET m.length = 0",
-        "MATCH (m:Message {id: 1}) DETACH DELETE m",
-        "MATCH (p:Person {id: 1})<-[:HAS_CREATOR]-(m:Message) DELETE m",
     ],
 )
 def test_writing_a_union_variable_fails_closed(cypher):
@@ -142,7 +140,17 @@ def test_writing_a_union_variable_fails_closed(cypher):
 def test_a_write_to_another_variable_matches_through_the_union():
     q = _t("MATCH (m:Message {id: 1})<-[r:LIKES]-(p:Person {id: 2}) DELETE r")
     assert _scan_branches(q, "m") == ["post", "comment"]
-    assert re.search(r"REMOVE r IN @@\w+", q.aql), q.aql
+    removal = q.aql.splitlines()[-1]
+    assert q.bind_vars["@" + removal.rsplit("IN @@", 1)[1].strip()] == "likes", q.aql
+
+
+def test_deleting_a_union_variable_removes_from_every_member_collection():
+    q = _t("MATCH (m:Message {id: 1}) DETACH DELETE m")
+    removed = {
+        q.bind_vars[k]
+        for k in re.findall(r"REMOVE PARSE_IDENTIFIER\(_id\)\.key IN @(@deleteNodes\w*)", q.aql)
+    }
+    assert removed == {"post", "comment"}, q.aql
 
 
 @pytest.mark.parametrize(

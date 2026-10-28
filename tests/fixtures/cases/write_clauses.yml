@@ -78,9 +78,11 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REMOVE n IN @@collection\n"
+    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
+      "@deleteNodes": persons
+      deleteNodesName: persons
 - id: C411
   name: DETACH DELETE node (PG)
   mapping_fixture: pg
@@ -89,13 +91,16 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@collection, @@withCollection1, @@withCollection2\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    aql: "WITH @@withCollection0, @@collection, @@withCollection1, @@withCollection2\nLET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
-      '@collection': persons
-      '@detachEdge': follows
-      '@withCollection0': docs
-      '@withCollection1': places
-      '@withCollection2': users
+      "@collection": persons
+      "@deleteEdges": follows
+      deleteEdgesName: follows
+      "@deleteNodes": persons
+      deleteNodesName: persons
+      "@withCollection0": docs
+      "@withCollection1": places
+      "@withCollection2": users
 - id: C412
   name: DETACH DELETE node (LPG)
   mapping_fixture: lpg
@@ -104,12 +109,15 @@ cases:
 
     '
   expected:
-    aql: "WITH @@collection\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  LET _edgeRm0 = (FOR _de0 IN 1..1 ANY n @@detachEdge REMOVE _de0 IN @@detachEdge)\n  REMOVE n IN @@collection\n"
+    aql: "WITH @@collection\nLET _matched = (\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
-      '@collection': vertices
-      '@detachEdge': edges
+      "@collection": vertices
       typeField: type
       typeValue: User
+      "@deleteEdges": edges
+      deleteEdgesName: edges
+      "@deleteNodes": vertices
+      deleteNodesName: vertices
 - id: C413
   name: DELETE with RETURN
   mapping_fixture: pg
@@ -118,9 +126,11 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REMOVE n IN @@collection\n  RETURN n.name\n"
+    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _removed0 = (FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes)\n  FOR _row IN _matched\n    LET n = _row.n\n    RETURN n.name\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
+      "@deleteNodes": persons
+      deleteNodesName: persons
 # ─── MERGE ─────────────────────────────────────────────────────
 - id: C420
   name: MERGE basic node upsert (PG)
@@ -279,14 +289,16 @@ cases:
   extensions_enabled: false
   cypher: "MATCH (a:User)-[r:FOLLOWS]->(b:User) WHERE a.name = \"Alice\" DELETE r"
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER (IS_SAME_COLLECTION(@bLabelColl, b))\n    FILTER (a.name == \"Alice\")\n    REMOVE r IN @@edgeCollection\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nLET _matched = (\nFOR a IN @@uCollection\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n    FILTER (a.name == \"Alice\")\n    RETURN {a: a, b: b, r: r, _row: true}\n    )\n    LET _deleted_rels = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].r._id), null))\n    LET _deleted_edges = UNIQUE(_deleted_rels)\n    FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges\n"
     bind_vars:
-      "@collection": "users"
-      "@edgeCollection": "follows"
-      bLabelColl: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@uCollection": users
+      "@edgeCollection": follows
+      vCollection: users
+      "@deleteEdges": follows
+      deleteEdgesName: follows
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places
 - id: C443
   name: SET n = map under LPG keeps the type field
   mapping_fixture: lpg

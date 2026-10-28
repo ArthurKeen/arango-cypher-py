@@ -1,0 +1,158 @@
+version: 1
+cases:
+- id: C849
+  name: DETACH DELETE over a variable-length pattern reads every row, then writes each collection once
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (:Comment {id: $id})<-[:REPLY_OF*0..]-(comment:Comment) DETACH DELETE comment RETURN count(*)'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@uCollection\nLET _matched = (\nFOR u IN @@uCollection\n  FILTER u[@uTypeField] == @uTypeValue\n\
+      \  FILTER (u.id == @id)\n  FOR comment, r IN 0..10 INBOUND u @@edgeCollection PRUNE r != null AND r[@relTypeField]\
+      \ != @relTypeValue OPTIONS {indexHint: {\"edges\": {\"inbound\": {\"base\": \"idx_edges_to_type\"}}}}\n  \
+      \  FILTER comment[@vTypeField] == @vTypeValue\n    FILTER (r == null OR r[@relTypeField] == @relTypeValue)\n\
+      \    RETURN {comment: comment, _row: true}\n    )\n    LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].comment._id),\
+      \ null))\n    LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n\
+      \    LET _deleted_edges = UNIQUE(_detach0)\n    LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n    LET _removed1 = (FOR _id IN\
+      \ _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteNodes)\n    FOR _row IN _matched\n      LET comment = _row.comment\n      COLLECT AGGREGATE count\
+      \ = COUNT(1)\n      RETURN count"
+    bind_vars:
+      id: 1
+      '@uCollection': nodes
+      uTypeField: type
+      uTypeValue: Comment
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: Comment
+      relTypeField: type
+      relTypeValue: REPLY_OF
+      '@deleteEdges': edges
+      deleteEdgesName: edges
+      '@deleteNodes': nodes
+      deleteNodesName: nodes
+- id: C850
+  name: DETACH DELETE of a supertype variable removes from every member collection
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (:Post {id: $id})<-[:REPLY_OF*0..]-(message:Message) DETACH DELETE message'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@deleteNodes2, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4,\
+      \ @@withCollection5, @@uCollection, @@withCollection6, @@withCollection7, @@withCollection8\nLET _matched\
+      \ = (\nFOR u IN @@uCollection\n  FILTER (u.id == @id)\n  FOR message, r IN 0..10 INBOUND u @@edgeCollection\n\
+      \    RETURN {message: message, _row: true}\n    )\n    LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].message._id),\
+      \ null))\n    LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n\
+      \    LET _detach1 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges2 RETURN _e._id)\n  \
+      \  LET _detach2 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges3 RETURN _e._id)\n    LET\
+      \ _detach3 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges4 RETURN _e._id)\n    LET _detach4\
+      \ = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges5 RETURN _e._id)\n    LET _detach5 =\
+      \ (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges6 RETURN _e._id)\n    LET _detach6 = (FOR\
+      \ _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges7 RETURN _e._id)\n    LET _detach7 = (FOR _n\
+      \ IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges8 RETURN _e._id)\n    LET _detach8 = (FOR _n IN\
+      \ _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges9 RETURN _e._id)\n    LET _detach9 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges10 RETURN _e._id)\n    LET _detach10 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges11 RETURN _e._id)\n    LET _detach11 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges12 RETURN _e._id)\n    LET _detach12 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges13 RETURN _e._id)\n    LET _detach13 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges14 RETURN _e._id)\n    LET _detach14 = (FOR _n IN _deleted_nodes\
+      \ FOR _x, _e IN 1..1 ANY _n @@deleteEdges15 RETURN _e._id)\n    LET _deleted_edges = UNIQUE(UNION(_detach0,\
+      \ _detach1, _detach2, _detach3, _detach4, _detach5, _detach6, _detach7, _detach8, _detach9, _detach10, _detach11,\
+      \ _detach12, _detach13, _detach14))\n    LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n    LET _removed1 = (FOR _id IN\
+      \ _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges2Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges2)\n    LET _removed2 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges3Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges3)\n    LET _removed3 = (FOR _id IN\
+      \ _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges4Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges4)\n    LET _removed4 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges5Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges5)\n    LET _removed5 = (FOR _id IN\
+      \ _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges6Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges6)\n    LET _removed6 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges7Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges7)\n    LET _removed7 = (FOR _id IN\
+      \ _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges8Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges8)\n    LET _removed8 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges9Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges9)\n    LET _removed9 = (FOR _id IN\
+      \ _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges10Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges10)\n    LET _removed10 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges11Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges11)\n    LET _removed11 = (FOR _id\
+      \ IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges12Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges12)\n    LET _removed12 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges13Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges13)\n    LET _removed13 = (FOR _id\
+      \ IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdges14Name REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteEdges14)\n    LET _removed14 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdges15Name REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges15)\n    LET _removed15 = (FOR _id\
+      \ IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key\
+      \ IN @@deleteNodes)\n    FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodes2Name\
+      \ REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes2"
+    bind_vars:
+      id: 1
+      '@uCollection': post
+      '@edgeCollection': reply_of
+      '@deleteEdges': container_of
+      '@deleteEdges2': has_creator
+      '@deleteEdges3': has_interest
+      '@deleteEdges4': has_member
+      '@deleteEdges5': has_moderator
+      '@deleteEdges6': has_tag
+      '@deleteEdges7': has_type
+      '@deleteEdges8': is_located_in
+      '@deleteEdges9': is_part_of
+      '@deleteEdges10': is_subclass_of
+      '@deleteEdges11': knows
+      '@deleteEdges12': likes
+      '@deleteEdges13': reply_of
+      '@deleteEdges14': study_at
+      '@deleteEdges15': work_at
+      deleteEdgesName: container_of
+      deleteEdges2Name: has_creator
+      deleteEdges3Name: has_interest
+      deleteEdges4Name: has_member
+      deleteEdges5Name: has_moderator
+      deleteEdges6Name: has_tag
+      deleteEdges7Name: has_type
+      deleteEdges8Name: is_located_in
+      deleteEdges9Name: is_part_of
+      deleteEdges10Name: is_subclass_of
+      deleteEdges11Name: knows
+      deleteEdges12Name: likes
+      deleteEdges13Name: reply_of
+      deleteEdges14Name: study_at
+      deleteEdges15Name: work_at
+      '@deleteNodes': post
+      deleteNodesName: post
+      '@deleteNodes2': comment
+      deleteNodes2Name: comment
+      '@withCollection0': city
+      '@withCollection1': company
+      '@withCollection2': continent
+      '@withCollection3': country
+      '@withCollection4': forum
+      '@withCollection5': person
+      '@withCollection6': tag
+      '@withCollection7': tag_class
+      '@withCollection8': university
+- id: C851
+  name: DELETE after OPTIONAL MATCH drops the unmatched nulls
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (n:User {id: ''u1''}) OPTIONAL MATCH (n)-[r:FOLLOWS]->(:User) DELETE r'
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nLET _matched = (\nFOR n IN\
+      \ @@collection\n  FILTER (LOWER(n.id) == LOWER('u1'))\n  LET _opt_rows = (\n  FOR v, r IN 1..1 OUTBOUND n\
+      \ @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    RETURN {r: r}\n    )\n    FOR _opt_row\
+      \ IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n      LET r = _opt_row.r\n      RETURN {n: n, r: r, _row:\
+      \ true}\n      )\n      LET _deleted_rels = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].r._id), null))\n     \
+      \ LET _deleted_edges = UNIQUE(_deleted_rels)\n      FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection\
+      \ == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges"
+    bind_vars:
+      '@collection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@deleteEdges': follows
+      deleteEdgesName: follows
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
