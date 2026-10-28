@@ -1,0 +1,137 @@
+version: 1
+cases:
+- id: C813
+  name: PG supertype scan is a UNION of its member collections, inline properties pushed into each branch
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (m:Message {id: $id}) RETURN m.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "FOR m IN UNION((FOR m IN @@mMember FILTER (m.id == @id) RETURN m), (FOR m IN @@mMember2 FILTER\
+      \ (m.id == @id) RETURN m))\n  RETURN {id: m.id}"
+    bind_vars:
+      id: 1
+      '@mMember': post
+      '@mMember2': comment
+- id: C814
+  name: PG supertype traversal target tests collection membership
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (t:Tag {id: $id})<-[:HAS_TAG]-(m:Message) RETURN m.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4,\
+      \ @@withCollection5, @@withCollection6, @@withCollection7, @@uCollection, @@withCollection8, @@withCollection9\n\
+      FOR t IN @@uCollection\n  FILTER (t.id == @id)\n  FOR m, r IN 1..1 INBOUND t @@edgeCollection\n\
+      \    FILTER PARSE_IDENTIFIER(m).collection IN @mMembers\n    RETURN {id: m.id}"
+    bind_vars:
+      id: 1
+      '@uCollection': tag
+      '@edgeCollection': has_tag
+      mMembers:
+      - post
+      - comment
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': forum
+      '@withCollection6': person
+      '@withCollection7': post
+      '@withCollection8': tag_class
+      '@withCollection9': university
+- id: C815
+  name: PG supertype target the edge's range guarantees needs no membership test
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person {id: $id})<-[:HAS_CREATOR]-(m:Message) RETURN m.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4,\
+      \ @@withCollection5, @@uCollection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\n\
+      FOR p IN @@uCollection\n  FILTER (p.id == @id)\n  FOR m, r IN 1..1 INBOUND p @@edgeCollection\n\
+      \    RETURN {id: m.id}"
+    bind_vars:
+      id: 1
+      '@uCollection': person
+      '@edgeCollection': has_creator
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': forum
+      '@withCollection6': post
+      '@withCollection7': tag
+      '@withCollection8': tag_class
+      '@withCollection9': university
+- id: C816
+  name: PG supertype as the start node of a relationship
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Message)-[:HAS_CREATOR]->(p:Person) RETURN m.id AS m, p.id AS p
+  expected:
+    aql: "WITH @@withCollection0, @@mMember2, @@withCollection1, @@withCollection2, @@withCollection3,\
+      \ @@withCollection4, @@withCollection5, @@mMember, @@withCollection6, @@withCollection7, @@withCollection8\n\
+      FOR m IN UNION((FOR m IN @@mMember RETURN m), (FOR m IN @@mMember2 RETURN m))\n  FOR p, r IN 1..1\
+      \ OUTBOUND m @@edgeCollection\n    RETURN {m: m.id, p: p.id}"
+    bind_vars:
+      '@mMember': post
+      '@mMember2': comment
+      '@edgeCollection': has_creator
+      '@withCollection0': city
+      '@withCollection1': company
+      '@withCollection2': continent
+      '@withCollection3': country
+      '@withCollection4': forum
+      '@withCollection5': person
+      '@withCollection6': tag
+      '@withCollection7': tag_class
+      '@withCollection8': university
+- id: C817
+  name: PG extra supertype label the primary does not imply is tested
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (x:Person:Message) RETURN x.id AS id
+  expected:
+    aql: "FOR x IN @@collection\n  FILTER PARSE_IDENTIFIER(x).collection IN @xMembers\n  RETURN {id: x.id}"
+    bind_vars:
+      xMembers:
+      - post
+      - comment
+      '@collection': person
+- id: C818
+  name: PG member label implies its supertype label
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Post:Message) RETURN m.id AS id
+  expected:
+    aql: "FOR m IN @@collection\n  RETURN {id: m.id}"
+    bind_vars:
+      '@collection': post
+- id: C819
+  name: LPG supertype scan filters the labels array
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: MATCH (m:Message) RETURN m.id AS id
+  expected:
+    aql: "FOR m IN @@collection\n  FILTER @labelValue IN m[@labelsField]\n  RETURN {id: m.id}"
+    bind_vars:
+      '@collection': nodes
+      labelsField: labels
+      labelValue: Message
+- id: C820
+  name: LPG member label implies its supertype label
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: MATCH (m:Comment:Message) RETURN m.id AS id
+  expected:
+    aql: "FOR m IN @@collection\n  FILTER m[@typeField] == @typeValue\n  RETURN {id: m.id}"
+    bind_vars:
+      '@collection': nodes
+      typeField: type
+      typeValue: Comment
