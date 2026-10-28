@@ -675,6 +675,16 @@ member collection of a supertype. A `RETURN` reads the matched rows. AQL
 forbids reading a collection after writing it (ERR 1579), which deleting
 inside the matching loop did as soon as a pattern matched more than one row.
 
+A CREATE may stand before a WITH (`MATCH … CREATE … WITH … UNWIND … MATCH …
+CREATE`, LDBC INS1/4/6/7), with only CREATE as the updating clause. The query
+compiles as a chain of stages, one per CREATE group, each a list of rows; a new
+node's key is generated in its stage (`UUID()`) so later parts' edges can name
+it, and a stage that matches nothing does not undo an earlier stage's
+creations. Then every new node and edge is inserted with one INSERT per
+collection, and a RETURN reads the last stage's rows. A MATCH that reads what
+the query created (a created variable, label or relationship type) is refused
+(`NOT_IMPLEMENTED`): it would need several statements.
+
 **How SET and REMOVE are written** (`arango_cypher/_translate_v0/property_writes.py`).
 A statement's `SET` and `REMOVE` items are gathered per variable, in query
 order, and each variable gets one write, because a second write to a collection
@@ -738,9 +748,9 @@ represent — tracked as future work.
 
 Generic Neo4j `CALL`
 procedures; temporal values and functions; native `shortestPath()` syntax
-(available via `CALL arango.shortest_path()`); and complex multi-part write
-pipelines such as `UNWIND … WITH … <write>` and mid-pipeline
-`DELETE`/`SET` before a following `WITH`.
+(available via `CALL arango.shortest_path()`); and multi-part write pipelines
+other than CREATE (mid-pipeline `DELETE`/`SET` before a following `WITH`),
+and a write that reads what the same query wrote.
 
 **Label hierarchies (supertypes)** — a label whose members live under other
 labels, such as LDBC's `Message` ⊇ `Post`, `Comment`. WP-35 adds them in stages
@@ -1295,9 +1305,12 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 
 ## 16. Open questions
 
-**Transpiler / coverage.** Same-collection multi-write needs a
+**Transpiler / coverage.** A write that reads what the same query wrote needs a
 multi-statement/transaction execution model (the single-`AqlQuery` output can't
-represent it) — adopt one, or keep failing closed? Should the leading-`MATCH`
+represent it) — adopt one, or keep failing closed? *(2026-10-28: CREATE
+pipelines and DELETEs write each collection once after reading everything, so
+the LDBC writes need no such model; the question stays open for writes that
+read their own writes.)* Should the leading-`MATCH`
 constraint be relaxed (large TCK lever, non-trivial grammar/renderer work)?
 Index-hint emission from `PropertyInfo.indexed` — when? *(Decided 2026-10-26:
 label hierarchies are modeled in arango-query-core. Stage 1 is an LPG

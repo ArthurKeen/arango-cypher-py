@@ -98,19 +98,19 @@ translatable	clauses/create/Create2/[6] Create a single relationship between two
 translatable	clauses/create/Create2/[7] Create a single node and a single self loop in a single pattern
 translatable	clauses/create/Create2/[8] Create a single node and a single self loop in separate patterns
 translatable	clauses/create/Create2/[9] Create a single node and a single self loop in separate clauses
-translate_fail	clauses/create/Create3/[10] WITH-UNWIND-CREATE: A bound node should be recognized after projection with WITH + UNWIND
+translatable	clauses/create/Create3/[10] WITH-UNWIND-CREATE: A bound node should be recognized after projection with WITH + UNWIND
 translate_fail	clauses/create/Create3/[11] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE node
 translate_fail	clauses/create/Create3/[12] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE pattern
 translatable	clauses/create/Create3/[13] Merge followed by multiple creates
 translatable	clauses/create/Create3/[1] MATCH-CREATE
-translate_fail	clauses/create/Create3/[2] WITH-CREATE
-translate_fail	clauses/create/Create3/[3] MATCH-CREATE-WITH-CREATE
+translatable	clauses/create/Create3/[2] WITH-CREATE
+translatable	clauses/create/Create3/[3] MATCH-CREATE-WITH-CREATE
 translatable	clauses/create/Create3/[4] MATCH-CREATE: Newly-created nodes not visible to preceding MATCH
 translatable	clauses/create/Create3/[5] WITH-CREATE: Nodes are not created when aliases are applied to variable names
 translatable	clauses/create/Create3/[6] WITH-CREATE: Only a single node is created when an alias is applied to a variable name
-translate_fail	clauses/create/Create3/[7] WITH-CREATE: Nodes are not created when aliases are applied to variable names multiple times
-translate_fail	clauses/create/Create3/[8] WITH-CREATE: Only a single node is created when an alias is applied to a variable name multiple times
-translate_fail	clauses/create/Create3/[9] WITH-CREATE: A bound node should be recognized after projection with WITH + WITH
+translatable	clauses/create/Create3/[7] WITH-CREATE: Nodes are not created when aliases are applied to variable names multiple times
+translatable	clauses/create/Create3/[8] WITH-CREATE: Only a single node is created when an alias is applied to a variable name multiple times
+translatable	clauses/create/Create3/[9] WITH-CREATE: A bound node should be recognized after projection with WITH + WITH
 translatable	clauses/create/Create4/[1] Generate the movie graph
 translatable	clauses/create/Create4/[2] Many CREATE clauses
 translatable	clauses/create/Create5/[1] Create a pattern with multiple hops
@@ -120,16 +120,16 @@ translatable	clauses/create/Create5/[4] Create a pattern with multiple hops with
 translatable	clauses/create/Create5/[5] Create a pattern with multiple hops and varying directions
 translatable	clauses/create/Create6/[10] Skipping and limiting to a few results after creating relationships does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[11] Skipping zero result and limiting to all results after creating relationships does not affect the result set nor the side effects
-translate_fail	clauses/create/Create6/[12] Filtering after creating relationships affects the result set but not the side effects
+translatable	clauses/create/Create6/[12] Filtering after creating relationships affects the result set but not the side effects
 translate_fail	clauses/create/Create6/[13] Aggregating in `RETURN` after creating relationships affects the result set but not the side effects
-translate_fail	clauses/create/Create6/[14] Aggregating in `WITH` after creating relationships affects the result set but not the side effects
+translatable	clauses/create/Create6/[14] Aggregating in `WITH` after creating relationships affects the result set but not the side effects
 translatable	clauses/create/Create6/[1] Limiting to zero results after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[2] Skipping all results after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[3] Skipping and limiting to a few results after creating nodes does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[4] Skipping zero result and limiting to all results after creating nodes does not affect the result set nor the side effects
-translate_fail	clauses/create/Create6/[5] Filtering after creating nodes affects the result set but not the side effects
+translatable	clauses/create/Create6/[5] Filtering after creating nodes affects the result set but not the side effects
 translate_fail	clauses/create/Create6/[6] Aggregating in `RETURN` after creating nodes affects the result set but not the side effects
-translate_fail	clauses/create/Create6/[7] Aggregating in `WITH` after creating nodes affects the result set but not the side effects
+translatable	clauses/create/Create6/[7] Aggregating in `WITH` after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[8] Limiting to zero results after creating relationships affects the result set but not the side effects
 translatable	clauses/create/Create6/[9] Skipping all results after creating relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete1/[1] Delete nodes
@@ -1239,7 +1239,7 @@ translatable	clauses/with/With4/[3] Aliasing expression to existing variable nam
 translatable	clauses/with/With4/[4] Fail when forwarding multiple aliases with the same name
 translatable	clauses/with/With4/[5] Fail when not aliasing expressions in WITH
 translatable	clauses/with/With4/[6] Reusing variable names in WITH
-translate_fail	clauses/with/With4/[7] Multiple aliasing and backreferencing
+translatable	clauses/with/With4/[7] Multiple aliasing and backreferencing
 translatable	clauses/with/With5/[1] DISTINCT on an expression
 translatable	clauses/with/With5/[2] Handling DISTINCT with lists in maps
 translatable	clauses/with/With6/[1] Implicit grouping with single expression as grouping key and single aggregation
