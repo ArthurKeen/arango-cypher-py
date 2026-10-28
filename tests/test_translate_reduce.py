@@ -32,7 +32,7 @@ class TestReduceSumFold:
 
     def test_mapped_element(self, pg):
         out = translate("RETURN reduce(s = 0, x IN [1, 2, 3] | s + x * 2) AS total", mapping=pg)
-        assert "SUM((FOR x IN [1,2,3] RETURN (x * 2)))" in out.aql
+        assert "SUM((FOR x IN [1,2,3] RETURN ((x == null) ? null : (x * 2))))" in out.aql
 
     def test_accumulator_second(self, pg):
         out = translate("RETURN reduce(s = 0, x IN [1, 2, 3] | x + s) AS total", mapping=pg)

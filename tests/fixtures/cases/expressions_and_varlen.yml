@@ -9,11 +9,10 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER ((n.age + 1) != null AND (n.age + 1) > 25)
+          FILTER ((IS_NUMBER(n.age) ? (n.age + 1) : (IS_STRING(n.age) ? CONCAT(n.age, 1) : (IS_ARRAY(n.age) ? PUSH(n.age, 1) : null))) != null AND (IS_NUMBER(n.age) ? (n.age + 1) : (IS_STRING(n.age) ? CONCAT(n.age, 1) : (IS_ARRAY(n.age) ? PUSH(n.age, 1) : null))) > 25)
           RETURN n.name
       bind_vars:
         "@collection": users
-
   - id: C207
     name: arithmetic in RETURN (multiply and add)
     mapping_fixture: pg
@@ -23,10 +22,9 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          RETURN {doubled: ((n.age * 2) + 1)}
+          RETURN {doubled: ((n.age == null) ? null : ((n.age * 2) + 1))}
       bind_vars:
         "@collection": users
-
   - id: C208
     name: unary minus in WHERE
     mapping_fixture: pg

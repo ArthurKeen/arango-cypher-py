@@ -587,6 +587,21 @@ whose value is returned or stored keeps null (`RETURN n.age > 30` is null for
 a null `age`). The quantifiers `any`/`all`/`none`/`single` treat a null
 element predicate as not true rather than returning null.
 
+Arithmetic follows Cypher, where AQL's operators are numeric only and read
+null as 0 (`null + 1` is 1, `'a' + 'b'` is 0). An arithmetic expression with
+a null operand is null; nested arithmetic shares one null guard over its
+operands, and a function call keeps its own (`coalesce(n.a - 1, 0)`). `+`
+adds numbers, concatenates a string with a string or number (`'a' + 1` is
+`'a1'`, evaluated left to right so `1 + 2 + 'a'` is `'3a'`), concatenates two
+lists, and otherwise adds an element to a list, null included (`[1] + null`
+is `[1, null]`). The operation is chosen at translation time when the operand
+types are known: literals, functions with a fixed result type (`count()`,
+`toString()`, …), arithmetic results, and properties whose type every
+mapping declaration of that name agrees on (`string`, `integer`, `number`,
+`boolean`, `array`). Otherwise `+` dispatches on the operand types at run
+time. Dividing two operands known to be integers truncates toward zero
+(`7 / 2` is 3); a property typed `number` divides as a float.
+
 ### 8.3 Supported subset (write)
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and

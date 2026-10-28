@@ -1,0 +1,56 @@
+version: 1
+cases:
+- id: C829
+  name: string literals concatenate
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: RETURN 'a' + 'b' AS s, 1 + 2 + 'a' AS t, 'a' + 1 + 2 AS u
+  expected:
+    aql: 'RETURN {s: CONCAT(''a'', ''b''), t: CONCAT((1 + 2), ''a''), u: CONCAT(''a'', 1, 2)}'
+    bind_vars: {}
+- id: C830
+  name: properties the mapping types as strings concatenate under one null guard
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (p:Person) RETURN p.firstName + ' ' + p.lastName AS name
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN {name: ((p.firstName == null OR p.lastName == null) ? null : CONCAT(p.firstName,\
+      \ ' ', p.lastName))}"
+    bind_vars:
+      '@collection': person
+- id: C831
+  name: arithmetic on a typed property shares one null guard
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Post) RETURN (m.length * 2) + 1 AS x, -m.length AS y
+  expected:
+    aql: "FOR m IN @@collection\n  RETURN {x: ((m.length == null) ? null : ((m.length * 2) + 1)), y: ((m.length\
+      \ == null) ? null : (-m.length))}"
+    bind_vars:
+      '@collection': post
+- id: C832
+  name: an untyped property plus a number is decided at run time
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN n.age + 1 AS x
+  expected:
+    aql: "FOR n IN @@collection\n  RETURN {x: (IS_NUMBER(n.age) ? (n.age + 1) : (IS_STRING(n.age) ? CONCAT(n.age,\
+      \ 1) : (IS_ARRAY(n.age) ? PUSH(n.age, 1) : null)))}"
+    bind_vars:
+      '@collection': users
+- id: C833
+  name: list addition appends, prepends or concatenates
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: RETURN [1] + 2 AS a, 0 + [1] AS b, [1] + [2] AS c, [1] + null AS d
+  expected:
+    aql: 'RETURN {a: PUSH([1], 2), b: UNSHIFT([1], 0), c: APPEND([1], [2]), d: PUSH([1], null)}'
+    bind_vars: {}
+- id: C834
+  name: integer division truncates; a float divides
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: RETURN 7 / 2 AS i, 7.0 / 2 AS f, -7 % 2 AS m
+  expected:
+    aql: 'RETURN {i: ((7 - 7 % 2) / 2), f: (7.0 / 2), m: ((-7) % 2)}'
+    bind_vars: {}

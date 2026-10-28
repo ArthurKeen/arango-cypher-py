@@ -26,7 +26,7 @@ tested, so the mode never leaks into an operand.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextvars import ContextVar
 from typing import Any
 
@@ -61,9 +61,51 @@ def _is_obvious_non_null(expr: str) -> bool:
     """True when *expr* is a textual form that AQL evaluates as non-null.
 
     Used to suppress redundant ``!= null`` guards on comparison operands
-    that are clearly numeric/string/boolean literals.
+    that are clearly numeric/string/boolean literals, or list or map
+    literals (``[1, x]``, ``{a: 1}``).
     """
-    return bool(_OBVIOUS_NON_NULL_RE.match(expr))
+    if _OBVIOUS_NON_NULL_RE.match(expr):
+        return True
+    text = expr.strip()
+    if len(text) < 2 or (text[0], text[-1]) not in {("[", "]"), ("{", "}")}:
+        return False
+    return _closing_bracket(text) == len(text) - 1
+
+
+def _unquoted_chars(text: str) -> Iterator[tuple[int, str, int]]:
+    """Yield ``(index, char, bracket depth)`` for each character outside string literals.
+
+    The depth is counted before the character, so an opening bracket is at
+    the depth around it and a closing one at the depth inside it.
+    """
+    depth = 0
+    quote = ""
+    escaped = False
+    for i, ch in enumerate(text):
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = ""
+            continue
+        if ch in "'\"`":
+            quote = ch
+            continue
+        yield i, ch, depth
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+
+
+def _closing_bracket(text: str) -> int:
+    """Index of the bracket closing ``text[0]``; -1 if none."""
+    for i, ch, depth in _unquoted_chars(text):
+        if ch in ")]}" and depth == 1:
+            return i
+    return -1
 
 
 def _guard_preference(operand: str) -> int:
@@ -92,25 +134,8 @@ def _wrap(expr: str) -> str:
     An expression is bare when it has a space outside brackets and string
     literals (``a == b``, not ``CONTAINS(a, ' ')``).
     """
-    depth = 0
-    quote = ""
-    escaped = False
-    for ch in expr:
-        if quote:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == quote:
-                quote = ""
-        elif ch in "'\"`":
-            quote = ch
-        elif ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-        elif ch == " " and depth == 0:
-            return f"({expr})"
+    if any(ch == " " and depth == 0 for _, ch, depth in _unquoted_chars(expr)):
+        return f"({expr})"
     return expr
 
 
