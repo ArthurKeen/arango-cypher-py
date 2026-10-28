@@ -63,6 +63,13 @@ from .naming import (
     _rewrite_vars,
     _strip_label_backticks,
 )
+from .shortest_path import (
+    compile_shortest_path,
+    pattern_element,
+    refuse_shortest_path_in_writes,
+    refuse_unbound_shortest_path,
+    shortest_path_pattern,
+)
 from .state import (
     TranslateOptions,
     _active_path_vars,
@@ -167,6 +174,7 @@ def _translate_v0_inner(
     tree = pr.tree
     _reject_unsafe_escaped_names(tree)
     _quote_aql_reserved_names(tree)
+    refuse_shortest_path_in_writes(tree)
 
     query_ctx = tree.oC_Statement().oC_Query()
 
@@ -962,6 +970,7 @@ def _translate_match_body(
 
     # Extract single pattern element (existing v0 behavior)
     anon = all_parts[0].oC_AnonymousPatternPart()
+    refuse_unbound_shortest_path(anon)
     elem = anon.oC_PatternElement()
     node = elem.oC_NodePattern()
     if node is None:
@@ -2118,6 +2127,9 @@ def _compile_match_multi_parts_from_parts(
 
     rel_part_i = 0
     all_named_rel_vars: list[str] = []
+    # A shortestPath() part needs its endpoints bound: compiled after the others.
+    shortest_parts = [part for part in parts if shortest_path_pattern(part) is not None]
+    parts = [part for part in parts if shortest_path_pattern(part) is None]
     for idx, part in enumerate(parts):
         anon = part.oC_AnonymousPatternPart()
         if anon is None:
@@ -2328,6 +2340,18 @@ def _compile_match_multi_parts_from_parts(
 
     _emit_relationship_uniqueness(all_named_rel_vars, lines, indent=indent_filter_line())
 
+    for part in shortest_parts:
+        env = {v: v for v in forbidden}
+        lines += compile_shortest_path(
+            part,
+            var_env=env,
+            forbidden=forbidden,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            indent=indent_filter_line(),
+        )
+        forbidden.update(env.values())
+
     for wc in extra_wheres or []:
         f = _compile_where(wc.oC_Expression(), bind_vars)
         add_filter(f)
@@ -2360,7 +2384,10 @@ def _compile_match_from_bound(
     out_env = dict(var_env)
     rel_type_exprs: dict[str, str] = {}
     any_chain = False
+    shortest_parts = [part for part in parts if shortest_path_pattern(part) is not None]
     for part in parts:
+        if shortest_path_pattern(part) is not None:
+            continue
         if part.oC_AnonymousPatternPart() is None:
             raise CoreError("Named paths in a MATCH after WITH are not supported", code="UNSUPPORTED")
         elem = part.oC_AnonymousPatternPart().oC_PatternElement()
@@ -2374,6 +2401,17 @@ def _compile_match_from_bound(
             lines=lines,
         )
         any_chain = any_chain or has_chain
+
+    for part in shortest_parts:
+        lines += compile_shortest_path(
+            part,
+            var_env=out_env,
+            forbidden=forbidden_vars,
+            resolver=resolver,
+            bind_vars=bind_vars,
+            indent="    ",
+        )
+        forbidden_vars.update(out_env.values())
 
     where_ctx = match_ctx.oC_Where()
     if where_ctx is not None:
@@ -2625,6 +2663,7 @@ def _compile_match_pipeline(
     if not parts or len(parts) != 1:
         raise CoreError("Only a single pattern part is supported in v0", code="UNSUPPORTED")
     anon = parts[0].oC_AnonymousPatternPart()
+    refuse_unbound_shortest_path(anon)
     elem = anon.oC_PatternElement()
     node = elem.oC_NodePattern()
     if node is None:
@@ -3519,7 +3558,7 @@ def _pattern_parts_user_vars(parts: list) -> list[str]:
         anon = part.oC_AnonymousPatternPart()
         if anon is None:
             continue
-        elem = anon.oC_PatternElement()
+        elem = pattern_element(anon)
         node = elem.oC_NodePattern()
         if node is not None and node.oC_Variable() is not None:
             add(node.oC_Variable().getText())
@@ -4906,6 +4945,7 @@ def _compile_subquery_body(
     anon = pp.oC_AnonymousPatternPart()
     if anon is None:
         raise CoreError("Named patterns not supported in subquery", code="NOT_IMPLEMENTED")
+    refuse_unbound_shortest_path(anon)
     pe = anon.oC_PatternElement()
 
     with_clauses = sq_ctx.oC_With() or []
