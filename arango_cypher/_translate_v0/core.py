@@ -69,6 +69,7 @@ from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
     _compile_comparison,
+    _is_obvious_non_null,
     _is_predicate_transparent,
     _is_two_valued,
     _negate_mode,
@@ -3416,16 +3417,30 @@ def _compile_order_by(
     bind_vars: dict[str, Any],
     *,
     var_env: dict[str, str] | None = None,
+    aliases: dict[str, str] | None = None,
 ) -> str:
+    """``SORT`` for an ORDER BY. A sort item that is exactly a projection
+    alias in *aliases* sorts by that alias's expression, even where a
+    variable has the same name (``RETURN a.name AS a ORDER BY a``)."""
     items = order_ctx.oC_SortItem() or []
     if not items:
         raise CoreError("ORDER BY requires at least one sort item", code="UNSUPPORTED")
     parts: list[str] = []
     for it in items:
-        expr = _compile_expression(it.oC_Expression(), bind_vars)
-        if var_env:
-            expr = _rewrite_vars(expr, var_env)
-        if it.DESC() is not None or it.DESCENDING() is not None:
+        text = it.oC_Expression().getText().strip()
+        if aliases and text in aliases:
+            expr = aliases[text]
+        else:
+            expr = _compile_expression(it.oC_Expression(), bind_vars)
+            if var_env:
+                expr = _rewrite_vars(expr, var_env)
+        descending = it.DESC() is not None or it.DESCENDING() is not None
+        if not _is_obvious_non_null(expr):
+            # Cypher sorts null after every value ascending and before every
+            # value descending; AQL sorts null below every value. A first key
+            # "is null" puts it back.
+            parts.append(f"({expr} == null) DESC" if descending else f"({expr} == null)")
+        if descending:
             parts.append(f"{expr} DESC")
         elif it.ASC() is not None or it.ASCENDING() is not None:
             parts.append(f"{expr} ASC")
@@ -3614,14 +3629,23 @@ def _append_return(
                 col_var = _pick_fresh_var(_affix_name(col_var, suffix="_distinct"), forbidden_vars=declared)
             lines.append(f"  COLLECT {col_var} = {expr}")
             if order_ctx is not None:
-                lines.append(f"  SORT {col_var}")
+                # After the COLLECT only the column is in scope: the sort item
+                # (the alias or the projected expression) is the column.
+                sort_line = _compile_order_by(order_ctx, bind_vars, var_env=var_env)
+                column_env = {expr: col_var, **({alias: col_var} if alias else {})}
+                lines.append("  " + _rewrite_vars(sort_line, column_env))
             _append_skip_limit(lines, skip_value, limit_value)
             lines.append(f"  RETURN {col_var}")
         else:
             if order_ctx is not None:
                 lines.append(
                     "  "
-                    + _compile_order_by(order_ctx, bind_vars, var_env=_order_env(var_env, compiled_items))
+                    + _compile_order_by(
+                        order_ctx,
+                        bind_vars,
+                        var_env=_order_env(var_env, compiled_items),
+                        aliases={a: e for a, e in compiled_items if a},
+                    )
                 )
             _append_skip_limit(lines, skip_value, limit_value)
             lines.append("  RETURN DISTINCT " + _compile_return_object(compiled_items))
@@ -3629,7 +3653,13 @@ def _append_return(
 
     if order_ctx is not None:
         lines.append(
-            "  " + _compile_order_by(order_ctx, bind_vars, var_env=_order_env(var_env, compiled_items))
+            "  "
+            + _compile_order_by(
+                order_ctx,
+                bind_vars,
+                var_env=_order_env(var_env, compiled_items),
+                aliases={a: e for a, e in compiled_items if a},
+            )
         )
     _append_skip_limit(lines, skip_value, limit_value)
 

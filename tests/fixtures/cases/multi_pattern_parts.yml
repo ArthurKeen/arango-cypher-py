@@ -14,10 +14,10 @@ cases:
 
     '
   expected:
-    aql: "FOR u IN @@collection\n  FOR v IN @@collection2\n    SORT u.id, v.id\n    LIMIT 3\n    RETURN {id: u.id, v_id: v.id}"
+    aql: "FOR u IN @@collection\n  FOR v IN @@collection2\n    SORT (u.id == null), u.id, (v.id == null), v.id\n    LIMIT 3\n    RETURN {id: u.id, v_id: v.id}\n"
     bind_vars:
-      '@collection': users
-      '@collection2': users
+      "@collection": users
+      "@collection2": users
 - id: C046
   name: shared variable join with 1-hop traversal
   mapping_fixture: pg
@@ -32,15 +32,14 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    LIMIT 5\n   \
-      \ RETURN {id: u.id, v_id: v.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT (u.id == null), u.id, (v.id == null), v.id\n    LIMIT 5\n    RETURN {id: u.id, v_id: v.id}\n"
     bind_vars:
-      '@collection': users
-      '@edgeCollection': follows
+      "@collection": users
+      "@edgeCollection": follows
       vCollection: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places
 - id: C047
   name: shared intermediate variable across traversals (2 pattern parts)
   mapping_fixture: pg
@@ -53,17 +52,16 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r2 IN 1..1 OUTBOUND v @@edgeCollection2\n\
-      \      FILTER IS_SAME_COLLECTION(@wCollection, w)\n      SORT u.id, w.id\n      RETURN {id: u.id, w_id: w.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r2 IN 1..1 OUTBOUND v @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@wCollection, w)\n      SORT (u.id == null), u.id, (w.id == null), w.id\n      RETURN {id: u.id, w_id: w.id}\n"
     bind_vars:
-      '@uCollection': users
-      '@edgeCollection': follows
+      "@uCollection": users
+      "@edgeCollection": follows
       vCollection: users
-      '@edgeCollection2': follows
+      "@edgeCollection2": follows
       wCollection: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places
 - id: C053
   name: distinct order skip limit in multi pattern parts
   mapping_fixture: pg
@@ -80,10 +78,10 @@ cases:
 
     '
   expected:
-    aql: "FOR u IN @@collection\n  FOR v IN @@collection2\n    COLLECT city = v.city\n    SORT city\n    LIMIT 1, 1\n    RETURN city"
+    aql: "FOR u IN @@collection\n  FOR v IN @@collection2\n    COLLECT city = v.city\n    SORT (city == null), city\n    LIMIT 1, 1\n    RETURN city\n"
     bind_vars:
-      '@collection': users
-      '@collection2': users
+      "@collection": users
+      "@collection2": users
 - id: C060
   name: shared end node across pattern parts (id equality join)
   mapping_fixture: pg
@@ -98,14 +96,13 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w IN @@wCollection\n      FOR\
-      \ v_m, r2 IN 1..1 OUTBOUND w @@edgeCollection2\n        FILTER v_m._id == v._id\n        SORT u.id, w.id, v.id\n        LIMIT 10\n        RETURN {id: u.id, w_id: w.id, v_id: v.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w IN @@wCollection\n      FOR v_m, r2 IN 1..1 OUTBOUND w @@edgeCollection2\n        FILTER v_m._id == v._id\n        SORT (u.id == null), u.id, (w.id == null), w.id, (v.id == null), v.id\n        LIMIT 10\n        RETURN {id: u.id, w_id: w.id, v_id: v.id}\n"
     bind_vars:
-      '@uCollection': users
-      '@edgeCollection': follows
+      "@uCollection": users
+      "@edgeCollection": follows
       vCollection: users
-      '@wCollection': users
-      '@edgeCollection2': follows
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@wCollection": users
+      "@edgeCollection2": follows
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places

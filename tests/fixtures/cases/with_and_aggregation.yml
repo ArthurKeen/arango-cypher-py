@@ -14,12 +14,11 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT city = u.city AGGREGATE c = COUNT(1)
-          SORT c DESC
+          SORT (c == null) DESC, c DESC
           LIMIT 10
           RETURN {city: city, c: c}
       bind_vars:
         "@collection": users
-
   - id: C020
     name: with degree aggregation
     mapping_fixture: pg
@@ -38,17 +37,16 @@ cases:
             FILTER IS_SAME_COLLECTION(@vCollection, v)
             COLLECT u_1 = u AGGREGATE _degree_nonnull = SUM((v) == null ? 0 : 1)
             LET degree = NOT_NULL(_degree_nonnull, 0)
-            SORT degree DESC
+            SORT (degree == null) DESC, degree DESC
             LIMIT 10
             RETURN {id: u_1.id, degree: degree}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
         vCollection: users
-
-        '@withCollection0': docs
-        '@withCollection1': persons
-        '@withCollection2': places
+        "@withCollection0": docs
+        "@withCollection1": persons
+        "@withCollection2": places
   - id: C021
     name: with then filter
     mapping_fixture: pg
@@ -80,11 +78,10 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT city = u.city
-          SORT city
+          SORT (city == null), city
           RETURN city
       bind_vars:
         "@collection": users
-
   - id: C023
     name: collect and size
     mapping_fixture: pg
@@ -131,11 +128,10 @@ cases:
       aql: |
         FOR u IN @@collection
           COLLECT s = u.state AGGREGATE a = AVG(u.age)
-          SORT a DESC
+          SORT (a == null) DESC, a DESC
           RETURN {s: s, a: a}
       bind_vars:
         "@collection": users
-
   - id: C026
     name: group by end node property
     mapping_fixture: pg
@@ -177,12 +173,11 @@ cases:
         FOR u IN @@collection
           COLLECT city = u.city AGGREGATE c = COUNT(1)
           FILTER (c != null AND c > 1)
-          SORT c DESC
+          SORT (c == null) DESC, c DESC
           LIMIT 1, 1
           RETURN {city: city, c: c}
       bind_vars:
         "@collection": users
-
   - id: C034
     name: multi-stage collect then size + skip
     mapping_fixture: pg
@@ -201,12 +196,11 @@ cases:
           COLLECT city = u.city INTO _collect_rows = {ids: u.id}
           LET ids = REMOVE_VALUE(_collect_rows[*].ids, null)
           LET n = LENGTH(ids)
-          SORT n DESC
+          SORT (n == null) DESC, n DESC
           LIMIT 0, 2
           RETURN {city: city, n: n}
       bind_vars:
         "@collection": users
-
   - id: C035
     name: sum aggregation
     mapping_fixture: pg
@@ -222,12 +216,11 @@ cases:
         FOR u IN @@collection
           COLLECT s = u.state AGGREGATE _total_sum = SUM(u.age)
           LET total = NOT_NULL(_total_sum, 0)
-          SORT total DESC
+          SORT (total == null) DESC, total DESC
           LIMIT 2
           RETURN {s: s, total: total}
       bind_vars:
         "@collection": users
-
   - id: C036
     name: min max aggregation
     mapping_fixture: pg
@@ -260,9 +253,8 @@ cases:
         FOR u IN @@collection
           LET x = null
           FILTER (x == null)
-          SORT u.id
+          SORT (u.id == null), u.id
           LIMIT 2
           RETURN u.id
       bind_vars:
         "@collection": users
-

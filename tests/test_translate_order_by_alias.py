@@ -27,8 +27,8 @@ class TestOrderByAlias:
             "RETURN m.title, size(r.roles) AS role_count ORDER BY role_count DESC LIMIT 3",
             mapping=pg,
         )
-        assert "SORT LENGTH(r.roles) DESC" in out.aql
-        assert "SORT role_count" not in out.aql
+        assert "SORT (LENGTH(r.roles) == null) DESC, LENGTH(r.roles) DESC" in out.aql
+        assert "role_count ==" not in out.aql and "SORT role_count" not in out.aql
 
     def test_order_by_renamed_property_alias(self, pg):
         out = translate(
@@ -36,8 +36,8 @@ class TestOrderByAlias:
             "RETURN m.title AS title, m.released AS year ORDER BY year",
             mapping=pg,
         )
-        assert "SORT m.released" in out.aql
-        assert "SORT year" not in out.aql
+        assert "SORT (m.released == null), m.released" in out.aql
+        assert "year ==" not in out.aql and "SORT year" not in out.aql
 
     def test_order_by_node_only_alias(self, pg):
         out = translate(
@@ -46,7 +46,7 @@ class TestOrderByAlias:
             "ORDER BY tagline_length DESC LIMIT 1",
             mapping=pg,
         )
-        assert "SORT LENGTH(movie.tagline) DESC" in out.aql
+        assert "SORT (LENGTH(movie.tagline) == null) DESC, LENGTH(movie.tagline) DESC" in out.aql
 
     def test_order_by_plain_variable_unaffected(self, pg):
         # No alias involved → ORDER BY on a live var must be untouched.
@@ -54,4 +54,4 @@ class TestOrderByAlias:
             "MATCH (m:Movie) RETURN m.title ORDER BY m.released DESC",
             mapping=pg,
         )
-        assert "SORT m.released DESC" in out.aql
+        assert "SORT (m.released == null) DESC, m.released DESC" in out.aql

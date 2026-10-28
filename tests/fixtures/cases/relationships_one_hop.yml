@@ -62,15 +62,14 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT u.id, v.id\n    LIMIT 3\n    RETURN\
-      \ {id: u.id, v_id: v.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n  FOR v, r IN 1..1 ANY u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    SORT (u.id == null), u.id, (v.id == null), v.id\n    LIMIT 3\n    RETURN {id: u.id, v_id: v.id}\n"
     bind_vars:
-      '@uCollection': users
-      '@edgeCollection': follows
+      "@uCollection": users
+      "@edgeCollection": follows
       vCollection: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places
 - id: C059
   name: type of relationship only
   mapping_fixture: pg

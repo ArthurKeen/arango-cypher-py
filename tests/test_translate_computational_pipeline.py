@@ -51,7 +51,7 @@ class TestComputationalPipeline:
             mapping=pg,
         )
         assert "FOR bools IN [true,false]" in out.aql
-        assert "SORT bools" in out.aql
+        assert "SORT (bools == null), bools" in out.aql
         assert "LIMIT 1" in out.aql
 
     def test_chained_unwind(self, pg):

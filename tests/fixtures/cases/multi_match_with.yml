@@ -20,10 +20,10 @@ cases:
 
     '
   expected:
-    aql: "FOR a IN @@collection\n  FOR b IN @@tailCollection\n    SORT a.name\n    LIMIT 5\n    RETURN {name: a.name, title: b.title}"
+    aql: "FOR a IN @@collection\n  FOR b IN @@tailCollection\n    SORT (a.name == null), a.name\n    LIMIT 5\n    RETURN {name: a.name, title: b.title}\n"
     bind_vars:
-      '@collection': persons
-      '@tailCollection': movies
+      "@collection": persons
+      "@tailCollection": movies
 - id: C702
   name: two MATCH second with relationship then WITH
   mapping_fixture: movies_pg
