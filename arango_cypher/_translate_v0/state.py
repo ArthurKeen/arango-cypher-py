@@ -24,6 +24,11 @@ _active_path_vars: ContextVar[dict[str, tuple[list[str], list[str]]]] = ContextV
     "_active_path_vars",
     default={},  # noqa: B039  # always .set() before .get() in translate_v0
 )
+# ``TranslateOptions.case_insensitive_inline_strings`` of the running translation.
+_active_case_insensitive_inline: ContextVar[bool] = ContextVar(
+    "_active_case_insensitive_inline",
+    default=False,
+)
 # Ordered list of the *user-named* variables currently in scope, used to expand
 # ``RETURN *`` / ``WITH *`` (auto-generated traversal / anonymous-node variables
 # must not appear in a ``*`` projection). Pattern compilation sets it from the
@@ -63,3 +68,7 @@ class _HopMeta:
 class TranslateOptions:
     extensions: ExtensionPolicy = ExtensionPolicy(enabled=False)
     registry: ExtensionRegistry | None = None
+    #: Inline string properties (``(n {name: 'Alice'})``) compare
+    #: case-insensitively. Off by default: Cypher compares exactly, and
+    #: ``LOWER()`` keeps an index from serving the lookup.
+    case_insensitive_inline_strings: bool = False

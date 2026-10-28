@@ -7,17 +7,13 @@ cases:
   cypher: 'MATCH (t:User {id: ''u1''}) WITH t.city AS city MATCH (p:User) WITH city, count(p) AS n MATCH (q:User
     {city: city})-[:FOLLOWS {w: n}]->(r:User {city: city}) RETURN q.id AS id'
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR t IN @@collection\n  FILTER\
-      \ (LOWER(t.id) == LOWER('u1'))\n  LET city = t.city\n  FOR p IN @@tailCollection\n    COLLECT city_1 = city\
-      \ AGGREGATE _n_nonnull = SUM((p) == null ? 0 : 1)\n    LET n = NOT_NULL(_n_nonnull, 0)\n    FOR q IN @@tailCollection2\n\
-      \      FILTER (q.city == city_1)\n      FOR r, r_1 IN 1..1 OUTBOUND q @@edgeCollection\n        FILTER IS_SAME_COLLECTION(@vCollection,\
-      \ r)\n        FILTER (r_1.w == n)\n        FILTER (r.city == city_1)\n        RETURN {id: q.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR t IN @@collection\n  FILTER (t.id == 'u1')\n  LET city = t.city\n  FOR p IN @@tailCollection\n    COLLECT city_1 = city AGGREGATE _n_nonnull = SUM((p) == null ? 0 : 1)\n    LET n = NOT_NULL(_n_nonnull, 0)\n    FOR q IN @@tailCollection2\n      FILTER (city_1 != null AND q.city == city_1)\n      FOR r, r_1 IN 1..1 OUTBOUND q @@edgeCollection\n        FILTER IS_SAME_COLLECTION(@vCollection, r)\n        FILTER (n != null AND r_1.w == n)\n        FILTER (city_1 != null AND r.city == city_1)\n        RETURN {id: q.id}\n"
     bind_vars:
-      '@collection': users
-      '@tailCollection': users
-      '@tailCollection2': users
-      '@edgeCollection': follows
+      "@collection": users
+      "@tailCollection": users
+      "@tailCollection2": users
+      "@edgeCollection": follows
       vCollection: users
-      '@withCollection0': docs
-      '@withCollection1': persons
-      '@withCollection2': places
+      "@withCollection0": docs
+      "@withCollection1": persons
+      "@withCollection2": places

@@ -23,6 +23,7 @@ def _cache_key(
     params: dict[str, Any] | None,
     extensions: ExtensionPolicy | None = None,
     registry: ExtensionRegistry | None = None,
+    case_insensitive_inline_strings: bool = False,
 ) -> str:
     """Build a deterministic cache key from inputs."""
     h = hashlib.sha256()
@@ -33,6 +34,7 @@ def _cache_key(
         h.update(json.dumps(params, sort_keys=True, default=str).encode())
     h.update(str(extensions.enabled if extensions else False).encode())
     h.update(str(id(registry) if registry else 0).encode())
+    h.update(str(case_insensitive_inline_strings).encode())
     return h.hexdigest()
 
 
@@ -121,12 +123,17 @@ def translate(
     extensions: ExtensionPolicy | None = None,
     registry: ExtensionRegistry | None = None,
     params: dict[str, Any] | None = None,
+    case_insensitive_inline_strings: bool = False,
 ) -> TranspiledQuery:
     """Translate a Cypher query to AQL using the provided schema mapping.
 
     *registry* is an optional :class:`ExtensionRegistry` carrying ``arango.*``
     function/procedure compilers.  When supplied, the translator delegates
     ``arango.bm25()``, ``arango.tfidf()`` etc. to registered compilers.
+
+    *case_insensitive_inline_strings* makes an inline string property
+    (``(n {name: 'alice'})``) match regardless of case. Cypher compares
+    exactly, which is the default, and only the exact form can use an index.
     """
     if not isinstance(cypher, str) or not cypher.strip():
         raise CoreError("cypher must be a non-empty string", code="INVALID_ARGUMENT")
@@ -134,7 +141,7 @@ def translate(
     if mapping is None:
         raise CoreError("mapping is required", code="INVALID_ARGUMENT")
 
-    key = _cache_key(cypher, mapping, params, extensions, registry)
+    key = _cache_key(cypher, mapping, params, extensions, registry, case_insensitive_inline_strings)
     cached = _translate_cache.get(key)
     if cached is not None:
         _translate_cache.move_to_end(key)
@@ -143,6 +150,7 @@ def translate(
     options = TranslateOptions(
         extensions=(extensions or ExtensionPolicy(enabled=False)),
         registry=registry,
+        case_insensitive_inline_strings=case_insensitive_inline_strings,
     )
     q = translate_v0(cypher, mapping=mapping, params=params, options=options)
 

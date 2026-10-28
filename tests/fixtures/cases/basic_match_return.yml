@@ -327,8 +327,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          FILTER (LOWER(n.id) == LOWER("u1"))
+          FILTER (n.id == "u1")
           RETURN n.id
       bind_vars:
         "@collection": users
-

@@ -15,27 +15,19 @@ cases:
     tagIds: &id001
     - 4
   expected:
-    aql: "LET _s1 = (\nFOR p IN @@collection\n  OPTIONS {indexHint: \"idx_person_id\", forceIndexHint: false}\n\
-      \  FILTER (p.id == @moderatorPersonId)\n  LET _key_f = UUID()\n  LET f = MERGE({id: @forumId, title: @forumTitle,\
-      \ creationDate: @creationDate}, {_key: _key_f, _id: CONCAT(@collection2Name, \"/\", _key_f)})\n  LET _e0 =\
-      \ {_from: f._id, _to: p._id}\n  RETURN {p: p, f: f, _e0: _e0}\n  )\n  LET _s2 = (\n  FOR _r IN _s1\n    LET\
-      \ p = _r.p\n    LET f = _r.f\n    FOR tagId IN @tagIds\n      FOR t IN @@tailCollection\n        FILTER (t.id\
-      \ == tagId)\n        LET _e1 = {_from: f._id, _to: t._id}\n        RETURN {f: f, tagId: tagId, t: t, _e1:\
-      \ _e1}\n        )\n        LET _inserted0 = (FOR _d IN _s1[*].f INSERT UNSET(_d, '_id') INTO @@collection2)\n\
-      \        LET _inserted1 = (FOR _d IN _s1[*]._e0 INSERT _d INTO @@edgeCollection)\n        FOR _d IN _s2[*]._e1\
-      \ INSERT _d INTO @@edgeCollection2"
+    aql: "LET _s1 = (\nFOR p IN @@collection\n  OPTIONS {indexHint: \"idx_person_id\", forceIndexHint: false}\n  FILTER (@moderatorPersonId != null AND p.id == @moderatorPersonId)\n  LET _key_f = UUID()\n  LET f = MERGE({id: @forumId, title: @forumTitle, creationDate: @creationDate}, {_key: _key_f, _id: CONCAT(@collection2Name, \"/\", _key_f)})\n  LET _e0 = {_from: f._id, _to: p._id}\n  RETURN {p: p, f: f, _e0: _e0}\n  )\n  LET _s2 = (\n  FOR _r IN _s1\n    LET p = _r.p\n    LET f = _r.f\n    FOR tagId IN @tagIds\n      FOR t IN @@tailCollection\n        FILTER (tagId != null AND t.id == tagId)\n        LET _e1 = {_from: f._id, _to: t._id}\n        RETURN {f: f, tagId: tagId, t: t, _e1: _e1}\n        )\n        LET _inserted0 = (FOR _d IN _s1[*].f INSERT UNSET(_d, '_id') INTO @@collection2)\n        LET _inserted1 = (FOR _d IN _s1[*]._e0 INSERT _d INTO @@edgeCollection)\n        FOR _d IN _s2[*]._e1 INSERT _d INTO @@edgeCollection2\n"
     bind_vars:
       moderatorPersonId: 1
       forumId: 2
       forumTitle: t
       creationDate: 3
-      tagIds: *id001
-      '@collection': person
-      '@collection2': forum
+      tagIds: [4]
+      "@collection": person
+      "@collection2": forum
       collection2Name: forum
-      '@edgeCollection': has_moderator
-      '@tailCollection': tag
-      '@edgeCollection2': has_tag
+      "@edgeCollection": has_moderator
+      "@tailCollection": tag
+      "@edgeCollection2": has_tag
 - id: C859
   name: 'a CREATE pipeline on LPG: every edge in one INSERT'
   mapping_fixture: ldbc_lpg
@@ -51,30 +43,21 @@ cases:
     tagIds: &id002
     - 4
   expected:
-    aql: "LET _s1 = (\nFOR p IN @@collection\n  OPTIONS {indexHint: \"idx_nodes_type_id\", forceIndexHint: false}\n\
-      \  FILTER p[@typeField] == @typeValue\n  FILTER (p.id == @moderatorPersonId)\n  LET _key_f = UUID()\n  LET\
-      \ f = MERGE({type: @typeValue2, id: @forumId, title: @forumTitle, creationDate: @creationDate}, {_key: _key_f,\
-      \ _id: CONCAT(@collectionName, \"/\", _key_f)})\n  LET _e0 = {_from: f._id, _to: p._id, type: @relTypeValue}\n\
-      \  RETURN {p: p, f: f, _e0: _e0}\n  )\n  LET _s2 = (\n  FOR _r IN _s1\n    LET p = _r.p\n    LET f = _r.f\n\
-      \    FOR tagId IN @tagIds\n      FOR t IN @@tailCollection\n        FILTER t[@tailTypeField] == @tailTypeValue\n\
-      \        FILTER (t.id == tagId)\n        LET _e1 = {_from: f._id, _to: t._id, type: @relTypeValue2}\n    \
-      \    RETURN {f: f, tagId: tagId, t: t, _e1: _e1}\n        )\n        LET _inserted0 = (FOR _d IN _s1[*].f\
-      \ INSERT UNSET(_d, '_id') INTO @@collection)\n        FOR _d IN FLATTEN([_s1[*]._e0, _s2[*]._e1]) INSERT _d\
-      \ INTO @@edgeCollection"
+    aql: "LET _s1 = (\nFOR p IN @@collection\n  OPTIONS {indexHint: \"idx_nodes_type_id\", forceIndexHint: false}\n  FILTER p[@typeField] == @typeValue\n  FILTER (@moderatorPersonId != null AND p.id == @moderatorPersonId)\n  LET _key_f = UUID()\n  LET f = MERGE({type: @typeValue2, id: @forumId, title: @forumTitle, creationDate: @creationDate}, {_key: _key_f, _id: CONCAT(@collectionName, \"/\", _key_f)})\n  LET _e0 = {_from: f._id, _to: p._id, type: @relTypeValue}\n  RETURN {p: p, f: f, _e0: _e0}\n  )\n  LET _s2 = (\n  FOR _r IN _s1\n    LET p = _r.p\n    LET f = _r.f\n    FOR tagId IN @tagIds\n      FOR t IN @@tailCollection\n        FILTER t[@tailTypeField] == @tailTypeValue\n        FILTER (tagId != null AND t.id == tagId)\n        LET _e1 = {_from: f._id, _to: t._id, type: @relTypeValue2}\n        RETURN {f: f, tagId: tagId, t: t, _e1: _e1}\n        )\n        LET _inserted0 = (FOR _d IN _s1[*].f INSERT UNSET(_d, '_id') INTO @@collection)\n        FOR _d IN FLATTEN([_s1[*]._e0, _s2[*]._e1]) INSERT _d INTO @@edgeCollection\n"
     bind_vars:
       moderatorPersonId: 1
       forumId: 2
       forumTitle: t
       creationDate: 3
-      tagIds: *id002
-      '@collection': nodes
+      tagIds: [4]
+      "@collection": nodes
       typeField: type
       typeValue: Person
       typeValue2: Forum
       collectionName: nodes
-      '@edgeCollection': edges
+      "@edgeCollection": edges
       relTypeValue: HAS_MODERATOR
-      '@tailCollection': nodes
+      "@tailCollection": nodes
       tailTypeField: type
       tailTypeValue: Tag
       relTypeValue2: HAS_TAG

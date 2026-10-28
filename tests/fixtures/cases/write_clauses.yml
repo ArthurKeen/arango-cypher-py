@@ -9,9 +9,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C401
   name: SET multiple properties in one SET clause
   mapping_fixture: pg
@@ -20,9 +20,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\", age: 30} IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\", age: 30} IN @@collection\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C402
   name: SET += merge semantics
   mapping_fixture: pg
@@ -31,9 +31,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH MERGE(n, {name: \"Bob\", age: 30}) IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH MERGE(n, {name: \"Bob\", age: 30}) IN @@collection\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C403
   name: SET = replace semantics
   mapping_fixture: pg
@@ -42,9 +42,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REPLACE n WITH {name: \"Bob\"} IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  REPLACE n WITH {name: \"Bob\"} IN @@collection\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C404
   name: SET with LPG label filter
   mapping_fixture: lpg
@@ -53,9 +53,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n"
     bind_vars:
-      '@collection': vertices
+      "@collection": vertices
       typeField: type
       typeValue: User
 - id: C405
@@ -66,9 +66,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n  RETURN n\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n  RETURN n\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 # ─── DELETE ────────────────────────────────────────────────────
 - id: C410
   name: DELETE node
@@ -78,7 +78,7 @@ cases:
 
     '
   expected:
-    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
+    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
       "@collection": persons
       "@deleteNodes": persons
@@ -91,7 +91,7 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@collection, @@withCollection1, @@withCollection2\nLET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
+    aql: "WITH @@withCollection0, @@collection, @@withCollection1, @@withCollection2\nLET _matched = (\nFOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
       "@collection": persons
       "@deleteEdges": follows
@@ -109,7 +109,7 @@ cases:
 
     '
   expected:
-    aql: "WITH @@collection\nLET _matched = (\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
+    aql: "WITH @@collection\nLET _matched = (\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _detach0 = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n @@deleteEdges RETURN _e._id)\n  LET _deleted_edges = UNIQUE(_detach0)\n  LET _removed0 = (FOR _id IN _deleted_edges FILTER PARSE_IDENTIFIER(_id).collection == @deleteEdgesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges)\n  FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes\n"
     bind_vars:
       "@collection": vertices
       typeField: type
@@ -126,7 +126,7 @@ cases:
 
     '
   expected:
-    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _removed0 = (FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes)\n  FOR _row IN _matched\n    LET n = _row.n\n    RETURN n.name\n"
+    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _removed0 = (FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes)\n  FOR _row IN _matched\n    LET n = _row.n\n    RETURN n.name\n"
     bind_vars:
       "@collection": persons
       "@deleteNodes": persons
@@ -198,11 +198,11 @@ cases:
 
     '
   expected:
-    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, since: 2020}\n    UPDATE {}\n    IN @@edgeCollection\n"
+    aql: "FOR a IN @@collection\n  FILTER (a.name == \"Alice\")\n  FOR b IN @@collection2\n    FILTER (b.name == \"Bob\")\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, since: 2020}\n    UPDATE {}\n    IN @@edgeCollection\n"
     bind_vars:
-      '@collection': persons
-      '@collection2': persons
-      '@edgeCollection': follows
+      "@edgeCollection": follows
+      "@collection": persons
+      "@collection2": persons
 - id: C426
   name: MERGE relationship after MATCH (LPG GENERIC_WITH_TYPE)
   mapping_fixture: lpg
@@ -212,16 +212,16 @@ cases:
 
     '
   expected:
-    aql: "FOR a IN @@collection\n  FILTER a[@aTypeField] == @aTypeValue\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER b[@bTypeField] == @bTypeValue\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    INSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    UPDATE {}\n    IN @@edgeCollection\n"
+    aql: "FOR a IN @@collection\n  FILTER a[@aTypeField] == @aTypeValue\n  FILTER (a.name == \"Alice\")\n  FOR b IN @@collection2\n    FILTER b[@bTypeField] == @bTypeValue\n    FILTER (b.name == \"Bob\")\n    UPSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    INSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    UPDATE {}\n    IN @@edgeCollection\n"
     bind_vars:
-      '@collection': vertices
-      '@collection2': vertices
-      '@edgeCollection': edges
+      "@edgeCollection": edges
+      relTypeValue: FOLLOWS
+      "@collection": vertices
       aTypeField: type
       aTypeValue: User
+      "@collection2": vertices
       bTypeField: type
       bTypeValue: User
-      relTypeValue: FOLLOWS
 - id: C427
   name: MERGE relationship with ON CREATE SET and ON MATCH SET
   mapping_fixture: pg
@@ -231,11 +231,11 @@ cases:
 
     '
   expected:
-    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  FOR b IN @@collection2\n    FILTER (LOWER(b.name) == LOWER(\"Bob\"))\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, created: DATE_NOW()}\n    UPDATE {updated: DATE_NOW()}\n    IN @@edgeCollection\n"
+    aql: "FOR a IN @@collection\n  FILTER (a.name == \"Alice\")\n  FOR b IN @@collection2\n    FILTER (b.name == \"Bob\")\n    UPSERT {_from: a._id, _to: b._id}\n    INSERT {_from: a._id, _to: b._id, created: DATE_NOW()}\n    UPDATE {updated: DATE_NOW()}\n    IN @@edgeCollection\n"
     bind_vars:
-      '@collection': persons
-      '@collection2': persons
-      '@edgeCollection': follows
+      "@edgeCollection": follows
+      "@collection": persons
+      "@collection2": persons
 # ─── CREATE extras ─────────────────────────────────────────────
 - id: C430
   name: CREATE node without properties (PG)
@@ -266,9 +266,9 @@ cases:
   extensions_enabled: false
   cypher: "MATCH (n:Person {name: \"Alice\"}) SET n.age = 31 REMOVE n.nickname, n.age"
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH {\"nickname\": null, \"age\": null} IN @@collection OPTIONS {keepNull: false}\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {\"nickname\": null, \"age\": null} IN @@collection OPTIONS {keepNull: false}\n"
     bind_vars:
-      "@collection": "persons"
+      "@collection": persons
 - id: C441
   name: SET on a relationship updates the edge collection
   mapping_fixture: pg
@@ -305,11 +305,11 @@ cases:
   extensions_enabled: false
   cypher: "MATCH (n:User {name: \"Alice\"}) SET n = {name: \"Bob\"}"
   expected:
-    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  REPLACE n WITH MERGE({name: \"Bob\"}, KEEP(n, \"type\")) IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FILTER (n.name == \"Alice\")\n  REPLACE n WITH MERGE({name: \"Bob\"}, KEEP(n, \"type\")) IN @@collection\n"
     bind_vars:
-      "@collection": "vertices"
-      "typeField": "type"
-      "typeValue": "User"
+      "@collection": vertices
+      typeField: type
+      typeValue: User
 - id: C444
   name: CREATE then SET/REMOVE folds into the insert
   mapping_fixture: pg
@@ -326,7 +326,7 @@ cases:
   cypher: "MATCH (n:Person {name: \"Alice\"}) SET n += $props, n.age = 30"
   params: {"props": {"x": 1}}
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (LOWER(n.name) == LOWER(\"Alice\"))\n  UPDATE n WITH MERGE(n, @props, {age: 30}) IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH MERGE(n, @props, {age: 30}) IN @@collection\n"
     bind_vars:
-      "props": {"x": 1}
-      "@collection": "persons"
+      props: {x: 1}
+      "@collection": persons
