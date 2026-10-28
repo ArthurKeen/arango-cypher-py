@@ -602,6 +602,15 @@ mapping declaration of that name agrees on (`string`, `integer`, `number`,
 time. Dividing two operands known to be integers truncates toward zero
 (`7 / 2` is 3); a property typed `number` divides as a float.
 
+The conversion functions return null where AQL's conversions are total.
+`toInteger()` truncates toward zero (`toInteger(3.7)` is 3; AQL's
+`TO_NUMBER` does not truncate) and reads a numeric string; `toInteger()`
+and `toFloat()` of a non-numeric string are null (`TO_NUMBER('abc')` is
+0). `toBoolean()` reads `'true'`/`'false'` in any case and is null for any
+other string (AQL's `TO_BOOL('false')` is true). `toString(null)` is null
+(`TO_STRING(null)` is `""`). An aggregate's argument compiles like any
+expression (`sum(toInteger(x))`, `count(n.x = 1)`).
+
 ### 8.3 Supported subset (write)
 
 `CREATE` (nodes, relationships, whole-map params `CREATE (n $props)`, and

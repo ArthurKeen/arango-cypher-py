@@ -1,9 +1,9 @@
 """Cypher scalar functions inside an aggregate argument.
 
-``max(size(m.tagline))`` reaches ``_compile_agg_expr`` as raw text and bypasses
+``max(size(m.tagline))`` reached ``_compile_agg_expr`` as raw text and bypassed
 the parse-tree function compiler, so ``size`` was left un-lowered and executed as
-an unknown AQL function. Rename-only Cypher scalars (size→LENGTH, lower→LOWER,
-toInteger→TO_NUMBER, …) are now lowered inside the aggregate argument.
+an unknown AQL function. The argument now goes through the expression compiler
+like any other expression; ``count(a) + count(b)`` is two aggregates, not one.
 """
 
 from __future__ import annotations
@@ -31,7 +31,11 @@ class TestAggInnerScalarFns:
 
     def test_tointeger_in_sum(self, pg):
         out = translate("MATCH (m:Movie) RETURN sum(toInteger(m.released)) AS s", mapping=pg)
-        assert "SUM(TO_NUMBER(m.released))" in out.aql
+        # toInteger() truncates; AQL's TO_NUMBER does not.
+        assert (
+            "SUM(((m.released == null) ? null : ((m.released >= 0) ? FLOOR(m.released) : CEIL(m.released))))"
+            in (out.aql)
+        )
 
     def test_lower_in_count_distinct(self, pg):
         out = translate(
@@ -47,3 +51,24 @@ class TestAggInnerScalarFns:
         )
         # count() skips nulls: AQL COUNT() would count them.
         assert "SUM((m) == null ? 0 : 1)" in out.aql
+
+
+class TestAggregateCallText:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("count(*)", ("count", "*", False)),
+            ("count(DISTINCT n.x)", ("count", "n.x", True)),
+            ("COUNT ( n )", ("count", "n", False)),
+            ("sum(toInteger(n.x))", ("sum", "toInteger(n.x)", False)),
+            ("count(distinctive)", ("count", "distinctive", False)),
+            ("count(a) + count(b)", None),
+            ("max(a)[0]", None),
+            ("collect(a)", None),
+            ("counter(a)", None),
+        ],
+    )
+    def test_aggregate_call(self, text, expected):
+        from arango_cypher._translate_v0.core import _aggregate_call
+
+        assert _aggregate_call(text) == expected

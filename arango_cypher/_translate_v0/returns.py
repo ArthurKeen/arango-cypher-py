@@ -26,7 +26,7 @@ def _translate_standalone_return(
     bind_vars: dict[str, Any],
 ) -> AqlQuery:
     """Translate a ``RETURN``-only query (no MATCH/UNWIND/CALL) into AQL."""
-    from .core import _compile_agg_expr, _compile_expression, _compile_return_object
+    from .core import _aggregate_call, _compile_expression, _compile_return_object
 
     ret = spq.oC_Return()
     if ret is None:
@@ -52,7 +52,7 @@ def _translate_standalone_return(
     for it in items:
         expr_ctx = it.oC_Expression()
         expr_txt = expr_ctx.getText().strip()
-        if _compile_agg_expr(expr_txt) is not None:
+        if _aggregate_call(expr_txt) is not None:
             raise CoreError(
                 "Aggregation in a bare RETURN is not supported in v0 subset",
                 code="UNSUPPORTED",

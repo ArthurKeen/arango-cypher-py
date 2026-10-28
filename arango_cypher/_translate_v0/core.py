@@ -32,6 +32,7 @@ from .calls import (
     _translate_standalone_call,
     _translate_standalone_in_query_call,
 )
+from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
 from .formatting import _guard_varlength_edge_types, _prepend_with_collections, _reindent_aql
 from .hints import (
     _build_collection_index_hint,
@@ -65,6 +66,7 @@ from .supertypes import node_collection_filter, node_scan_source, union_membersh
 from .temporal_guard import reject_temporal_accessor
 from .three_valued import (
     _PREDICATE_MODE,
+    _closing_bracket,
     _compile_comparison,
     _is_predicate_transparent,
     _is_two_valued,
@@ -2855,65 +2857,58 @@ def _compile_match_pipeline(
     return lines, forbidden
 
 
-# Cypher scalar functions whose AQL equivalent is a plain 1:1 head rename. Used
-# to lower an aggregate's inner argument (``max(size(x))`` → ``MAX(LENGTH(x))``),
-# which is passed to ``_compile_agg_expr`` as raw text and so bypasses the
-# parse-tree function compiler. Only rename-only mappings belong here; functions
-# with a non-trivial AQL rewrite (coalesce, id, keys, …) are intentionally left
-# to fail loudly rather than be silently mistranslated by text substitution.
-_AGG_INNER_FN_ALIASES = {
-    "size": "LENGTH",
-    "tolower": "LOWER",
-    "lower": "LOWER",
-    "toupper": "UPPER",
-    "upper": "UPPER",
-    "tostring": "TO_STRING",
-    "tointeger": "TO_NUMBER",
-    "toint": "TO_NUMBER",
-    "tofloat": "TO_NUMBER",
-    "toboolean": "TO_BOOL",
-    "tobool": "TO_BOOL",
-}
-_AGG_INNER_FN_RE = re.compile(r"\b(" + "|".join(_AGG_INNER_FN_ALIASES) + r")\s*\(", re.IGNORECASE)
+_AGGREGATE_CALL_RE = re.compile(r"(count|avg|sum|min|max)\s*\(", re.IGNORECASE)
 
 
-def _lower_agg_inner_fns(text: str) -> str:
-    """Rename Cypher scalar-function heads inside an aggregate argument to AQL."""
-    return _AGG_INNER_FN_RE.sub(lambda mo: f"{_AGG_INNER_FN_ALIASES[mo.group(1).lower()]}(", text)
+def _aggregate_call(expr_text: str) -> tuple[str, str, bool] | None:
+    """``(function, argument text, distinct)`` when *expr_text* is exactly one
+    ``count``/``avg``/``sum``/``min``/``max`` call, else ``None``.
 
-
-def _compile_agg_expr(expr_text: str) -> tuple[str, str] | None:
-    """
-    Compile simple Cypher aggregate calls used in corpus WITH:
-    - count(*), count(x)
-    - avg(x)
-    - collect(x)
+    The call's parenthesis must close at the end of the text:
+    ``count(a) + count(b)`` is an expression over two aggregates, not a count.
+    ``collect`` is :func:`_parse_collect`'s.
     """
     t = expr_text.strip()
-    m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\((.*)\)", t)
-    if not m:
+    m = _AGGREGATE_CALL_RE.match(t)
+    if m is None or _closing_bracket(t[m.end() - 1 :]) != len(t) - m.end():
         return None
-    fn = m.group(1).lower()
-    inner = _lower_agg_inner_fns(m.group(2).strip())
+    inner = t[m.end() : -1].strip()
+    distinct = False
+    if inner[:8].lower() == "distinct" and (len(inner) == 8 or not (inner[8].isalnum() or inner[8] == "_")):
+        distinct, inner = True, inner[8:].strip()
+    return m.group(1).lower(), inner, distinct
+
+
+def _compile_agg_expr(expr_text: str, bind_vars: dict[str, Any]) -> tuple[str, str] | None:
+    """Compile a ``count``/``avg``/``sum``/``min``/``max`` call to its AQL aggregate.
+
+    The argument goes through the expression compiler like any expression
+    (``sum(toInteger(x))``, ``count(n.x = 1)``).
+    """
+    call = _aggregate_call(expr_text)
+    if call is None:
+        return None
+    fn, inner, distinct = call
+    if fn == "count" and inner == "*":
+        return ("aggregate", "COUNT(1)")
+    arg = _compile_cypher_fragment(inner, bind_vars)
     if fn == "count":
-        if inner.lower().startswith("distinct"):
-            inner_expr = inner[len("distinct") :].strip()
-            return ("aggregate", f"COUNT_DISTINCT({inner_expr})")
-        if inner == "*":
-            return ("aggregate", "COUNT(1)")
-        return ("aggregate", f"COUNT({inner})")
-    if fn == "avg":
-        return ("aggregate", f"AVG({inner})")
-    if fn == "sum":
-        return ("aggregate", f"SUM({inner})")
-    if fn == "min":
-        return ("aggregate", f"MIN({inner})")
-    if fn == "max":
-        return ("aggregate", f"MAX({inner})")
-    # ``collect`` (incl. DISTINCT and trailing slice/index) is handled separately
-    # by :func:`_parse_collect`, because it may be wrapped in a list operator
-    # (``collect(x)[0..5]``) that this bare-call matcher cannot see.
-    return None
+        return ("aggregate", f"COUNT_DISTINCT({arg})" if distinct else f"COUNT({arg})")
+    return ("aggregate", f"{fn.upper()}({arg})")
+
+
+def _compile_cypher_fragment(text: str, bind_vars: dict[str, Any]) -> str:
+    """Compile the Cypher expression *text* (an aggregate's argument)."""
+    parsed = parse_cypher(f"RETURN {text}")
+    single_query = parsed.tree.oC_Statement().oC_Query().oC_RegularQuery().oC_SingleQuery()
+    projection_item = (
+        single_query.oC_SinglePartQuery()
+        .oC_Return()
+        .oC_ProjectionBody()
+        .oC_ProjectionItems()
+        .oC_ProjectionItem(0)
+    )
+    return _compile_expression(projection_item.oC_Expression(), bind_vars)
 
 
 def _parse_collect(expr_text: str) -> dict[str, Any] | None:
@@ -2973,18 +2968,8 @@ def _compile_collect_inner(spec: dict[str, Any], bind_vars: dict[str, Any]) -> d
     compiler: passing its raw Cypher text to ``PUSH`` leaves operators such as
     ``=`` and ``<>`` invalid in AQL (notably in precedence test cases).
     """
-    inner = spec["inner"]
-    parsed = parse_cypher(f"RETURN {inner}")
-    single_query = parsed.tree.oC_Statement().oC_Query().oC_RegularQuery().oC_SingleQuery()
-    projection_item = (
-        single_query.oC_SinglePartQuery()
-        .oC_Return()
-        .oC_ProjectionBody()
-        .oC_ProjectionItems()
-        .oC_ProjectionItem(0)
-    )
     compiled = dict(spec)
-    compiled["inner"] = _compile_expression(projection_item.oC_Expression(), bind_vars)
+    compiled["inner"] = _compile_cypher_fragment(spec["inner"], bind_vars)
     return compiled
 
 
@@ -3143,7 +3128,7 @@ def _apply_with(
             compiled_collects.append((cypher_var, aql_var, collect_spec))
             continue
 
-        agg = _compile_agg_expr(expr_txt_for_agg)
+        agg = _compile_agg_expr(expr_txt_for_agg, bind_vars)
         if agg is not None:
             kind, agg_expr = agg
             cypher_var = (
@@ -3470,7 +3455,7 @@ def _append_return(
         expr_txt = it.oC_Expression().getText().strip()
         if var_env:
             expr_txt = _rewrite_vars(expr_txt, var_env)
-        if _compile_agg_expr(expr_txt) is not None or _parse_collect(expr_txt) is not None:
+        if _aggregate_call(expr_txt) is not None or _parse_collect(expr_txt) is not None:
             has_agg = True
             break
 
@@ -3628,7 +3613,7 @@ def _append_return_aggregation(
             compiled_collects.append((key, _alloc(key), collect_spec))
             continue
 
-        agg = _compile_agg_expr(expr_txt)
+        agg = _compile_agg_expr(expr_txt, bind_vars)
         if agg is not None:
             _kind, agg_expr = agg
             fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
@@ -5540,19 +5525,19 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "tostring":
             if len(compiled_args) != 1:
                 raise CoreError("toString expects 1 arg", code="UNSUPPORTED")
-            return f"TO_STRING({compiled_args[0]})"
+            return compile_to_string(compiled_args[0], _static_type(args[0]))
         if fn_norm in ("tointeger", "toint"):
             if len(compiled_args) != 1:
                 raise CoreError("toInteger expects 1 arg", code="UNSUPPORTED")
-            return f"TO_NUMBER({compiled_args[0]})"
+            return compile_to_integer(compiled_args[0], _static_type(args[0]))
         if fn_norm == "tofloat":
             if len(compiled_args) != 1:
                 raise CoreError("toFloat expects 1 arg", code="UNSUPPORTED")
-            return f"TO_NUMBER({compiled_args[0]})"
+            return compile_to_float(compiled_args[0], _static_type(args[0]))
         if fn_norm in ("toboolean", "tobool"):
             if len(compiled_args) != 1:
                 raise CoreError("toBoolean expects 1 arg", code="UNSUPPORTED")
-            return f"TO_BOOL({compiled_args[0]})"
+            return compile_to_boolean(compiled_args[0], _static_type(args[0]))
 
         if fn_norm == "exists":
             if len(compiled_args) != 1:
