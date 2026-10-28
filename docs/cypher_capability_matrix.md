@@ -18,7 +18,7 @@ resolvable `MappingBundle` and the physical Arango graph layout.
 | Multi-type relationship hop `[:A\|B]` | Explicit fail-fast | — | Unsupported | Requires multi-collection traversal/filter lowering. |
 | `WHERE`, boolean, comparisons, null, strings | 100% boolean/null/string; 83.3% comparison | Golden fixtures | Supported | Quantifier null three-valued logic differs in edge cases. |
 | Lists, maps, literals, precedence | 93.5%, 100%, 91.6%, 100% respectively | Golden fixtures | Supported | Long-tail literal/list edge cases remain. |
-| `CASE`, arithmetic, type conversion | 100% in dry run | Golden fixtures | Supported | AQL type coercion may differ for unusual values. |
+| `CASE`, arithmetic, type conversion | 100% in dry run | Golden fixtures; `CASE` live (`tests/integration/test_case_expr_live.py`) | Supported | `CASE` is emitted as nested ternaries, since AQL has no `CASE`; until 2026-10-27 it was emitted verbatim and failed on the server (ERR 1501). AQL type coercion may differ for unusual values. |
 | `RETURN`, aliases, distinct, order, skip, limit | 80–100% by TCK category | Golden fixtures | Supported | Projection and alias edge cases remain. |
 | `WITH`, aggregation, star projection | 63–89% by TCK category | Golden fixtures | Partial | Multi-aggregation/scope and filter-placement shapes remain. |
 | `UNWIND`, `UNION` | 85.7%, 83.3% | Golden fixtures | Partial | Multi-part write-pipeline combinations remain. |

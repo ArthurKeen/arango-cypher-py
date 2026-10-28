@@ -5059,11 +5059,14 @@ def _compile_case(
     ctx: CypherParser.OC_CaseExpressionContext,
     bind_vars: dict[str, Any],
 ) -> str:
-    """Compile Cypher CASE expression to AQL.
+    """Compile a Cypher CASE expression to nested AQL ternaries.
 
-    AQL only supports the generic form (``CASE WHEN cond THEN val ... END``),
-    so the simple form (``CASE expr WHEN val THEN res ...``) is expanded by
-    comparing the test expression to each WHEN value with ``==``.
+    AQL has no CASE expression (ArangoDB 3.11 parses ``CASE WHEN`` as a
+    syntax error, ERR 1501), so ``CASE WHEN c1 THEN v1 WHEN c2 THEN v2 ELSE e
+    END`` becomes ``(c1 ? v1 : (c2 ? v2 : e))``. The first true condition
+    wins and a null condition counts as false, as in Cypher; a missing ELSE
+    is ``null``. The simple form (``CASE x WHEN v THEN r``) compares the test
+    expression to each WHEN value with ``==``.
     """
     alternatives = ctx.oC_CaseAlternatives() or []
     all_exprs = ctx.oC_Expression() or []
@@ -5081,23 +5084,20 @@ def _compile_case(
         test_expr = None
         else_expr_idx = 0
 
-    parts = ["CASE"]
+    branches: list[tuple[str, str]] = []
     for alt in alternatives:
         alt_exprs = alt.oC_Expression()
         when_e = _compile_expression(alt_exprs[0], bind_vars)
         then_e = _compile_expression(alt_exprs[1], bind_vars)
-        if test_expr is not None:
-            parts.append(f"WHEN ({test_expr} == {when_e}) THEN {then_e}")
-        else:
-            parts.append(f"WHEN {when_e} THEN {then_e}")
+        cond = f"({test_expr} == {when_e})" if test_expr is not None else when_e
+        branches.append((cond, then_e))
 
-    has_else = ctx.ELSE() is not None
+    out = "null"
     if has_else and else_expr_idx < len(all_exprs):
-        else_e = _compile_expression(all_exprs[else_expr_idx], bind_vars)
-        parts.append(f"ELSE {else_e}")
-
-    parts.append("END")
-    return " ".join(parts)
+        out = _compile_expression(all_exprs[else_expr_idx], bind_vars)
+    for cond, then_e in reversed(branches):
+        out = f"({cond} ? {then_e} : {out})"
+    return out
 
 
 def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
