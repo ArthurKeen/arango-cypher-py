@@ -80,11 +80,6 @@ from tests.helpers.mapping_fixtures import mapping_bundle_for
             "NOT_IMPLEMENTED",
             "Shared relationship variables",
         ),
-        (
-            "MATCH (u:User), (u)-[:FOLLOWS]->(v) RETURN u",
-            "UNSUPPORTED",
-            "single label is required",
-        ),
     ],
 )
 def test_translate_fail_fast_errors_extra(cypher: str, code: str, msg_sub: str):

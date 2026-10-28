@@ -86,10 +86,12 @@ class TestPgEndpointInference:
         )
         assert "INBOUND" in out.aql
 
-    def test_any_direction_still_fails_closed(self, pg):
-        # Undirected + multi-collection is genuinely ambiguous → must not guess.
-        with pytest.raises(CoreError):
-            translate("MATCH (m:Movie)-[r:REVIEWED]-() RETURN m.title", mapping=pg)
+    def test_any_direction_matches_without_a_collection_check(self, pg):
+        # Undirected over a multi-collection schema: an unlabeled node matches
+        # any node, and the traversal reaches only what REVIEWED leads to, so
+        # there is nothing to check (this was refused as ambiguous).
+        out = translate("MATCH (m:Movie)-[r:REVIEWED]-() RETURN m.title", mapping=pg)
+        assert "ANY m" in out.aql and "IS_SAME_COLLECTION" not in out.aql
 
 
 class TestLpgNoDiscriminatorFabrication:

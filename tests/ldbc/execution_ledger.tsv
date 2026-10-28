@@ -2,7 +2,7 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: fails_closed 15, matches_oracle 34, out_of_subset 5, syntax_error 4
+# pg: fails_closed 12, matches_oracle 37, out_of_subset 5, syntax_error 4
 # lpg: fails_closed 12, matches_oracle 37, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
@@ -75,11 +75,11 @@ syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 
 matches_oracle	IC2@lpg	3 binding(s)
 matches_oracle	IC2@pg	3 binding(s)
 matches_oracle	IC3@lpg	4 binding(s)
-fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
+matches_oracle	IC3@pg	4 binding(s)
 matches_oracle	IC4@lpg	4 binding(s)
 matches_oracle	IC4@pg	4 binding(s)
 matches_oracle	IC5@lpg	3 binding(s)
-fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
+matches_oracle	IC5@pg	3 binding(s)
 matches_oracle	IC6@lpg	4 binding(s)
 matches_oracle	IC6@pg	4 binding(s)
 matches_oracle	IC7@lpg	4 binding(s)
@@ -109,7 +109,7 @@ matches_oracle	INS8@pg	1 binding(s)
 matches_oracle	IS1@lpg	3 binding(s)
 matches_oracle	IS1@pg	3 binding(s)
 matches_oracle	IS2@lpg	3 binding(s)
-fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
+matches_oracle	IS2@pg	3 binding(s)
 matches_oracle	IS3@lpg	3 binding(s)
 matches_oracle	IS3@pg	3 binding(s)
 matches_oracle	IS4@lpg	3 binding(s)

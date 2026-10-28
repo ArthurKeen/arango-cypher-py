@@ -3,7 +3,7 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 15, out_of_subset 5, syntax_error 4, translatable 34
+# pg: fails_closed 12, out_of_subset 5, syntax_error 4, translatable 37
 # lpg: fails_closed 12, out_of_subset 5, syntax_error 4, translatable 37
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
@@ -76,11 +76,11 @@ syntax_error	IC1@pg	Cypher syntax error at 8:20: no viable alternative at input 
 translatable	IC2@lpg	
 translatable	IC2@pg	
 translatable	IC3@lpg	
-fails_closed	IC3@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IC3@pg	
 translatable	IC4@lpg	
 translatable	IC4@pg	
 translatable	IC5@lpg	
-fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IC5@pg	
 translatable	IC6@lpg	
 translatable	IC6@pg	
 translatable	IC7@lpg	
@@ -110,7 +110,7 @@ translatable	INS8@pg
 translatable	IS1@lpg	
 translatable	IS1@pg	
 translatable	IS2@lpg	
-fails_closed	IS2@pg	UNSUPPORTED: A single label is required in v0 subset
+translatable	IS2@pg	
 translatable	IS3@lpg	
 translatable	IS3@pg	
 translatable	IS4@lpg	

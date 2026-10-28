@@ -575,6 +575,13 @@ honours the sort direction, and a projection alias named like a variable
 (`RETURN a.name AS a ORDER BY a`) sorts by the alias. `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
+An unlabeled node reached by a traversal matches any node its edges lead to:
+on a mapping with several node collections it gets no collection check (it
+was refused, "A single label is required"); with one node collection, or one
+domain collection beside side stores, it is checked against that one. An
+unlabeled node a pattern starts from, not yet bound, is scanned in the
+collection its first relationship's endpoint guarantees (`(x)<-[:HAS_CREATOR]-…`
+starts at a Person), and refused when that is not one collection.
 In a `UNION`, internal names that repeat across branches with different values
 are renamed per branch (`@@collection_u1`); quoted AQL text is left untouched.
 
