@@ -499,7 +499,15 @@ backtick-quoted ones are copied with their backticks. Inside AQL backticks a
 early and splice the rest of the query into the AQL as code. Translation
 therefore refuses (`UNSUPPORTED`) any backtick-quoted name containing a
 backslash or a backtick (`_reject_unsafe_escaped_names`, run on every parse
-tree). Any other content means the same thing in both languages. Parameter
+tree). Any other content means the same thing in both languages. A variable
+or property key spelled like an AQL reserved word (`like`, `filter`, `sort`,
+`in`, `limit`, … in any case) is a plain name in Cypher but a syntax error in
+AQL, so it is emitted backtick-quoted (`_quote_aql_reserved_names`). Names the
+translator derives from a quoted name (`_x_distinct`, `x_1`, `{var}TypeField`)
+stay inside its backticks (`_affix_name`), and bind names keep only the
+characters AQL accepts in one (`_pick_bind_key`). An unnamed node or
+relationship gets an AQL variable that no other part of the query uses or
+names (`_anonymous_var`). Parameter
 names must be valid AQL bind names (`[A-Za-z_][A-Za-z0-9_]*`). ``$`p` `` binds
 as `@p`. The attribute name in `REMOVE n.prop` is emitted as an escaped AQL
 string. Collection names never reach the AQL text: they come from the mapping,
@@ -528,7 +536,9 @@ variable-length `*1..n`); `WHERE` (boolean `AND`/`OR`/`NOT`/`XOR`, comparisons,
 `RETURN` (projections, aliases, `DISTINCT`, `ORDER BY`, `SKIP`, `LIMIT`); `WITH`
 pipelines + aggregation (`count`, `avg`, `sum`, `min`, `max`, `collect`);
 `WITH … MATCH`; `OPTIONAL MATCH` (companion and sole-reading-clause forms);
-`UNWIND`; `CASE` (simple + generic); `UNION` / `UNION ALL`; list & pattern
+`UNWIND`; `CASE` (simple + generic, emitted as nested AQL ternaries because
+AQL has no `CASE`; a null condition falls through, a missing `ELSE` is null);
+`UNION` / `UNION ALL`; list & pattern
 comprehensions; named paths + `length`/`nodes`/`relationships`; `EXISTS { }` and
 `COUNT { }` subqueries; label predicates on untyped vars
 (`WHERE risk:RISK_FACTOR`); scalar/builtin functions and `arango.*` extensions
@@ -553,7 +563,10 @@ no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
 An `UNWIND` before the first `MATCH` of such a pipeline is refused
 (`NOT_IMPLEMENTED`). An unaliased variable is returned under its Cypher name
-even when it is bound under another AQL name. `RETURN type(r)` on its own is a
+even when it is bound under another AQL name. Two unaliased columns inferred
+from the same property (`RETURN a.name, b.name`) are named `name` and `b_name`,
+with or without aggregation, and `ORDER BY` resolves each expression to its own
+column. `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
 In a `UNION`, internal names that repeat across branches with different values

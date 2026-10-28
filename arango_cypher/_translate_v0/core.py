@@ -29,11 +29,13 @@ from .hints import (
 )
 from .literals import _aql_string_from_cypher, _aql_string_literal
 from .naming import (
+    _affix_name,
     _aql_bind_name,
     _aql_collection_ref,
     _declared_aql_vars,
     _pick_bind_key,
     _pick_fresh_var,
+    _quote_aql_reserved_names,
     _reject_unsafe_escaped_names,
     _rewrite_vars,
     _strip_label_backticks,
@@ -121,6 +123,7 @@ def _translate_v0_inner(
     pr = parse_cypher(cypher)
     tree = pr.tree
     _reject_unsafe_escaped_names(tree)
+    _quote_aql_reserved_names(tree)
 
     query_ctx = tree.oC_Statement().oC_Query()
 
@@ -1019,6 +1022,8 @@ def _translate_match_body(
 
     # Case B: relationship pattern (1+ hops)
     u_var, u_labels = _extract_node_var_and_labels(node, default_var="u")
+    if node.oC_Variable() is None:
+        u_var = _anonymous_var(u_var, node, set())
     u_prop_filters = _compile_node_pattern_properties(node, var=u_var, bind_vars=bind_vars)
 
     # Fast path: a fully-anonymous single hop (e.g. ``MATCH ()-[r]->()``) is an
@@ -1103,15 +1108,21 @@ def _translate_match_body(
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
         v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
+        if v_node.oC_Variable() is None:
+            v_var = _anonymous_var(v_var, v_node, forbidden_vars)
         v_bound = v_node.oC_Variable() is not None and v_var in forbidden_vars
-        v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden_vars)
+        v_trav = (
+            v_var
+            if not v_bound
+            else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden_vars)
+        )
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
 
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
         detail = rel_pat.oC_RelationshipDetail()
         rel_named = detail is not None and detail.oC_Variable() is not None
-        if not rel_named and rel_var in forbidden_vars:
-            rel_var = _pick_fresh_var(rel_var, forbidden_vars=forbidden_vars)
+        if not rel_named:
+            rel_var = _anonymous_var(rel_var, rel_pat, forbidden_vars)
         elif rel_var in forbidden_vars:
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
         forbidden_vars.add(rel_var)
@@ -2193,7 +2204,11 @@ def _compile_match_multi_parts_from_parts(
                 v_node, default_var=f"v{idx + 1}_{hop_i + 1}"
             )
             v_bound = v_var in forbidden
-            v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden)
+            v_trav = (
+                v_var
+                if not v_bound
+                else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden)
+            )
 
             rel_default = "r" if rel_part_i == 0 else f"r{rel_part_i + 1}"
             rel_part_i += 1
@@ -2413,7 +2428,8 @@ def _compile_bound_part(
         rel_type, rel_cy, rel_range = _extract_relationship_type_and_var(rel_pat, default_var=rel_default)
         _rdetail = rel_pat.oC_RelationshipDetail()
         rel_named = _rdetail is not None and _rdetail.oC_Variable() is not None
-        v_is_backref = v_cy in out_env
+        v_named = v_node.oC_Variable() is not None
+        v_is_backref = v_named and v_cy in out_env
 
         # A node or relationship already bound (by the WITH or an earlier
         # part) is not rebound: AQL rejects assigning a variable twice (ERR
@@ -2431,7 +2447,7 @@ def _compile_bound_part(
             backref_filters.append(f"{r_aql}._id == {out_env[rel_cy]}._id")
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=r_aql, bind_vars=bind_vars)
 
-        if not v_is_backref:
+        if v_named and not v_is_backref:
             out_env[v_cy] = v_aql
         if rel_named and not r_is_backref:
             out_env[rel_cy] = r_aql
@@ -2626,6 +2642,8 @@ def _compile_match_pipeline(
 
     # Relationship pattern (1+ hops)
     u_var, u_labels = _extract_node_var_and_labels(node, default_var="u")
+    if node.oC_Variable() is None:
+        u_var = _anonymous_var(u_var, node, set())
     u_prop_filters = _compile_node_pattern_properties(node, var=u_var, bind_vars=bind_vars)
 
     u_filters: list[str] = []
@@ -2676,19 +2694,25 @@ def _compile_match_pipeline(
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
         v_var, v_labels = _extract_node_var_and_labels(v_node, default_var="v")
+        if v_node.oC_Variable() is None:
+            v_var = _anonymous_var(v_var, v_node, forbidden)
         # A back-reference to an already-bound node (e.g. (p)-[:R]->(m)<-[:R2]-(p))
         # must traverse to a *fresh* variable and constrain it by _id, not re-open
         # a FOR loop on the bound name — AQL rejects the duplicate variable
         # ("assigned multiple times").
         v_bound = v_var in forbidden
-        v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden)
+        v_trav = (
+            v_var
+            if not v_bound
+            else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden)
+        )
 
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
         detail = rel_pat.oC_RelationshipDetail()
         rel_named = detail is not None and detail.oC_Variable() is not None
-        if not rel_named and rel_var in forbidden:
-            rel_var = _pick_fresh_var(rel_var, forbidden_vars=forbidden)
+        if not rel_named:
+            rel_var = _anonymous_var(rel_var, rel_pat, forbidden)
         elif rel_var in forbidden:
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
         if rel_var in {u_var, v_var}:
@@ -2990,7 +3014,7 @@ def _aggregate_clause(
         if post is not None:
             post_lets.append((aql, post))
     for _key, aql, spec in compiled_collects:
-        temp = reserve(f"_{aql}_grp")
+        temp = reserve(_affix_name(aql, prefix="_", suffix="_grp"))
         fn = "UNIQUE" if spec.get("distinct") else "PUSH"
         pieces.append(f"{temp} = {fn}({spec['inner']})")
         post_lets.append((aql, _collect_post_expr(temp, spec)))
@@ -3016,7 +3040,9 @@ def _aggregate_from_collected_rows(agg_expr: str, rows_var: str, field: str | No
     return f"{fn}({rows_var}[*].{field})"
 
 
-_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# A plain variable, or a backtick-quoted one (```a b```, or a reserved word such
+# as ```like``` quoted by ``_quote_aql_reserved_names``).
+_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|`[^`]+`")
 
 
 def _apply_with(
@@ -3076,9 +3102,9 @@ def _apply_with(
         if cypher_var not in forbidden_vars:
             return cypher_var
         i = 1
-        while f"{cypher_var}_{i}" in forbidden_vars:
+        while _affix_name(cypher_var, suffix=f"_{i}") in forbidden_vars:
             i += 1
-        return f"{cypher_var}_{i}"
+        return _affix_name(cypher_var, suffix=f"_{i}")
 
     for it in items:
         expr_ctx = it.oC_Expression()
@@ -3166,7 +3192,7 @@ def _apply_with(
         for cypher_var, aql_var, agg_expr in compiled_agg:
             field: str | None = None
             if agg_expr != "COUNT(1)":
-                field = f"_{aql_var}_input"
+                field = _affix_name(aql_var, prefix="_", suffix="_input")
                 inner = agg_expr[agg_expr.find("(") + 1 : -1]
                 projection_parts.append(f"{field}: {inner}")
             aggregate_fields.append((cypher_var, aql_var, field))
@@ -3483,7 +3509,7 @@ def _append_return(
             # variable's name never reaches the result — rename on collision.
             declared = _declared_aql_vars(lines)
             if col_var in declared:
-                col_var = _pick_fresh_var(f"{col_var}_distinct", forbidden_vars=declared)
+                col_var = _pick_fresh_var(_affix_name(col_var, suffix="_distinct"), forbidden_vars=declared)
             lines.append(f"  COLLECT {col_var} = {expr}")
             if order_ctx is not None:
                 lines.append(f"  SORT {col_var}")
@@ -3554,11 +3580,13 @@ def _append_return_aggregation(
             _t = _rewrite_vars(_t, var_env)
         live_names.update(_REFERENCED_IDENT_RE.findall(_t))
 
+    used_keys: set[str] = set()
+
     def _alloc(preferred: str) -> str:
         name = preferred
         i = 1
         while name in live_names:
-            name = f"{preferred}_g{i}"
+            name = _affix_name(preferred, suffix=f"_g{i}")
             i += 1
         live_names.add(name)
         return name
@@ -3574,7 +3602,7 @@ def _append_return_aggregation(
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = alias or f"expr{idx}"
+            key = _unique_projection_key(alias or f"expr{idx}", expr_txt, used_keys)
             compiled_collects.append((key, _alloc(key), collect_spec))
             continue
 
@@ -3584,7 +3612,7 @@ def _append_return_aggregation(
             fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
             fn_key = fn_match.group(1).lower() if fn_match else None
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = alias or fn_key or f"expr{idx}"
+            key = _unique_projection_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
             compiled_agg.append((key, _alloc(key), agg_expr))
             continue
 
@@ -3595,11 +3623,13 @@ def _append_return_aggregation(
         # (e.g. ``type(r)`` -> ``type``) rather than the compiled AQL, which
         # for non-trivial expressions like the ``type()`` runtime discriminator
         # would yield a malformed identifier (``...collection)``).
-        key = (
+        key = _unique_projection_key(
             alias
             or _infer_key(expr_txt)
             or _infer_key(expr)
-            or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}"
+            or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}",
+            expr_txt,
+            used_keys,
         )
         compiled_nonagg.append((key, _alloc(key), expr))
 
@@ -3668,22 +3698,31 @@ def _infer_key(expr: str) -> str | None:
     return None
 
 
+def _unique_projection_key(key: str, expr: str, used: set[str]) -> str:
+    """*key*, or a variant no earlier projection column uses, recorded in *used*.
+
+    Two columns inferred from the same property (``a.name, b.name``) would
+    both be ``name``, and an AQL object keeps only the last of two equal keys.
+    Prefer ``a.name`` → ``a_name``, then a numeric suffix.
+    """
+    if key in used:
+        m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", expr)
+        if m:
+            key = f"{m.group(1)}_{m.group(2)}"
+    if key in used:
+        i = 2
+        while _affix_name(key, suffix=f"_{i}") in used:
+            i += 1
+        key = _affix_name(key, suffix=f"_{i}")
+    used.add(key)
+    return key
+
+
 def _compile_return_object(compiled_items: list[tuple[str | None, str]]) -> str:
     obj_parts: list[str] = []
     used: set[str] = set()
     for alias, expr in compiled_items:
-        key = alias or _infer_key(expr) or f"expr{len(obj_parts) + 1}"
-        if key in used:
-            # Prefer `u.id` → `u_id` to avoid collisions when projecting same property from multiple vars.
-            m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", expr)
-            if m:
-                key = f"{m.group(1)}_{m.group(2)}"
-        if key in used:
-            i = 2
-            while f"{key}_{i}" in used:
-                i += 1
-            key = f"{key}_{i}"
-        used.add(key)
+        key = _unique_projection_key(alias or _infer_key(expr) or f"expr{len(obj_parts) + 1}", expr, used)
         obj_parts.append(f"{key}: {expr}")
     return "{" + ", ".join(obj_parts) + "}"
 
@@ -3717,6 +3756,37 @@ def _append_skip_limit(lines: list[str], skip_value: str | None, limit_value: st
         lines.append(f"  LIMIT {skip_value}, 1000000000")
         return
     lines.append(f"  LIMIT {limit_value}")
+
+
+def _query_variable_names(ctx: Any) -> set[str]:
+    """Every variable name written anywhere in the query that holds *ctx*."""
+    root = ctx
+    while getattr(root, "parentCtx", None) is not None:
+        root = root.parentCtx
+    names: set[str] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, CypherParser.OC_VariableContext):
+            names.add(node.getText().strip())
+            continue
+        stack.extend(getattr(node, "children", None) or [])
+    return names
+
+
+def _anonymous_var(default: str, ctx: Any, taken: set[str]) -> str:
+    """The AQL variable for an unnamed node or relationship.
+
+    *default* (``u``, ``v``, ``r``) unless an earlier part of the pattern
+    (*taken*) or any variable the query names uses it. Reusing a taken name
+    re-declared it (ERR 1511 — two anonymous nodes in LDBC BI3), and sharing
+    a user's name made a later ``(v)`` a back-reference to the unnamed node,
+    which silently joined the two and returned no rows.
+    """
+    named = _query_variable_names(ctx)
+    if default not in taken and default not in named:
+        return default
+    return _pick_fresh_var(default, forbidden_vars=taken | named)
 
 
 def _extract_node_var_and_labels(
@@ -5059,11 +5129,15 @@ def _compile_case(
     ctx: CypherParser.OC_CaseExpressionContext,
     bind_vars: dict[str, Any],
 ) -> str:
-    """Compile Cypher CASE expression to AQL.
+    """Compile a Cypher CASE expression to nested AQL ternaries.
 
-    AQL only supports the generic form (``CASE WHEN cond THEN val ... END``),
-    so the simple form (``CASE expr WHEN val THEN res ...``) is expanded by
-    comparing the test expression to each WHEN value with ``==``.
+    AQL has no CASE expression (ArangoDB 3.11 parses ``CASE WHEN`` as a
+    syntax error, ERR 1501), so ``CASE WHEN c1 THEN v1 WHEN c2 THEN v2 ELSE e
+    END`` becomes ``(c1 ? v1 : (c2 ? v2 : e))``. The first true condition
+    wins and a null condition counts as false, as in Cypher; a missing ELSE
+    is ``null``. The simple form (``CASE x WHEN v THEN r``) compares the test
+    expression to each WHEN value; a null test value matches no WHEN, since
+    ``null = v`` is null in Cypher (AQL's ``null == null`` is true).
     """
     alternatives = ctx.oC_CaseAlternatives() or []
     all_exprs = ctx.oC_Expression() or []
@@ -5081,23 +5155,20 @@ def _compile_case(
         test_expr = None
         else_expr_idx = 0
 
-    parts = ["CASE"]
+    branches: list[tuple[str, str]] = []
     for alt in alternatives:
         alt_exprs = alt.oC_Expression()
         when_e = _compile_expression(alt_exprs[0], bind_vars)
         then_e = _compile_expression(alt_exprs[1], bind_vars)
-        if test_expr is not None:
-            parts.append(f"WHEN ({test_expr} == {when_e}) THEN {then_e}")
-        else:
-            parts.append(f"WHEN {when_e} THEN {then_e}")
+        cond = f"({test_expr} != null AND {test_expr} == {when_e})" if test_expr is not None else when_e
+        branches.append((cond, then_e))
 
-    has_else = ctx.ELSE() is not None
+    out = "null"
     if has_else and else_expr_idx < len(all_exprs):
-        else_e = _compile_expression(all_exprs[else_expr_idx], bind_vars)
-        parts.append(f"ELSE {else_e}")
-
-    parts.append("END")
-    return " ".join(parts)
+        out = _compile_expression(all_exprs[else_expr_idx], bind_vars)
+    for cond, then_e in reversed(branches):
+        out = f"({cond} ? {then_e} : {out})"
+    return out
 
 
 def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:

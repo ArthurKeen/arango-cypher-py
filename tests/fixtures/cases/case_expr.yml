@@ -9,12 +9,12 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {category: CASE WHEN (n.age != null AND n.age > 18) THEN 'adult' WHEN (n.age != null AND n.age > 12) THEN 'teen' ELSE 'child' END}
+          RETURN {category: ((n.age != null AND n.age > 18) ? 'adult' : ((n.age != null AND n.age > 12) ? 'teen' : 'child'))}
       bind_vars:
         "@collection": users
 
   - id: C226
-    name: Simple CASE expanded to generic in RETURN
+    name: Simple CASE compares the test value in each ternary
     mapping_fixture: pg
     extensions_enabled: false
     cypher: |
@@ -22,7 +22,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {code: CASE WHEN (n.status == 'active') THEN 1 WHEN (n.status == 'inactive') THEN 0 ELSE (-1) END}
+          RETURN {code: ((n.status != null AND n.status == 'active') ? 1 : ((n.status != null AND n.status == 'inactive') ? 0 : (-1)))}
       bind_vars:
         "@collection": users
 
@@ -35,6 +35,6 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {status: CASE WHEN (n.active == true) THEN 'yes' END}
+          RETURN {status: ((n.active == true) ? 'yes' : null)}
       bind_vars:
         "@collection": users
