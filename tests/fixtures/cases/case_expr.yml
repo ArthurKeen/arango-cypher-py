@@ -22,7 +22,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {code: ((n.status == 'active') ? 1 : ((n.status == 'inactive') ? 0 : (-1)))}
+          RETURN {code: ((n.status != null AND n.status == 'active') ? 1 : ((n.status != null AND n.status == 'inactive') ? 0 : (-1)))}
       bind_vars:
         "@collection": users
 

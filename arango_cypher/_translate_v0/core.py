@@ -5136,7 +5136,8 @@ def _compile_case(
     END`` becomes ``(c1 ? v1 : (c2 ? v2 : e))``. The first true condition
     wins and a null condition counts as false, as in Cypher; a missing ELSE
     is ``null``. The simple form (``CASE x WHEN v THEN r``) compares the test
-    expression to each WHEN value with ``==``.
+    expression to each WHEN value; a null test value matches no WHEN, since
+    ``null = v`` is null in Cypher (AQL's ``null == null`` is true).
     """
     alternatives = ctx.oC_CaseAlternatives() or []
     all_exprs = ctx.oC_Expression() or []
@@ -5159,7 +5160,7 @@ def _compile_case(
         alt_exprs = alt.oC_Expression()
         when_e = _compile_expression(alt_exprs[0], bind_vars)
         then_e = _compile_expression(alt_exprs[1], bind_vars)
-        cond = f"({test_expr} == {when_e})" if test_expr is not None else when_e
+        cond = f"({test_expr} != null AND {test_expr} == {when_e})" if test_expr is not None else when_e
         branches.append((cond, then_e))
 
     out = "null"

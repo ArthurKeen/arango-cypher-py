@@ -81,6 +81,15 @@ def test_simple_case_compares_the_test_value(db: Any) -> None:
     assert [r["c"] for r in rows] == [1, 0, -1, -1]
 
 
+def test_simple_case_null_test_value_matches_no_when(db: Any) -> None:
+    """``null = null`` is null in Cypher, so ``CASE null WHEN null`` takes the ELSE."""
+    rows = _rows(
+        db,
+        "MATCH (n:User) RETURN n.name AS n, CASE n.status WHEN null THEN 'missing' ELSE 'set' END AS c ORDER BY n",
+    )
+    assert [r["c"] for r in rows] == ["set", "set", "set", "set"]
+
+
 def test_case_without_else_is_null(db: Any) -> None:
     rows = _rows(db, "MATCH (n:User) RETURN n.name AS n, CASE WHEN n.age > 18 THEN 'yes' END AS c ORDER BY n")
     assert [r["c"] for r in rows] == ["yes", None, None, None]
