@@ -58,11 +58,12 @@ def test_validate_ok_with_mapping():
     assert r.ok
 
 
-def test_validate_multiple_rel_types_rejected():
-    mapping = mapping_bundle_for("pg")
-    r = validate_cypher_profile(
-        "MATCH (a:User)-[:FOLLOWS|KNOWS]->(b:User) RETURN a",
-        mapping=mapping,
-    )
+def test_validate_multiple_rel_types():
+    # Several relationship types are supported (PRD §8.2); one the mapping
+    # does not know is still an error.
+    mapping = mapping_bundle_for("movies_pg")
+    assert validate_cypher_profile(
+        "MATCH (p:Person)-[:ACTED_IN|DIRECTED]->(m:Movie) RETURN p", mapping=mapping
+    ).ok
+    r = validate_cypher_profile("MATCH (p:Person)-[:ACTED_IN|NOPE]->(m:Movie) RETURN p", mapping=mapping)
     assert not r.ok
-    assert r.first_error_code == "UNSUPPORTED"

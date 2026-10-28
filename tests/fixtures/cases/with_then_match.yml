@@ -196,7 +196,7 @@ cases:
 
     '
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r_1 IN 1..1 OUTBOUND v @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      SORT (u.id == null), u.id, (w.id == null), w.id\n      RETURN {id: u.id, w_id: w.id}\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR u IN @@collection\n  FOR v, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, v)\n    FOR w, r_1 IN 1..1 OUTBOUND v @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2, w)\n      FILTER r_1._id != r._id\n      SORT (u.id == null), u.id, (w.id == null), w.id\n      RETURN {id: u.id, w_id: w.id}\n"
     bind_vars:
       "@collection": users
       "@edgeCollection": follows

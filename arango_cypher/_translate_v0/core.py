@@ -43,6 +43,13 @@ from .hints import (
     _warn_multi_label_collection,
 )
 from .literals import _aql_string_from_cypher, _aql_string_literal
+from .multi_type import (
+    MULTI_TYPE_SEPARATOR,
+    _is_edge_collection_value,
+    expand_multi_type_bindings,
+    multi_type_runtime_expr,
+    resolve_multi_type,
+)
 from .naming import (
     _affix_name,
     _aql_bind_name,
@@ -122,9 +129,17 @@ def translate_v0(
             params=params,
         )
         _refuse_overwritten_params(params, result.bind_vars)
-        result = _prepend_with_collections(result, resolver)
+        # The variable-length guard reads one edge collection per traversal,
+        # so it runs before several types expand into several collections.
+        guarded = AqlQuery(
+            text=_guard_varlength_edge_types(result.text),
+            bind_vars=result.bind_vars,
+            debug=result.debug,
+            warnings=result.warnings,
+        )
+        result = _prepend_with_collections(expand_multi_type_bindings(guarded), resolver)
         result = AqlQuery(
-            text=_reindent_aql(_guard_varlength_edge_types(result.text)),
+            text=_reindent_aql(result.text),
             bind_vars=result.bind_vars,
             debug=result.debug,
             warnings=tuple(warnings) if warnings else result.warnings,
@@ -436,7 +451,11 @@ def _emit_single_hop(
         else:
             lines.append(f"  LET {h.v_trav} = {current_var}.{embedded_path}")
         # An untyped hop has no type to report; type(r) is null, not a crash.
-        rel_type_exprs[h.rel_var] = _aql_string_literal(h.rel_type) if h.rel_type is not None else "null"
+        rel_type_exprs[h.rel_var] = (
+            _aql_string_literal(h.rel_type)
+            if h.rel_type is not None and MULTI_TYPE_SEPARATOR not in h.rel_type
+            else "null"
+        )
         for f in h.v_prop_filters:
             lines.append(f"    FILTER {f}")
         return
@@ -500,11 +519,7 @@ def _emit_single_hop(
         if h.rel_type is not None:
             _warn_missing_vci(resolver, h.rel_type, h.r_map)
     elif h.r_style == "DEDICATED_COLLECTION":
-        rel_type_exprs[h.rel_var] = (
-            _aql_string_literal(h.rel_type)
-            if h.rel_type is not None
-            else _untyped_rel_type_expr(h.rel_var, resolver)
-        )
+        rel_type_exprs[h.rel_var] = _dedicated_rel_type_expr(h.rel_type, h.rel_var, resolver)
     else:
         raise CoreError(f"Unsupported relationship mapping style: {h.r_style}", code="INVALID_MAPPING")
 
@@ -685,11 +700,7 @@ def _emit_edge_type_filters_for_hop(
         if h.rel_type is not None:
             _warn_missing_vci(resolver, h.rel_type, h.r_map)
     elif h.r_style == "DEDICATED_COLLECTION":
-        rel_type_exprs[h.rel_var] = (
-            _aql_string_literal(h.rel_type)
-            if h.rel_type is not None
-            else _untyped_rel_type_expr(ref, resolver)
-        )
+        rel_type_exprs[h.rel_var] = _dedicated_rel_type_expr(h.rel_type, ref, resolver)
     else:
         raise CoreError(f"Unsupported relationship mapping style: {h.r_style}", code="INVALID_MAPPING")
 
@@ -865,11 +876,7 @@ def _try_compile_edge_only_scan(
         lines.append(f"  FILTER {rel_var}[@{rtf_key}] == @{rtv_key}")
         rel_type_exprs[rel_var] = f"{rel_var}[@{rtf_key}]"
     else:  # DEDICATED_COLLECTION
-        rel_type_exprs[rel_var] = (
-            _aql_string_literal(rel_type)
-            if rel_type is not None
-            else _untyped_rel_type_expr(rel_var, resolver)
-        )
+        rel_type_exprs[rel_var] = _dedicated_rel_type_expr(rel_type, rel_var, resolver)
 
     for f in _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars):
         lines.append(f"  FILTER {f}")
@@ -1197,7 +1204,7 @@ def _translate_match_body(
             edge_key = _pick_bind_key("@edgeCollection", bind_vars)
             edge_collection = r_map.get("edgeCollectionName") or r_map.get("collectionName") or ""
             bind_vars[edge_key] = edge_collection
-            if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
+            if not _is_edge_collection_value(bind_vars[edge_key]):
                 raise CoreError(
                     f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING"
                 )
@@ -2278,7 +2285,7 @@ def _compile_match_multi_parts_from_parts(
             r_map = _resolve_relationship_for_pattern(resolver, rel_type)
             edge_key = _pick_bind_key("@edgeCollection", bind_vars)
             bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
-            if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
+            if not _is_edge_collection_value(bind_vars[edge_key]):
                 raise CoreError(
                     f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING"
                 )
@@ -2338,7 +2345,7 @@ def _compile_match_from_bound(
     Compile a MATCH that occurs after a WITH, where variables may already be bound.
     Supported:
     - MATCH (u) WHERE ... (filter only)
-    - MATCH (u)-[:TYPE]->(v:Label) (1 or 2 hops)
+    - MATCH (u)-[:TYPE]->(v:Label), any number of hops
     - several comma-separated pattern parts, compiled in order; each part may
       start at a variable bound by the WITH or by an earlier part, and a node
       or relationship already bound is correlated by ``_id`` rather than rebound.
@@ -2390,8 +2397,11 @@ def _compile_bound_part(
     chains = elem.oC_PatternElementChain() or []
 
     if node.oC_Variable() is None:
-        raise CoreError("MATCH after WITH must bind a variable", code="UNSUPPORTED")
-    u_cy = node.oC_Variable().getText().strip()
+        # An unnamed start (``MATCH (:Person {id: $p})-[:KNOWS]-(f)`` after a
+        # WITH, LDBC IC12) is scanned under a name no one else uses.
+        u_cy = _anonymous_var("_start", node, forbidden_vars | set(out_env) | set(out_env.values()))
+    else:
+        u_cy = node.oC_Variable().getText().strip()
     bound_start = u_cy in out_env
     u_aql = out_env.get(u_cy)
 
@@ -2447,18 +2457,18 @@ def _compile_bound_part(
     if not chains:
         return False
 
-    if len(chains) not in (1, 2):
-        raise CoreError("Only 1-hop or 2-hop patterns are supported in v0 subset", code="UNSUPPORTED")
-
     current_aql = u_aql
+    # Single hops of this part, with their edge collections: Cypher never
+    # matches one relationship twice within a pattern.
+    single_hops: list[tuple[str, set[str]]] = []
     for hop_idx, chain in enumerate(chains):
         rel_pat = chain.oC_RelationshipPattern()
         v_node = chain.oC_NodePattern()
         if rel_pat is None or v_node is None:
             raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
 
-        node_default = "v" if hop_idx == 0 else "w"
-        rel_default = "r" if hop_idx == 0 else "r_1"
+        node_default = ("v", "w")[hop_idx] if hop_idx < 2 else f"w{hop_idx}"
+        rel_default = ("r", "r_1")[hop_idx] if hop_idx < 2 else f"r_{hop_idx}"
         v_cy, v_labels = _extract_node_var_and_labels(v_node, default_var=node_default)
         rel_type, rel_cy, rel_range = _extract_relationship_type_and_var(rel_pat, default_var=rel_default)
         _rdetail = rel_pat.oC_RelationshipDetail()
@@ -2513,7 +2523,7 @@ def _compile_bound_part(
 
         edge_key = _pick_bind_key("@edgeCollection", bind_vars)
         bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
-        if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
+        if not _is_edge_collection_value(bind_vars[edge_key]):
             raise CoreError(
                 f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING"
             )
@@ -2573,11 +2583,13 @@ def _compile_bound_part(
         elif r_style != "DEDICATED_COLLECTION":
             raise CoreError(f"Unsupported relationship mapping style: {r_style}", code="INVALID_MAPPING")
         else:
-            rel_type_exprs[rel_cy] = (
-                _aql_string_literal(rel_type)
-                if rel_type is not None
-                else _untyped_rel_type_expr(r_aql, resolver)
-            )
+            rel_type_exprs[rel_cy] = _dedicated_rel_type_expr(rel_type, r_aql, resolver)
+
+        if rel_range == (1, 1) and not r_is_backref:
+            edge_value = bind_vars[edge_key]
+            collections = set(edge_value) if isinstance(edge_value, list) else {edge_value}
+            r_filters += [f"{r_aql}._id != {other}._id" for other, seen in single_hops if seen & collections]
+            single_hops.append((r_aql, collections))
 
         for f in backref_filters + v_filters + r_filters:
             lines.append(f"    FILTER {f}")
@@ -2777,7 +2789,7 @@ def _compile_match_pipeline(
 
         edge_key = _pick_bind_key("@edgeCollection", bind_vars)
         bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
-        if not isinstance(bind_vars[edge_key], str) or not bind_vars[edge_key]:
+        if not _is_edge_collection_value(bind_vars[edge_key]):
             raise CoreError(
                 f"Invalid relationship mapping collection for: {rel_type}", code="INVALID_MAPPING"
             )
@@ -3727,6 +3739,14 @@ def _append_return_aggregation(
         live_names.update(_REFERENCED_IDENT_RE.findall(_t))
 
     used_keys: set[str] = set()
+    # Column keys in projection order: the RETURN object keeps it, as Cypher's
+    # columns do (collect() columns were emitted after the other aggregates).
+    column_order: list[str] = []
+
+    def claim_key(key: str, expr_text: str, used: set[str]) -> str:
+        claimed = _unique_projection_key(key, expr_text, used)
+        column_order.append(claimed)
+        return claimed
 
     def _alloc(preferred: str) -> str:
         name = preferred
@@ -3748,7 +3768,7 @@ def _append_return_aggregation(
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = _unique_projection_key(alias or f"expr{idx}", expr_txt, used_keys)
+            key = claim_key(alias or f"expr{idx}", expr_txt, used_keys)
             compiled_collects.append((key, _alloc(key), collect_spec))
             continue
 
@@ -3758,7 +3778,7 @@ def _append_return_aggregation(
             fn_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr_txt)
             fn_key = fn_match.group(1).lower() if fn_match else None
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
-            key = _unique_projection_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
+            key = claim_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
             compiled_agg.append((key, _alloc(key), agg_expr))
             continue
 
@@ -3777,7 +3797,7 @@ def _append_return_aggregation(
             if var_env:
                 post = _rewrite_vars(post, var_env)
             idx = len(compiled_nonagg) + len(compiled_post) + 1
-            key = _unique_projection_key(alias or _infer_key(expr_txt) or f"expr{idx}", expr_txt, used_keys)
+            key = claim_key(alias or _infer_key(expr_txt) or f"expr{idx}", expr_txt, used_keys)
             compiled_post.append((key, _alloc(key), post))
             continue
 
@@ -3791,7 +3811,7 @@ def _append_return_aggregation(
         # (e.g. ``type(r)`` -> ``type``) rather than the compiled AQL, which
         # for non-trivial expressions like the ``type()`` runtime discriminator
         # would yield a malformed identifier (``...collection)``).
-        key = _unique_projection_key(
+        key = claim_key(
             alias
             or _infer_key(expr_txt)
             or _infer_key(expr)
@@ -3848,10 +3868,9 @@ def _append_return_aggregation(
         lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=agg_env))
     _append_skip_limit(lines, skip_value, limit_value)
 
-    all_items: list[tuple[str, str]] = [(k, aql) for k, aql, _ in compiled_nonagg]
-    all_items += [(k, aql) for k, aql, _ in compiled_agg if k not in hidden]
-    all_items += [(k, aql) for k, aql, _ in compiled_collects if k not in hidden]
-    all_items += [(k, aql) for k, aql, _ in compiled_post]
+    columns = {k: aql for k, aql, _ in compiled_nonagg + compiled_agg + compiled_post}
+    columns.update({k: aql for k, aql, _ in compiled_collects})
+    all_items: list[tuple[str, str]] = [(k, columns[k]) for k in column_order if k not in hidden]
     if len(all_items) == 1:
         lines.append(f"  RETURN {all_items[0][1]}")
     else:
@@ -4422,7 +4441,22 @@ def _resolve_relationship_for_pattern(resolver: MappingResolver, rel_type: str |
             "style": "DEDICATED_COLLECTION",
             "edgeCollectionName": _infer_unlabeled_edge_collection(resolver),
         }
+    if MULTI_TYPE_SEPARATOR in rel_type:
+        return resolve_multi_type(rel_type, resolver)
     return resolver.resolve_relationship(_strip_label_backticks(rel_type))
+
+
+def _dedicated_rel_type_expr(rel_type: str | None, ref: str, resolver: MappingResolver | None) -> str:
+    """``type(r)`` for a relationship in a dedicated edge collection.
+
+    The type itself when there is one; for several (``[r:A|B]``), the type
+    whose edge collection *ref* lives in; for none, the edge's runtime type.
+    """
+    if rel_type is None:
+        return _untyped_rel_type_expr(ref, resolver)
+    if MULTI_TYPE_SEPARATOR not in rel_type or resolver is None:
+        return _aql_string_literal(rel_type)
+    return multi_type_runtime_expr(ref, rel_type, resolver)
 
 
 def _untyped_rel_type_expr(ref: str, resolver: MappingResolver | None) -> str:
@@ -4542,8 +4576,8 @@ def _extract_relationship_type_and_var(
     ``rel_type`` is ``None`` for an *untyped* relationship — ``-->``,
     ``-[]->`` or ``-[r]->`` with no ``:TYPE``. Callers resolve untyped
     relationships via :func:`_resolve_relationship_for_pattern`, which traverses
-    the single inferred edge collection with no type filter. Multi-type edges
-    (``-[:A|B]->``) remain unsupported.
+    the single inferred edge collection with no type filter. Several types
+    (``-[:A|B]->``) come back joined by ``|``.
     """
     detail = rel_pat.oC_RelationshipDetail()
     if detail is None:
@@ -4566,15 +4600,12 @@ def _extract_relationship_type_and_var(
     types = types_ctx.oC_RelTypeName()
     if not types:
         return None, rel_var, (min_hops, max_hops)
-    if len(types) != 1:
-        raise CoreError(
-            "Exactly one relationship type is required in v0 subset",
-            code="UNSUPPORTED",
-        )
-    rel_type = types[0].getText().strip()
-    if not rel_type:
+    names = [t.getText().strip() for t in types]
+    if not all(names):
         raise CoreError("Invalid relationship pattern", code="UNSUPPORTED")
-    return rel_type, rel_var, (min_hops, max_hops)
+    # Several types (``[:A|B]``) travel as one ``A|B`` string, which
+    # :func:`_resolve_relationship_for_pattern` resolves (PRD §8.2).
+    return MULTI_TYPE_SEPARATOR.join(names), rel_var, (min_hops, max_hops)
 
 
 _MAX_VLP_DEPTH = 10

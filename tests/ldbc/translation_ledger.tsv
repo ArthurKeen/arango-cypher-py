@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 12, out_of_subset 5, syntax_error 4, translatable 37
-# lpg: fails_closed 12, out_of_subset 5, syntax_error 4, translatable 37
+# pg: fails_closed 10, out_of_subset 5, syntax_error 4, translatable 39
+# lpg: fails_closed 10, out_of_subset 5, syntax_error 4, translatable 39
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -13,8 +13,8 @@ translatable	BI12@lpg
 translatable	BI12@pg	
 fails_closed	BI13@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
 fails_closed	BI13@pg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
-fails_closed	BI14@lpg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
-fails_closed	BI14@pg	UNSUPPORTED: Only 1-hop or 2-hop patterns are supported in v0 subset
+translatable	BI14@lpg	
+translatable	BI14@pg	
 out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
@@ -65,8 +65,8 @@ fails_closed	IC10@lpg	UNSUPPORTED: Unsupported function in v0: datetime
 fails_closed	IC10@pg	UNSUPPORTED: Unsupported function in v0: datetime
 translatable	IC11@lpg	
 translatable	IC11@pg	
-fails_closed	IC12@lpg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
-fails_closed	IC12@pg	UNSUPPORTED: Exactly one relationship type is required in v0 subset
+translatable	IC12@lpg	
+translatable	IC12@pg	
 syntax_error	IC13@lpg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
 syntax_error	IC13@pg	Cypher syntax error at 8:11: no viable alternative at input 'MATCH\n (person1:Person {id: $person1Id}),\n (person2:Person {id: $person2Id})…
 out_of_subset	IC14@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop) and APOC (apoc.create.uuidBase64)

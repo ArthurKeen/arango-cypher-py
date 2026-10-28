@@ -286,3 +286,19 @@ def test_aql_reserved_variables_and_property_keys_are_quoted():
     assert "FOR b, `like` IN 1..1 OUTBOUND a" in out.aql
     assert "b.`limit` > 1" in out.aql
     assert "{`in`: `like`.since}" in out.aql
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("{score: score, x: 1}", "{score: score_4, x: 1}"),
+        ("{x: 1, score: score}", "{x: 1, score: score_4}"),
+        ("c ? score : 0", "c ? score_4 : 0"),
+        ("x ? 1 : score", "x ? 1 : score_4"),
+        ("score == 'score'", "score_4 == 'score'"),
+        ('score == "a score"', 'score_4 == "a score"'),
+        ("f(score, a.name)", "f(score_4, name)"),
+    ],
+)
+def test_rewrite_vars_leaves_object_keys_and_strings_alone(text: str, expected: str) -> None:
+    assert _rewrite_vars(text, {"score": "score_4", "a": "a_1", "a.name": "name"}) == expected

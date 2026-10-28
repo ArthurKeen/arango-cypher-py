@@ -32,11 +32,6 @@ from tests.helpers.mapping_fixtures import mapping_bundle_for
         # ``-[]->`` / ``-[r]->``) are now supported when a single edge
         # collection can be inferred (see test_translate_untyped_rel_goldens),
         # but multi-type edges remain unsupported.
-        (
-            "MATCH (u:User)-[:FOLLOWS|LIKES]->(v:User) RETURN u",
-            "UNSUPPORTED",
-            "Exactly one relationship type",
-        ),
         # Expression compiler unsupported shapes
         (
             "MATCH (n:User) WHERE n.id = $1 RETURN n",

@@ -558,8 +558,14 @@ names (`{id: knownTagId}` after a `WITH` that grouped `knownTagId` again). An
 (`UNSUPPORTED`), as Cypher raises `UndefinedVariable`.
 `OPTIONAL MATCH` yields one row per match, and one null-extended row when
 nothing matches, wherever it appears: after `MATCH`, after `WITH`, or leading a
-`WITH` pipeline. A pattern with several parts matches as a whole. Each pattern
-part may have at most two hops. Aggregates follow Cypher's null semantics:
+`WITH` pipeline. A pattern with several parts matches as a whole, and a part
+may have any number of hops; one relationship is never matched twice within
+a pattern. A hop may name several relationship types (`[:A|B]`, also
+variable-length): on PG the traversal follows each type's edge collection, on
+LPG it tests the type field against the list, and `type(r)` is the type of
+the edge matched. Types mapped in different styles, or to different
+type-discriminated collections, are refused; so is a write to such a
+relationship and an edge scan `MATCH ()-[r:A|B]->()`. Aggregates follow Cypher's null semantics:
 `count(x)`, `count(DISTINCT x)` and `collect(x)` skip nulls, and `sum()` over
 no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
@@ -730,7 +736,7 @@ represent — tracked as future work.
 
 ### 8.4 Not yet supported
 
-Multiple relationship types in one hop (`[:A|B]`); generic Neo4j `CALL`
+Generic Neo4j `CALL`
 procedures; temporal values and functions; native `shortestPath()` syntax
 (available via `CALL arango.shortest_path()`); and complex multi-part write
 pipelines such as `UNWIND … WITH … <write>` and mid-pipeline

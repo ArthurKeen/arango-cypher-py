@@ -350,7 +350,7 @@ translatable	clauses/match/Match2/[2] Matching a relationship pattern using a la
 translatable	clauses/match/Match2/[3] Matching a self-loop with an undirected relationship pattern
 translatable	clauses/match/Match2/[4] Matching a self-loop with a directed relationship pattern
 translatable	clauses/match/Match2/[5] Match relationship with inline property value
-translate_fail	clauses/match/Match2/[6] Match relationships with multiple types
+translatable	clauses/match/Match2/[6] Match relationships with multiple types
 translatable	clauses/match/Match2/[7] Matching twice with conflicting relationship types on same relationship
 correct_rejection	clauses/match/Match2/[8] Fail when using parameter as relationship predicate in MATCH
 correct_rejection	clauses/match/Match2/[9] Fail when a node has the same variable in a preceding MATCH [pattern=()-[]-(), ()-[]-(r)]
@@ -407,7 +407,7 @@ translatable	clauses/match/Match3/[4] Get two related nodes
 translatable	clauses/match/Match3/[5] Return two subgraphs with bound undirected relationship
 translatable	clauses/match/Match3/[6] Matching a relationship pattern using a label predicate
 translatable	clauses/match/Match3/[7] Matching nodes with many labels
-translate_fail	clauses/match/Match3/[8] Matching using relationship predicate with multiples of the same type
+translatable	clauses/match/Match3/[8] Matching using relationship predicate with multiples of the same type
 translatable	clauses/match/Match3/[9] Get related to related to
 correct_rejection	clauses/match/Match4/[10] Fail on negative bound
 translatable	clauses/match/Match4/[1] Handling fixed-length variable length pattern
@@ -578,7 +578,7 @@ translatable	clauses/match/Match7/[8] Longer pattern with bound nodes without ma
 translatable	clauses/match/Match7/[9] Longer pattern with bound nodes
 translatable	clauses/match/Match8/[1] Pattern independent of bound variables results in cross product
 translate_fail	clauses/match/Match8/[2] Counting rows after MATCH, MERGE, OPTIONAL MATCH
-translate_fail	clauses/match/Match8/[3] Matching and disregarding output, then matching again
+translatable	clauses/match/Match8/[3] Matching and disregarding output, then matching again
 translatable	clauses/match/Match9/[1] Variable length relationship variables are lists of relationships
 translatable	clauses/match/Match9/[2] Return relationships by collecting them as a list - directed, one way
 translatable	clauses/match/Match9/[3] Return relationships by collecting them as a list - undirected, starting from two extremes
@@ -1226,7 +1226,7 @@ translatable	clauses/with-where/WithWhere7/[2] WHERE sees a variable bound after
 translatable	clauses/with-where/WithWhere7/[3] WHERE sees both, variable bound before but not after WITH and variable bound after but not before WITH
 translatable	clauses/with/With1/[1] Forwarind a node variable 1
 translatable	clauses/with/With1/[2] Forwarind a node variable 2
-translate_fail	clauses/with/With1/[3] Forwarding a relationship variable
+translatable	clauses/with/With1/[3] Forwarding a relationship variable
 translatable	clauses/with/With1/[4] Forwarding a path variable
 translatable	clauses/with/With1/[5] Forwarding null
 translatable	clauses/with/With1/[6] Forwarding a node variable possibly null
@@ -1243,7 +1243,7 @@ translate_fail	clauses/with/With4/[7] Multiple aliasing and backreferencing
 translatable	clauses/with/With5/[1] DISTINCT on an expression
 translatable	clauses/with/With5/[2] Handling DISTINCT with lists in maps
 translatable	clauses/with/With6/[1] Implicit grouping with single expression as grouping key and single aggregation
-translate_fail	clauses/with/With6/[2] Implicit grouping with single relationship variable as grouping key and single aggregation
+translatable	clauses/with/With6/[2] Implicit grouping with single relationship variable as grouping key and single aggregation
 translatable	clauses/with/With6/[3] Implicit grouping with multiple node and relationship variables as grouping key and single aggregation
 translatable	clauses/with/With6/[4] Implicit grouping with single path variable as grouping key and single aggregation
 translatable	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
@@ -1450,7 +1450,7 @@ translate_fail	expressions/comparison/Comparison1/[1] Number-typed integer compa
 translate_fail	expressions/comparison/Comparison1/[2] Number-typed float comparison
 translate_fail	expressions/comparison/Comparison1/[3] Any-typed string comparison
 translatable	expressions/comparison/Comparison1/[4] Comparing nodes to nodes
-translate_fail	expressions/comparison/Comparison1/[5] Comparing relationships to relationships
+translatable	expressions/comparison/Comparison1/[5] Comparing relationships to relationships
 translatable	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=['a'], rhs=[1], result=false]
 translatable	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[1, 2], rhs=[1], result=false]
 translatable	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[[1], [2, 3]], rhs=[[1], [null]], result=false]
@@ -1761,7 +1761,7 @@ translatable	expressions/list/List5/[6] IN should return false when matching a n
 translatable	expressions/list/List5/[7] IN should return false when types of LHS and RHS don't match - singleton list
 translatable	expressions/list/List5/[8] IN should return false when types of LHS and RHS don't match - list
 translatable	expressions/list/List5/[9] IN should return true when types of LHS and RHS match - singleton list
-translate_fail	expressions/list/List6/[10] Get node degree via size of pattern comprehension that specifies multiple relationship types
+translatable	expressions/list/List6/[10] Get node degree via size of pattern comprehension that specifies multiple relationship types
 translatable	expressions/list/List6/[1] Return list size
 translatable	expressions/list/List6/[2] Setting and returning the size of a list property
 translatable	expressions/list/List6/[3] Concatenating and returning the size of literal lists

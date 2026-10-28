@@ -27,12 +27,9 @@ cases:
   extensions_enabled: false
   cypher: MATCH (n:User) RETURN collect(n.name) AS names, count(DISTINCT n.city) AS cities
   expected:
-    aql: "FOR n IN @@collection\n  COLLECT _collect_group = 1 INTO _collect_rows = {names: n.name, _cities_input:\
-      \ n.city}\n  LET names = REMOVE_VALUE(_collect_rows[*].names, null)\n  LET cities = LENGTH(UNIQUE(FOR _agg_row\
-      \ IN _collect_rows FILTER _agg_row._cities_input != null RETURN _agg_row._cities_input))\n  RETURN {cities:\
-      \ cities, names: names}"
+    aql: "FOR n IN @@collection\n  COLLECT _collect_group = 1 INTO _collect_rows = {names: n.name, _cities_input: n.city}\n  LET names = REMOVE_VALUE(_collect_rows[*].names, null)\n  LET cities = LENGTH(UNIQUE(FOR _agg_row IN _collect_rows FILTER _agg_row._cities_input != null RETURN _agg_row._cities_input))\n  RETURN {names: names, cities: cities}\n"
     bind_vars:
-      '@collection': users
+      "@collection": users
 - id: C846
   name: a grouping key inside an aggregate expression is the group variable
   mapping_fixture: pg

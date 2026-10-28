@@ -186,6 +186,9 @@ def _aql_bind_name(parameter: str) -> str:
     return f"@{name}"
 
 
+_STRING_LITERAL_RE = re.compile(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"")
+
+
 def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
     """Best-effort variable rewrite for post-WITH scopes.
 
@@ -193,11 +196,33 @@ def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
     again. Substituting key by key did, so with ``{"a.name": "name", "name":
     "name_g1"}`` an ``ORDER BY a.name`` became ``name`` and then ``name_g1`` —
     the other column (LDBC BI3 sorted by ``person.id`` for ``forum.id``).
+
+    String literals are left alone, and so is an object key (a name between
+    ``{`` or ``,`` and ``:``): ``collect({score: score})`` renamed both, so
+    the collected maps lost their ``score`` attribute (LDBC BI14). A name
+    before the ``:`` of a ternary is a value, and is renamed.
     """
     if not text or not var_env:
         return text
     keys = sorted(var_env.keys(), key=len, reverse=True)
     # A key is a whole name: not part of a longer word, a quoted name or a
     # property access (``x.v`` keeps its property ``v``).
-    pattern = re.compile(r"(?<![\w`.])(?:" + "|".join(re.escape(k) for k in keys) + r")(?![\w`])")
-    return pattern.sub(lambda m: var_env[m.group(0)], text)
+    pattern = re.compile(
+        r"(?P<pre>[{,]\s*)?(?<![\w`.])(?P<name>"
+        + "|".join(re.escape(k) for k in keys)
+        + r")(?![\w`])(?P<post>\s*:(?!:))?"
+    )
+
+    def replace(m: re.Match[str]) -> str:
+        if m.group("pre") is not None and m.group("post") is not None:
+            return m.group(0)  # an object key
+        return (m.group("pre") or "") + var_env[m.group("name")] + (m.group("post") or "")
+
+    out: list[str] = []
+    pos = 0
+    for literal in _STRING_LITERAL_RE.finditer(text):
+        out.append(pattern.sub(replace, text[pos : literal.start()]))
+        out.append(literal.group(0))
+        pos = literal.end()
+    out.append(pattern.sub(replace, text[pos:]))
+    return "".join(out)
