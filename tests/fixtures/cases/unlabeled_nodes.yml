@@ -1,0 +1,58 @@
+version: 1
+cases:
+- id: C852
+  name: an unlabeled traversal target on a multi-collection mapping has no collection check
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (:Person {id: $id})<-[:HAS_CREATOR]-(message) RETURN message.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5,\
+      \ @@uCollection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\nFOR u IN @@uCollection\n\
+      \  FILTER (u.id == @id)\n  FOR message, r IN 1..1 INBOUND u @@edgeCollection\n    RETURN {id: message.id}"
+    bind_vars:
+      id: 1
+      '@uCollection': person
+      '@edgeCollection': has_creator
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': forum
+      '@withCollection6': post
+      '@withCollection7': tag
+      '@withCollection8': tag_class
+      '@withCollection9': university
+- id: C853
+  name: an unlabeled start after WITH is scanned in the collection its first edge guarantees
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (f:Forum {id: $id}) WITH f OPTIONAL MATCH (x)<-[:HAS_CREATOR]-(p)<-[:CONTAINER_OF]-(f) RETURN x.id
+    AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@collection,\
+      \ @@tailCollection, @@withCollection5, @@withCollection6, @@withCollection7, @@withCollection8\nFOR f IN @@collection\n\
+      \  OPTIONS {indexHint: \"idx_forum_id\", forceIndexHint: false}\n  FILTER (f.id == @id)\n  LET _opt_rows =\
+      \ (\n  FOR x IN @@tailCollection\n    FOR p, r IN 1..1 INBOUND x @@edgeCollection\n      FOR f_1, r_1 IN 1..1\
+      \ INBOUND p @@edgeCollection2\n        FILTER f_1._id == f._id\n        RETURN {x: x, p: p}\n        )\n \
+      \       FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n          LET x = _opt_row.x\n       \
+      \   LET p = _opt_row.p\n          RETURN {id: x.id}"
+    bind_vars:
+      id: 1
+      '@collection': forum
+      '@tailCollection': person
+      '@edgeCollection': has_creator
+      '@edgeCollection2': container_of
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': post
+      '@withCollection6': tag
+      '@withCollection7': tag_class
+      '@withCollection8': university

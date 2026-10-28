@@ -444,9 +444,9 @@ def _emit_single_hop(
     v_filters: list[str] = []
     if h.v_map is None:
         if not h.v_bound:
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
-            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-            v_filters.append(f"IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+            target_filter = _unlabeled_target_filter(h.v_trav, resolver, bind_vars, "vCollection")
+            if target_filter is not None:
+                v_filters.append(target_filter)
     else:
         skip_coll_filter = (
             h.v_primary is not None
@@ -618,9 +618,9 @@ def _emit_vertex_filters_for_hop(
     """Emit FILTER lines for a hop's target vertex (label/collection checks)."""
     if h.v_map is None:
         if not h.v_bound:
-            vcoll_key = _pick_bind_key("vCollection", bind_vars)
-            bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-            lines.append(f"    FILTER IS_SAME_COLLECTION(@{vcoll_key}, {h.v_trav})")
+            target_filter = _unlabeled_target_filter(h.v_trav, resolver, bind_vars, "vCollection")
+            if target_filter is not None:
+                lines.append(f"    FILTER {target_filter}")
         return
 
     skip_coll_filter = (
@@ -2294,9 +2294,9 @@ def _compile_match_multi_parts_from_parts(
             if v_labels:
                 emit_entity_filters(v_trav, v_labels, via_edge=rel_type, edge_direction=direction)
             elif not v_bound:
-                vcoll_key = _pick_bind_key(f"{v_trav}Collection", bind_vars)
-                bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-                add_filter(f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})")
+                target_filter = _unlabeled_target_filter(v_trav, resolver, bind_vars, f"{v_trav}Collection")
+                if target_filter is not None:
+                    add_filter(target_filter)
             for f in _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars):
                 add_filter(f)
 
@@ -2414,7 +2414,7 @@ def _compile_bound_part(
         tail_filters: list[str] = []
         tail_props = _compile_node_pattern_properties(node, var=u_aql, bind_vars=bind_vars, var_env=out_env)
         if label is None:
-            bind_vars[coll_key] = _infer_unlabeled_collection(resolver)
+            bind_vars[coll_key] = _unlabeled_start_collection(chains[0] if chains else None, resolver)
             tail_source = _aql_collection_ref(coll_key)
         else:
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(label))
@@ -2528,9 +2528,7 @@ def _compile_bound_part(
         coll_filter: str | None = None
         if not skip_coll_filter:
             if v_map is None:
-                vcoll_key = _pick_bind_key("vCollection", bind_vars)
-                bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-                coll_filter = f"IS_SAME_COLLECTION(@{vcoll_key}, {v_aql})"
+                coll_filter = _unlabeled_target_filter(v_aql, resolver, bind_vars, "vCollection")
             else:
                 coll_filter = node_collection_filter(
                     v_aql, str(v_primary), v_map, resolver, bind_vars, key_base="vCollection"
@@ -2792,9 +2790,7 @@ def _compile_match_pipeline(
         coll_filter: str | None = None
         if not skip_coll_filter:
             if v_map is None:
-                vcoll_key = _pick_bind_key("vCollection", bind_vars)
-                bind_vars[vcoll_key] = _infer_unlabeled_collection(resolver)
-                coll_filter = f"IS_SAME_COLLECTION(@{vcoll_key}, {v_trav})"
+                coll_filter = _unlabeled_target_filter(v_trav, resolver, bind_vars, "vCollection")
             else:
                 coll_filter = node_collection_filter(
                     v_trav, str(v_primary), v_map, resolver, bind_vars, key_base="vCollection"
@@ -4224,6 +4220,63 @@ def _shared_type_field(resolver: MappingResolver | None, kind: str) -> str | Non
         if isinstance(d, dict) and d.get("style") in discriminated_styles and d.get("typeField")
     }
     return next(iter(fields)) if len(fields) == 1 else None
+
+
+def _unlabeled_start_collection(chain: Any, resolver: MappingResolver) -> str:
+    """The collection to scan for an unlabeled, unbound start node.
+
+    The mapping's one node collection when it has one
+    (``_infer_unlabeled_collection``); otherwise the collection the first
+    relationship's endpoint guarantees: ``(p)<-[:HAS_CREATOR]-(m)`` starts at
+    a Person, since HAS_CREATOR's range is Person (LDBC IC5 on PG). Refuses
+    when neither settles it.
+    """
+    try:
+        return _infer_unlabeled_collection(resolver)
+    except CoreError as e:
+        if e.code != "UNSUPPORTED" or chain is None:
+            raise
+        refusal = e
+    rel_pat = chain.oC_RelationshipPattern()
+    rel_type, _var, _range = _extract_relationship_type_and_var(rel_pat, default_var="_r")
+    direction = _relationship_direction(rel_pat)
+    if rel_type is None or direction not in ("OUTBOUND", "INBOUND"):
+        raise refusal
+    # Seen from the far end, the edge leads back to the start node.
+    back = "INBOUND" if direction == "OUTBOUND" else "OUTBOUND"
+    collections = {
+        resolver.resolve_entity(label).get("collectionName")
+        for label in resolver.all_entity_labels()
+        if resolver.edge_constrains_target(rel_type, label, back)
+    }
+    collections.discard(None)
+    if len(collections) != 1:
+        raise refusal
+    return str(next(iter(collections)))
+
+
+def _unlabeled_target_filter(
+    var: str, resolver: MappingResolver, bind_vars: dict[str, Any], key_base: str
+) -> str | None:
+    """The collection check for an unlabeled traversal target, or ``None``.
+
+    An unlabeled node matches any node, and a traversal only reaches what its
+    edges lead to, so the check only narrows to the collection an unlabeled
+    node means when the mapping has one (``_infer_unlabeled_collection``:
+    the single node collection, or the one domain collection beside side
+    stores). With several node collections there is none to narrow to; the
+    target was refused ("A single label is required", LDBC IS2/IC3/IC5 on
+    PG) and now goes unchecked.
+    """
+    try:
+        coll = _infer_unlabeled_collection(resolver)
+    except CoreError as e:
+        if e.code != "UNSUPPORTED":
+            raise
+        return None
+    key = _pick_bind_key(key_base, bind_vars)
+    bind_vars[key] = coll
+    return f"IS_SAME_COLLECTION(@{key}, {var})"
 
 
 def _infer_unlabeled_collection(resolver: MappingResolver) -> str:
