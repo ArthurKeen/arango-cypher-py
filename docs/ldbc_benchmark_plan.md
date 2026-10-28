@@ -779,12 +779,16 @@ beyond the fail-closed guard.
   `toInteger()` did not truncate (#58); pattern comprehensions compiled only
   their first hop, ignored PG end labels and redeclared bound nodes (#59).
 
-#### WP-38: Multi-type relationship hops `[:A|B]` (M)
+#### WP-38: Multi-type relationship hops `[:A|B]` (M) — implemented 2026-10-28
 - **Scope:** closes the PRD §8.4 gap.
   - PG: multiple edge collections in one traversal.
   - LPG: `r.type IN [...]` with the VCI.
   - Also with variable length.
 - **Unlocks:** IC12. Broadly useful beyond LDBC.
+- **Status (2026-10-28): implemented** (`_translate_v0/multi_type.py`). IC12 also
+  needed an unnamed start node and four hops in a MATCH after WITH; the
+  four-hop limit there is gone (which also unblocks BI14), and those hops now
+  keep their relationships distinct.
 
 #### WP-39: `shortestPath()` / `allShortestPaths()` (M)
 - **Scope:**

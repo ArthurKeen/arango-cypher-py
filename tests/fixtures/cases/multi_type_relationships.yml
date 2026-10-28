@@ -1,0 +1,98 @@
+version: 1
+cases:
+- id: C854
+  name: several relationship types on PG follow each type's edge collection
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (t:Tag {id: $id})-[r:HAS_TYPE|IS_SUBCLASS_OF*0..2]->(c:TagClass) RETURN c.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5,\
+      \ @@withCollection6, @@withCollection7, @@uCollection, @@withCollection8, @@withCollection9\nFOR t IN @@uCollection\n\
+      \  FILTER (t.id == @id)\n  FOR c, r IN 0..2 OUTBOUND t @@edgeCollection, @@edgeCollection_1\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ c)\n    RETURN {id: c.id}"
+    bind_vars:
+      id: 1
+      '@uCollection': tag
+      '@edgeCollection': has_type
+      vCollection: tag_class
+      '@edgeCollection_1': is_subclass_of
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': forum
+      '@withCollection6': person
+      '@withCollection7': post
+      '@withCollection8': tag_class
+      '@withCollection9': university
+- id: C855
+  name: several relationship types on LPG test the type field against the list
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (t:Tag {id: $id})-[r:HAS_TYPE|IS_SUBCLASS_OF*0..2]->(c:TagClass) RETURN c.id AS id'
+  params:
+    id: 1
+  expected:
+    aql: "WITH @@uCollection\nFOR t IN @@uCollection\n  FILTER t[@uTypeField] == @uTypeValue\n  FILTER (t.id ==\
+      \ @id)\n  FOR c, r IN 0..2 OUTBOUND t @@edgeCollection PRUNE r != null AND r[@relTypeField] NOT IN @relTypeValue\n\
+      \    FILTER IS_SAME_COLLECTION(@vCollection, c)\n    FILTER c[@vTypeField] == @vTypeValue\n    FILTER (r ==\
+      \ null OR r[@relTypeField] IN @relTypeValue)\n    RETURN {id: c.id}"
+    bind_vars:
+      id: 1
+      '@uCollection': nodes
+      uTypeField: type
+      uTypeValue: Tag
+      '@edgeCollection': edges
+      vCollection: nodes
+      vTypeField: type
+      vTypeValue: TagClass
+      relTypeField: type
+      relTypeValue:
+      - HAS_TYPE
+      - IS_SUBCLASS_OF
+- id: C856
+  name: type(r) of a multi-type relationship in dedicated collections
+  mapping_fixture: movies_pg
+  extensions_enabled: false
+  cypher: MATCH (p:Person)-[r:ACTED_IN|DIRECTED]->(m:Movie) RETURN type(r) AS t
+  expected:
+    aql: "WITH @@withCollection0, @@uCollection\nFOR p IN @@uCollection\n  FOR m, r IN 1..1 OUTBOUND p @@edgeCollection,\
+      \ @@edgeCollection_1\n    FILTER IS_SAME_COLLECTION(@vCollection, m)\n    RETURN {t: (PARSE_IDENTIFIER(r._id).collection\
+      \ == \"acted_in\" ? \"ACTED_IN\" : (PARSE_IDENTIFIER(r._id).collection == \"directed\" ? \"DIRECTED\" : null))}"
+    bind_vars:
+      '@uCollection': persons
+      '@edgeCollection': acted_in
+      vCollection: movies
+      '@edgeCollection_1': directed
+      '@withCollection0': movies
+- id: C857
+  name: a MATCH after WITH with four hops keeps its relationships distinct
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'MATCH (a:User {id: ''u1''}) WITH a MATCH (a)-[:FOLLOWS]->(b:User)-[:FOLLOWS]->(c:User)-[:FOLLOWS]->(d:User)-[:FOLLOWS]->(e:User)
+    RETURN e.id AS id'
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR a IN @@collection\n  FILTER\
+      \ (LOWER(a.id) == LOWER('u1'))\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ b)\n    FOR c, r_1 IN 1..1 OUTBOUND b @@edgeCollection2\n      FILTER IS_SAME_COLLECTION(@vCollection2,\
+      \ c)\n      FILTER r_1._id != r._id\n      FOR d, r_2 IN 1..1 OUTBOUND c @@edgeCollection3\n        FILTER\
+      \ IS_SAME_COLLECTION(@vCollection3, d)\n        FILTER r_2._id != r._id\n        FILTER r_2._id != r_1._id\n\
+      \        FOR e, r_3 IN 1..1 OUTBOUND d @@edgeCollection4\n          FILTER IS_SAME_COLLECTION(@vCollection4,\
+      \ e)\n          FILTER r_3._id != r._id\n          FILTER r_3._id != r_1._id\n          FILTER r_3._id !=\
+      \ r_2._id\n          RETURN {id: e.id}"
+    bind_vars:
+      '@collection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@edgeCollection2': follows
+      vCollection2: users
+      '@edgeCollection3': follows
+      vCollection3: users
+      '@edgeCollection4': follows
+      vCollection4: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
