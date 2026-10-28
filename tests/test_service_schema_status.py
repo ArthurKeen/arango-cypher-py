@@ -324,6 +324,27 @@ class TestInvalidateCache:
 
 
 class TestIntrospectWarnings:
+    @pytest.fixture(autouse=True)
+    def _no_real_background_warm(self, monkeypatch):
+        """No test here starts a real analyzer thread.
+
+        A served (ready) schema schedules a background recheck. Run for real
+        it analyzes the fake session on a thread the test never joins, so the
+        next test could still find ``testdb`` in flight and see
+        ``warming: false`` (it did on arangodb-schema-analyzer 0.17.0, whose
+        first singularize loads a dictionary and so runs the thread longer).
+        Tests that check scheduling install their own stub, which replaces
+        this one.
+        """
+        from arango_cypher.catalog import warm
+
+        with warm._lock:  # noqa: SLF001 - test resets module state
+            warm._inflight.clear()
+        monkeypatch.setattr(warm, "schedule_warm", lambda db, graph_name=None, *, force=True: False)
+        yield
+        with warm._lock:  # noqa: SLF001
+            warm._inflight.clear()
+
     def test_introspect_surfaces_warnings(self, fake_session_factory, monkeypatch):
         """When the bundle carries metadata.warnings, /schema/introspect echoes them."""
         from arango_cypher import schema_acquire
