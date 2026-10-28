@@ -1,0 +1,61 @@
+version: 1
+cases:
+- id: C843
+  name: arithmetic over aggregates is evaluated after grouping
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN n.city AS city, 100 * count(*) + count(n.age) AS score
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _agg = COUNT(1), __agg_g1_nonnull = SUM((n.age)\
+      \ == null ? 0 : 1)\n  LET _agg_g1 = NOT_NULL(__agg_g1_nonnull, 0)\n  LET score = ((_agg == null OR _agg_g1\
+      \ == null) ? null : ((100 * _agg) + _agg_g1))\n  RETURN {city: city, score: score}"
+    bind_vars:
+      '@collection': users
+- id: C844
+  name: a function of collect() in WITH
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH n.city AS city, head(collect(n.name)) AS first RETURN city, first
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city INTO _collect_rows = {_agg: n.name}\n  LET _agg = REMOVE_VALUE(_collect_rows[*]._agg,\
+      \ null)\n  LET first = FIRST(_agg)\n  RETURN {city: city, first: first}"
+    bind_vars:
+      '@collection': users
+- id: C845
+  name: collect() beside another aggregate groups INTO rows
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN collect(n.name) AS names, count(DISTINCT n.city) AS cities
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT _collect_group = 1 INTO _collect_rows = {names: n.name, _cities_input:\
+      \ n.city}\n  LET names = REMOVE_VALUE(_collect_rows[*].names, null)\n  LET cities = LENGTH(UNIQUE(FOR _agg_row\
+      \ IN _collect_rows FILTER _agg_row._cities_input != null RETURN _agg_row._cities_input))\n  RETURN {cities:\
+      \ cities, names: names}"
+    bind_vars:
+      '@collection': users
+- id: C846
+  name: a grouping key inside an aggregate expression is the group variable
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN n.city AS city, n.city + ':' + toString(count(*)) AS label
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _agg = COUNT(1)\n  LET label = ((((_agg == null)\
+      \ ? null : TO_STRING(_agg)) == null) ? null : (IS_ARRAY((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
+      \ ? null : CONCAT(city, ':')))) ? PUSH((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city,\
+      \ ':'))), ((_agg == null) ? null : TO_STRING(_agg))) : (((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
+      \ ? null : CONCAT(city, ':'))) == null) ? null : CONCAT((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
+      \ ? null : CONCAT(city, ':'))), ((_agg == null) ? null : TO_STRING(_agg))))))\n  RETURN {city: city, label:\
+      \ label}"
+    bind_vars:
+      '@collection': users
+- id: C847
+  name: a list comprehension over collect()
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN [x IN collect(n.name) WHERE x <> 'a' | toUpper(x)] AS names
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT _collect_group = 1 INTO _collect_rows = {_agg: n.name}\n  LET _agg =\
+      \ REMOVE_VALUE(_collect_rows[*]._agg, null)\n  LET names = (FOR x IN _agg FILTER (x != null AND x != 'a')\
+      \ RETURN UPPER(x))\n  RETURN names"
+    bind_vars:
+      '@collection': users
