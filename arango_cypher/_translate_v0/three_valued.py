@@ -261,6 +261,18 @@ def _is_two_valued(ctx: Any) -> bool:
     list quantifiers (compiled to count tests) and boolean literals; anything
     else is assumed nullable.
     """
+    if isinstance(ctx, CypherParser.OC_ExpressionContext):
+        return _is_two_valued(ctx.oC_OrExpression())
+    for level, children in (
+        (CypherParser.OC_OrExpressionContext, "oC_XorExpression"),
+        (CypherParser.OC_XorExpressionContext, "oC_AndExpression"),
+        (CypherParser.OC_AndExpressionContext, "oC_NotExpression"),
+    ):
+        if isinstance(ctx, level):
+            parts = getattr(ctx, children)()
+            return len(parts) == 1 and _is_two_valued(parts[0])
+    if isinstance(ctx, CypherParser.OC_NotExpressionContext):
+        return _is_two_valued(ctx.oC_ComparisonExpression())
     if isinstance(ctx, CypherParser.OC_ComparisonExpressionContext):
         if ctx.oC_PartialComparisonExpression():
             return False
