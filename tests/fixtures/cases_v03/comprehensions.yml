@@ -13,7 +13,7 @@
   mapping: movies_pg
   expect_aql_contains:
     - "FOR x IN"
-    - "RETURN (x * 2)"
+    - "? null : (x * 2)"
 
 - id: pattern_comp_basic
   description: "Pattern comprehension with movie titles"

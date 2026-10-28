@@ -14,6 +14,18 @@ from arango_query_core import (
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
 from .aggregates import lower_aggregate
+from .arithmetic import (
+    _numeric_type,
+    _static_type,
+    additive_chain_propagates_null,
+    collecting_null_operands,
+    compile_additive_chain,
+    compile_null_operand,
+    is_arithmetic_transparent,
+    null_propagating,
+    raw_additive_chain,
+    raw_arithmetic,
+)
 from .bind_names import _merge_bind_vars, _refuse_overwritten_params
 from .calls import (
     _inject_in_query_calls,
@@ -5156,6 +5168,10 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
     # We only implement what the v0.1 basic corpus needs.
     # For everything else, fail fast with a structured error.
 
+    if collecting_null_operands() and not is_arithmetic_transparent(ctx):
+        # An operand of arithmetic being compiled: see ``null_propagating``.
+        return compile_null_operand(lambda: _compile_expression(ctx, bind_vars))
+
     mode = _PREDICATE_MODE.get()
     if mode is not None and not _is_predicate_transparent(ctx):
         # An operand in a predicate position (``WHERE n.active``): compile it
@@ -5231,45 +5247,57 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
 
     if isinstance(ctx, CypherParser.OC_AddOrSubtractExpressionContext):
         terms = ctx.oC_MultiplyDivideModuloExpression()
-        result = _compile_expression(terms[0], bind_vars)
-        if len(terms) > 1:
-            for i in range(1, len(terms)):
-                op = _extract_interleaved_op(ctx, i, {"+", "-"})
-                right = _compile_expression(terms[i], bind_vars)
-                result = f"({result} {op} {right})"
-        return result
+        if len(terms) == 1:
+            return _compile_expression(terms[0], bind_vars)
+        types = [_static_type(t) for t in terms]
+        ops = [_extract_interleaved_op(ctx, i, {"+", "-"}) for i in range(1, len(terms))]
+        if additive_chain_propagates_null(types, ops):
+            return null_propagating(
+                lambda: raw_additive_chain([_compile_expression(t, bind_vars) for t in terms], types, ops)
+            )
+        return compile_additive_chain(
+            [(_compile_expression(t, bind_vars), ty) for t, ty in zip(terms, types, strict=True)], ops
+        )
 
     if isinstance(ctx, CypherParser.OC_MultiplyDivideModuloExpressionContext):
         terms = ctx.oC_PowerOfExpression()
-        result = _compile_expression(terms[0], bind_vars)
-        if len(terms) > 1:
+        if len(terms) == 1:
+            return _compile_expression(terms[0], bind_vars)
+
+        def build_product() -> str:
+            result = _compile_expression(terms[0], bind_vars)
+            result_type = _static_type(terms[0])
             for i in range(1, len(terms)):
                 op = _extract_interleaved_op(ctx, i, {"*", "/", "%"})
                 right = _compile_expression(terms[i], bind_vars)
-                result = f"({result} {op} {right})"
-        return result
+                result = raw_arithmetic(result, op, right, result_type, _static_type(terms[i]))
+                result_type = _numeric_type(result_type, terms[i])
+            return result
+
+        return null_propagating(build_product)
 
     if isinstance(ctx, CypherParser.OC_PowerOfExpressionContext):
         terms = ctx.oC_UnaryAddOrSubtractExpression()
-        result = _compile_expression(terms[0], bind_vars)
-        if len(terms) > 1:
-            for i in range(1, len(terms)):
-                right = _compile_expression(terms[i], bind_vars)
-                result = f"POW({result}, {right})"
-        return result
+        if len(terms) == 1:
+            return _compile_expression(terms[0], bind_vars)
+
+        def build_power() -> str:
+            result = _compile_expression(terms[0], bind_vars)
+            for term in terms[1:]:
+                result = f"POW({result}, {_compile_expression(term, bind_vars)})"
+            return result
+
+        return null_propagating(build_power)
 
     if isinstance(ctx, CypherParser.OC_UnaryAddOrSubtractExpressionContext):
-        inner = _compile_expression(ctx.oC_StringListNullOperatorExpression(), bind_vars)
+        inner_ctx = ctx.oC_StringListNullOperatorExpression()
         has_minus = False
         for i in range(ctx.getChildCount()):
-            t = ctx.getChild(i).getText()
-            if t == "-":
+            if ctx.getChild(i).getText() == "-":
                 has_minus = not has_minus
-            elif t == "+":
-                pass
-        if has_minus:
-            return f"(-{inner})"
-        return inner
+        if not has_minus:
+            return _compile_expression(inner_ctx, bind_vars)
+        return null_propagating(lambda: f"(-{_compile_expression(inner_ctx, bind_vars)})")
 
     if isinstance(ctx, CypherParser.OC_StringListNullOperatorExpressionContext):
         null_ops = ctx.oC_NullOperatorExpression()

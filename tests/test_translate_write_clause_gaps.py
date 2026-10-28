@@ -275,7 +275,10 @@ class TestCreateThenWrite:
 
     def test_create_then_set_reading_the_created_node(self, pg):
         out = translate("CREATE (n:Person {born: 1990}) SET n.age = 2026 - n.born", mapping=pg)
-        assert "FIRST(FOR _d0 IN [{born: 1990}] RETURN MERGE(_d0, {age: (2026 - _d0.born)}))" in out.aql
+        assert (
+            "FIRST(FOR _d0 IN [{born: 1990}] RETURN MERGE(_d0, {age: ((_d0.born == null) ? null : (2026 - _d0.born))}))"
+            in out.aql
+        )
 
     def test_create_combined_with_delete_is_rejected(self, pg):
         with pytest.raises(CoreError) as exc:
