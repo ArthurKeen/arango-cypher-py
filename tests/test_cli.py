@@ -114,6 +114,19 @@ def test_translate_with_params(tmp_path):
     assert "aql" in parsed
 
 
+def test_translate_json_keeps_long_lines_intact(tmp_path):
+    """--json went through rich, which wraps at the terminal width and so
+    put raw newlines inside JSON strings."""
+    mf = _write_mapping(tmp_path)
+    cypher = (
+        "MATCH (n:User) WHERE n.name = $name AND n.name <> $other AND n.name STARTS WITH $prefix RETURN n"
+    )
+    result = runner.invoke(app, ["translate", cypher, "-m", str(mf), "--json"], env={"COLUMNS": "40"})
+    assert result.exit_code == 0
+    parsed = json.loads(result.output)
+    assert "STARTS_WITH" in parsed["aql"]
+
+
 def test_translate_bad_params():
     result = runner.invoke(
         app,

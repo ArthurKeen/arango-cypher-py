@@ -161,7 +161,7 @@ def translate(
         raise typer.Exit(1) from exc
 
     if json_output:
-        out.print(json.dumps({"aql": result.aql, "bind_vars": result.bind_vars}, indent=2))
+        typer.echo(json.dumps({"aql": result.aql, "bind_vars": result.bind_vars}, indent=2))
     else:
         out.print(Syntax(result.aql, "sql", theme="monokai"))
         if result.bind_vars:
@@ -212,7 +212,7 @@ def run(
         raise typer.Exit(1) from exc
 
     if json_output:
-        out.print(json.dumps(rows, indent=2, default=str))
+        typer.echo(json.dumps(rows, indent=2, default=str))
     else:
         _print_result_table(rows)
 
@@ -249,7 +249,7 @@ def mapping(
     summary = resolver.schema_summary()
 
     if json_output:
-        out.print(json.dumps(summary, indent=2, default=str))
+        typer.echo(json.dumps(summary, indent=2, default=str))
     else:
         _print_mapping_summary(summary)
 
