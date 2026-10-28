@@ -2,8 +2,8 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: execution_error 2, fails_closed 20, matches_oracle 27, out_of_subset 5, syntax_error 4
-# lpg: execution_error 3, fails_closed 16, matches_oracle 30, out_of_subset 5, syntax_error 4
+# pg: execution_error 2, fails_closed 18, matches_oracle 29, out_of_subset 5, syntax_error 4
+# lpg: execution_error 3, fails_closed 14, matches_oracle 32, out_of_subset 5, syntax_error 4
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 matches_oracle	BI11@lpg	3 binding(s)
@@ -40,8 +40,8 @@ matches_oracle	BI6@lpg	4 binding(s)
 matches_oracle	BI6@pg	4 binding(s)
 matches_oracle	BI7@lpg	4 binding(s)
 matches_oracle	BI7@pg	4 binding(s)
-fails_closed	BI8@lpg	UNSUPPORTED: Unsupported function in v0: collect
-fails_closed	BI8@pg	UNSUPPORTED: Unsupported function in v0: collect
+matches_oracle	BI8@lpg	3 binding(s)
+matches_oracle	BI8@pg	3 binding(s)
 matches_oracle	BI9@lpg	3 binding(s)
 matches_oracle	BI9@pg	3 binding(s)
 fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
@@ -82,8 +82,8 @@ matches_oracle	IC5@lpg	3 binding(s)
 fails_closed	IC5@pg	UNSUPPORTED: A single label is required in v0 subset
 execution_error	IC6@lpg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
 execution_error	IC6@pg	ERR 1203: AQL: collection or view not found: knownTagId (while parsing)
-fails_closed	IC7@lpg	UNSUPPORTED: Unsupported function in v0: collect
-fails_closed	IC7@pg	UNSUPPORTED: Unsupported function in v0: collect
+matches_oracle	IC7@lpg	4 binding(s)
+matches_oracle	IC7@pg	4 binding(s)
 matches_oracle	IC8@lpg	3 binding(s)
 matches_oracle	IC8@pg	3 binding(s)
 matches_oracle	IC9@lpg	3 binding(s)
