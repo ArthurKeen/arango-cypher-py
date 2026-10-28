@@ -41,9 +41,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN TO_STRING(n.age)\n"
+    aql: "FOR n IN @@collection\n  RETURN ((n.age == null) ? null : TO_STRING(n.age))\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C239
   name: return toInteger function
   mapping_fixture: pg
@@ -52,9 +52,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN TO_NUMBER(n.ageStr)\n"
+    aql: "FOR n IN @@collection\n  RETURN (IS_NUMBER(n.ageStr) ? ((n.ageStr >= 0) ? FLOOR(n.ageStr) : CEIL(n.ageStr)) : (IS_STRING(n.ageStr) ? (REGEX_TEST(n.ageStr, '^ *[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)? *$') ? ((TO_NUMBER(n.ageStr) >= 0) ? FLOOR(TO_NUMBER(n.ageStr)) : CEIL(TO_NUMBER(n.ageStr))) : null) : (IS_BOOL(n.ageStr) ? TO_NUMBER(n.ageStr) : null)))\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C240
   name: regression toUpper in where
   mapping_fixture: pg
@@ -85,9 +85,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN TO_NUMBER(n.score)\n"
+    aql: "FOR n IN @@collection\n  RETURN (IS_NUMBER(n.score) ? n.score : (IS_STRING(n.score) ? (REGEX_TEST(n.score, '^ *[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)? *$') ? TO_NUMBER(n.score) : null) : null))\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C243
   name: return toBoolean function
   mapping_fixture: pg
@@ -96,9 +96,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN TO_BOOL(n.active)\n"
+    aql: "FOR n IN @@collection\n  RETURN (IS_BOOL(n.active) ? n.active : (IS_STRING(n.active) ? ((LOWER(TRIM(n.active)) == 'true') ? true : ((LOWER(TRIM(n.active)) == 'false') ? false : null)) : (IS_NUMBER(n.active) ? (n.active != 0) : null)))\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C244
   name: return head function
   mapping_fixture: pg
