@@ -55,7 +55,20 @@ def _declared_aql_vars(lines: list[str]) -> set[str]:
     return declared
 
 
+_BIND_KEY_UNSAFE = re.compile(r"[^A-Za-z0-9_]")
+
+
 def _pick_bind_key(base: str, bind_vars: dict[str, Any]) -> str:
+    """Return an unused bind-variable name built from *base*.
+
+    Many bases embed a Cypher variable (``f"{var}TypeField"``), and a variable
+    may be backtick-quoted (```a b```). AQL reads a bind name as ASCII
+    letters, digits and underscores only, so a quoted variable made the query
+    an ERR 1501 syntax error. Every other character becomes ``_``; a leading
+    ``@`` (a collection parameter) is kept.
+    """
+    prefix = "@" if base.startswith("@") else ""
+    base = prefix + _BIND_KEY_UNSAFE.sub("_", base[len(prefix) :])
     if base not in bind_vars:
         return base
     i = 2

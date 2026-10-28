@@ -43,6 +43,9 @@ def db() -> Iterator[Any]:
                 {"_key": "slash", "name": "a\\"},
             ]
         )
+        database.create_collection("vertices").insert_many(
+            [{"_key": "u1", "type": "User", "name": "ulla"}, {"_key": "d1", "type": "Doc", "name": "doc"}]
+        )
         yield database
     finally:
         if sys_db.has_database(_DB):
@@ -91,3 +94,15 @@ def test_a_backtick_quoted_parameter_binds(db: Any) -> None:
     assert _run(db, "MATCH (n:User) WHERE n.name = $`who` RETURN n.name AS x", {"who": "bob"}) == [
         {"x": "bob"}
     ]
+
+
+def test_a_quoted_variable_names_its_bind_parameters_safely(db: Any) -> None:
+    """Two pattern parts and a label predicate bind ``{var}TypeField`` and
+    ``{var}LabelField`` on LPG; a quoted variable made either ERR 1501."""
+    lpg = mapping_bundle_for("lpg")
+    for cypher, expected in [
+        ("MATCH (`a b`:User), (d:Doc) RETURN `a b`.name AS x, d.name AS y", [{"x": "ulla", "y": "doc"}]),
+        ("MATCH (`a b`:User) RETURN `a b`:Doc AS x", [{"x": False}]),
+    ]:
+        q = translate(cypher, mapping=lpg)
+        assert list(db.aql.execute(q.aql, bind_vars=q.bind_vars)) == expected, cypher
