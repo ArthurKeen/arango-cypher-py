@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
+from .naming import _affix_name
+
 _NULL_COUNTING = re.compile(r"(COUNT|COUNT_DISTINCT|SUM)\((.*)\)", re.DOTALL)
 
 
@@ -37,13 +39,13 @@ def lower_aggregate(aql: str, agg_expr: str, reserve: Callable[[str], str]) -> t
         return [f"{aql} = {expr}"], None
     fn, inner = m.group(1), m.group(2).strip()
     if fn == "COUNT":
-        nonnull = reserve(f"_{aql}_nonnull")
+        nonnull = reserve(_affix_name(aql, prefix="_", suffix="_nonnull"))
         return [f"{nonnull} = SUM(({inner}) == null ? 0 : 1)"], f"NOT_NULL({nonnull}, 0)"
     if fn == "SUM":
-        total = reserve(f"_{aql}_sum")
+        total = reserve(_affix_name(aql, prefix="_", suffix="_sum"))
         return [f"{total} = SUM({inner})"], f"NOT_NULL({total}, 0)"
-    distinct = reserve(f"_{aql}_distinct")
-    has_null = reserve(f"_{aql}_has_null")
+    distinct = reserve(_affix_name(aql, prefix="_", suffix="_distinct"))
+    has_null = reserve(_affix_name(aql, prefix="_", suffix="_has_null"))
     return (
         [f"{distinct} = COUNT_DISTINCT({inner})", f"{has_null} = MAX(({inner}) == null ? 1 : 0)"],
         f"{distinct} - NOT_NULL({has_null}, 0)",

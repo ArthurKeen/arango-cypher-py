@@ -29,11 +29,13 @@ from .hints import (
 )
 from .literals import _aql_string_from_cypher, _aql_string_literal
 from .naming import (
+    _affix_name,
     _aql_bind_name,
     _aql_collection_ref,
     _declared_aql_vars,
     _pick_bind_key,
     _pick_fresh_var,
+    _quote_aql_reserved_names,
     _reject_unsafe_escaped_names,
     _rewrite_vars,
     _strip_label_backticks,
@@ -121,6 +123,7 @@ def _translate_v0_inner(
     pr = parse_cypher(cypher)
     tree = pr.tree
     _reject_unsafe_escaped_names(tree)
+    _quote_aql_reserved_names(tree)
 
     query_ctx = tree.oC_Statement().oC_Query()
 
@@ -1108,7 +1111,11 @@ def _translate_match_body(
         if v_node.oC_Variable() is None:
             v_var = _anonymous_var(v_var, v_node, forbidden_vars)
         v_bound = v_node.oC_Variable() is not None and v_var in forbidden_vars
-        v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden_vars)
+        v_trav = (
+            v_var
+            if not v_bound
+            else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden_vars)
+        )
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
 
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
@@ -2197,7 +2204,11 @@ def _compile_match_multi_parts_from_parts(
                 v_node, default_var=f"v{idx + 1}_{hop_i + 1}"
             )
             v_bound = v_var in forbidden
-            v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden)
+            v_trav = (
+                v_var
+                if not v_bound
+                else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden)
+            )
 
             rel_default = "r" if rel_part_i == 0 else f"r{rel_part_i + 1}"
             rel_part_i += 1
@@ -2690,7 +2701,11 @@ def _compile_match_pipeline(
         # a FOR loop on the bound name — AQL rejects the duplicate variable
         # ("assigned multiple times").
         v_bound = v_var in forbidden
-        v_trav = v_var if not v_bound else _pick_fresh_var(f"{v_var}_m", forbidden_vars=forbidden)
+        v_trav = (
+            v_var
+            if not v_bound
+            else _pick_fresh_var(_affix_name(v_var, suffix="_m"), forbidden_vars=forbidden)
+        )
 
         v_prop_filters = _compile_node_pattern_properties(v_node, var=v_trav, bind_vars=bind_vars)
         rel_type, rel_var, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="r")
@@ -2999,7 +3014,7 @@ def _aggregate_clause(
         if post is not None:
             post_lets.append((aql, post))
     for _key, aql, spec in compiled_collects:
-        temp = reserve(f"_{aql}_grp")
+        temp = reserve(_affix_name(aql, prefix="_", suffix="_grp"))
         fn = "UNIQUE" if spec.get("distinct") else "PUSH"
         pieces.append(f"{temp} = {fn}({spec['inner']})")
         post_lets.append((aql, _collect_post_expr(temp, spec)))
@@ -3025,7 +3040,9 @@ def _aggregate_from_collected_rows(agg_expr: str, rows_var: str, field: str | No
     return f"{fn}({rows_var}[*].{field})"
 
 
-_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# A plain variable, or a backtick-quoted one (```a b```, or a reserved word such
+# as ```like``` quoted by ``_quote_aql_reserved_names``).
+_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|`[^`]+`")
 
 
 def _apply_with(
@@ -3085,9 +3102,9 @@ def _apply_with(
         if cypher_var not in forbidden_vars:
             return cypher_var
         i = 1
-        while f"{cypher_var}_{i}" in forbidden_vars:
+        while _affix_name(cypher_var, suffix=f"_{i}") in forbidden_vars:
             i += 1
-        return f"{cypher_var}_{i}"
+        return _affix_name(cypher_var, suffix=f"_{i}")
 
     for it in items:
         expr_ctx = it.oC_Expression()
@@ -3175,7 +3192,7 @@ def _apply_with(
         for cypher_var, aql_var, agg_expr in compiled_agg:
             field: str | None = None
             if agg_expr != "COUNT(1)":
-                field = f"_{aql_var}_input"
+                field = _affix_name(aql_var, prefix="_", suffix="_input")
                 inner = agg_expr[agg_expr.find("(") + 1 : -1]
                 projection_parts.append(f"{field}: {inner}")
             aggregate_fields.append((cypher_var, aql_var, field))
@@ -3492,7 +3509,7 @@ def _append_return(
             # variable's name never reaches the result — rename on collision.
             declared = _declared_aql_vars(lines)
             if col_var in declared:
-                col_var = _pick_fresh_var(f"{col_var}_distinct", forbidden_vars=declared)
+                col_var = _pick_fresh_var(_affix_name(col_var, suffix="_distinct"), forbidden_vars=declared)
             lines.append(f"  COLLECT {col_var} = {expr}")
             if order_ctx is not None:
                 lines.append(f"  SORT {col_var}")
@@ -3569,7 +3586,7 @@ def _append_return_aggregation(
         name = preferred
         i = 1
         while name in live_names:
-            name = f"{preferred}_g{i}"
+            name = _affix_name(preferred, suffix=f"_g{i}")
             i += 1
         live_names.add(name)
         return name
@@ -3694,9 +3711,9 @@ def _unique_projection_key(key: str, expr: str, used: set[str]) -> str:
             key = f"{m.group(1)}_{m.group(2)}"
     if key in used:
         i = 2
-        while f"{key}_{i}" in used:
+        while _affix_name(key, suffix=f"_{i}") in used:
             i += 1
-        key = f"{key}_{i}"
+        key = _affix_name(key, suffix=f"_{i}")
     used.add(key)
     return key
 

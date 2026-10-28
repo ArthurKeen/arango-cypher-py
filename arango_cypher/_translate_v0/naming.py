@@ -11,14 +11,26 @@ from .._antlr.CypherParser import CypherParser
 from .bind_names import _BIND_NAME_RE
 
 
+def _affix_name(name: str, *, prefix: str = "", suffix: str = "") -> str:
+    """Build an identifier from *name*, inside its backticks when it has them.
+
+    A backtick-quoted name (```a b```, or a reserved word quoted by
+    ``_quote_aql_reserved_names``) composed naively gives ``_`a b`_distinct``,
+    which AQL cannot parse; this gives ```_a b_distinct```.
+    """
+    if len(name) >= 2 and name[0] == "`" and name[-1] == "`":
+        return f"`{prefix}{name[1:-1]}{suffix}`"
+    return f"{prefix}{name}{suffix}"
+
+
 def _pick_fresh_var(name: str, *, forbidden_vars: set[str]) -> str:
     if name not in forbidden_vars:
         forbidden_vars.add(name)
         return name
     i = 1
-    while f"{name}_{i}" in forbidden_vars:
+    while _affix_name(name, suffix=f"_{i}") in forbidden_vars:
         i += 1
-    out = f"{name}_{i}"
+    out = _affix_name(name, suffix=f"_{i}")
     forbidden_vars.add(out)
     return out
 
@@ -93,6 +105,46 @@ def _strip_label_backticks(name: str) -> str:
 _SHOWN_NAME_CHARS = 80
 
 
+#: Words AQL reserves (ArangoDB 3.11, any case). Spelled bare as a variable,
+#: an attribute after a dot or an object key, each is ERR 1501; quoted in
+#: backticks each is a plain name. AQL's contextual keywords (KEEP, PRUNE,
+#: SEARCH, OPTIONS, COUNT, NEW, OLD, ...) are valid names and not listed.
+_AQL_RESERVED = frozenset(
+    {
+        "aggregate", "all", "all_shortest_paths", "and", "any", "asc", "collect", "desc",
+        "distinct", "false", "filter", "for", "graph", "in", "inbound", "insert", "into",
+        "k_paths", "k_shortest_paths", "let", "like", "limit", "none", "not", "null", "or",
+        "outbound", "remove", "replace", "return", "shortest_path", "sort", "true", "update",
+        "upsert", "window", "with",
+    }
+)  # fmt: skip
+
+
+def _quote_aql_reserved_names(tree: Any) -> None:
+    """Backtick-quote every variable and property key AQL reserves.
+
+    Names reach the AQL text verbatim at many sites, so a Cypher variable
+    called ``like`` (LDBC BI6) emitted ``FOR person3, like IN ...``, an
+    ERR 1501 syntax error, and so did ``n.limit`` or ``{in: 1}``. Rewriting the
+    token once, here, makes every site emit ```like```, which AQL reads as the
+    plain name. Labels and relationship types are looked up in the mapping
+    and bound as parameters, so they are left alone.
+    """
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (CypherParser.OC_VariableContext, CypherParser.OC_PropertyKeyNameContext)):
+            leaf = node
+            while getattr(leaf, "children", None) and len(leaf.children) == 1:
+                leaf = leaf.children[0]
+            symbol = getattr(leaf, "symbol", None)
+            text = symbol.text if symbol is not None else None
+            if text and not text.startswith("`") and text.lower() in _AQL_RESERVED:
+                symbol.text = f"`{text}`"
+            continue
+        stack.extend(getattr(node, "children", None) or [])
+
+
 def _reject_unsafe_escaped_names(tree: Any) -> None:
     """Refuse backtick-quoted Cypher names that AQL would read differently.
 
@@ -145,5 +197,7 @@ def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
     if not text or not var_env:
         return text
     keys = sorted(var_env.keys(), key=len, reverse=True)
-    pattern = re.compile(r"\b(?:" + "|".join(re.escape(k) for k in keys) + r")\b")
+    # A key is a whole name: not part of a longer word, a quoted name or a
+    # property access (``x.v`` keeps its property ``v``).
+    pattern = re.compile(r"(?<![\w`.])(?:" + "|".join(re.escape(k) for k in keys) + r")(?![\w`])")
     return pattern.sub(lambda m: var_env[m.group(0)], text)
