@@ -650,6 +650,18 @@ property and whole-document forms); `DELETE` / `DETACH DELETE`; `REMOVE`
 (including identity aliases such as `WITH p AS x`, and relationship variables
 from traversals).
 
+A query whose only updating clauses are `DELETE` / `DETACH DELETE` reads
+before it writes. Its reading clauses (any `MATCH`, `OPTIONAL MATCH` and
+`UNWIND`) compile through the read translator into a list of matched rows;
+the ids of the deleted nodes and relationships are collected from it
+(nulls of an unmatched `OPTIONAL MATCH` dropped, a node matched on several
+rows deleted once), and for `DETACH DELETE` so are the ids of every edge
+touching a deleted node; then each collection is written by one `REMOVE`
+over the ids that live in it: edges first, then nodes, including every
+member collection of a supertype. A `RETURN` reads the matched rows. AQL
+forbids reading a collection after writing it (ERR 1579), which deleting
+inside the matching loop did as soon as a pattern matched more than one row.
+
 **How SET and REMOVE are written** (`arango_cypher/_translate_v0/property_writes.py`).
 A statement's `SET` and `REMOVE` items are gathered per variable, in query
 order, and each variable gets one write, because a second write to a collection
@@ -745,9 +757,10 @@ arango-query-core ≥ 0.2.5 resolves the hierarchy
     and comments).
   - A member mapped `LABEL` (a type-discriminated shared collection) adds its
     type filter. A member of any other style is refused (`INVALID_MAPPING`).
-  - SET, REMOVE and DELETE on a variable matched by a `UNION` supertype are
-    refused (`UNSUPPORTED`), because a write names a single collection. Other
-    variables in the same match can still be written.
+  - SET and REMOVE on a variable matched by a `UNION` supertype are refused
+    (`UNSUPPORTED`), because an UPDATE names a single collection. DELETE
+    removes from every member collection. Other variables in the same match
+    can still be written.
 - **Extra labels.** A supertype label that the primary label implies adds no
   filter (`(p:Post:Message)`). One it does not imply is tested, under both
   styles. That includes a `COLLECTION` primary, so `(x:Person:Message)` matches

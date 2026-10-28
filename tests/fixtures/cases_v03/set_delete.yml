@@ -55,13 +55,13 @@
     - "REMOVE"
 
 - id: detach_delete
-  description: "DETACH DELETE removes incident edges before vertex"
+  description: "DETACH DELETE collects the incident edges, then removes them before the vertex"
   cypher: >
     MATCH (n:User {name: "Alice"})
     DETACH DELETE n
   mapping_fixture: pg
   expect_aql_contains:
-    - "FOR _de"
-    - "ANY n"
-    - "REMOVE _de"
-    - "REMOVE n IN @@collection"
+    - "LET _matched = ("
+    - "FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n"
+    - "REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteEdges"
+    - "REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes"

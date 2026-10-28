@@ -120,13 +120,18 @@ class TestTranslation:
         [
             "MATCH (a:User)-[r:FOLLOWS]->(b:User) SET r.w = 1",
             "MATCH (a:User)-[r:FOLLOWS]->(b:User) REMOVE r.w",
-            "MATCH (a:User)-[r:FOLLOWS]->(b:User) DELETE r",
         ],
     )
     def test_a_relationship_writes_its_edge_collection(self, cypher: str) -> None:
         t = translate(cypher, mapping=mapping_bundle_for("pg"))
         assert " r " in t.aql and "IN @@edgeCollection" in t.aql.splitlines()[-1]
         assert t.bind_vars["@edgeCollection"] == "follows"
+
+    def test_deleting_a_relationship_removes_from_its_edge_collection(self) -> None:
+        t = translate("MATCH (a:User)-[r:FOLLOWS]->(b:User) DELETE r", mapping=mapping_bundle_for("pg"))
+        last = t.aql.splitlines()[-1]
+        assert last.strip().startswith("FOR _id IN _deleted_edges")
+        assert t.bind_vars["@" + last.rsplit("IN @@", 1)[1].strip()] == "follows"
 
     def test_an_end_node_writes_its_own_collection(self) -> None:
         t = translate(
@@ -148,7 +153,6 @@ class TestTranslation:
             ("MATCH (n:User) REMOVE n.a.b", "nested property"),
             ("MATCH (n:User) SET n:Admin", "label"),
             ("MATCH (a:User)-[r:FOLLOWS*1..2]->(b) SET r.w = 1", "variable-length relationship"),
-            ("MATCH (n:User) OPTIONAL MATCH (n)-[r:FOLLOWS]->() DELETE r", "more than one reading clause"),
         ],
     )
     def test_forms_that_used_to_write_the_wrong_thing_are_refused(self, cypher: str, message: str) -> None:

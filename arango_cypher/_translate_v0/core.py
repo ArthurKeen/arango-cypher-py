@@ -34,6 +34,7 @@ from .calls import (
     _translate_standalone_in_query_call,
 )
 from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
+from .deletes import translate_delete_query
 from .formatting import _guard_varlength_edge_types, _prepend_with_collections, _reindent_aql
 from .hints import (
     _build_collection_index_hint,
@@ -252,6 +253,14 @@ def _translate_single_query(
                 create_clauses=create_clauses,
                 set_clauses=set_clauses,
                 remove_clauses=remove_clauses,
+                resolver=resolver,
+                bind_vars=bind_vars,
+            )
+
+        if delete_clauses and not set_clauses and not remove_clauses:
+            return translate_delete_query(
+                spq,
+                delete_clauses=delete_clauses,
                 resolver=resolver,
                 bind_vars=bind_vars,
             )

@@ -303,13 +303,13 @@ class TestUnlabeledMutations:
 
     def test_unlabeled_delete_with_where(self, naked):
         out = translate("MATCH (n) WHERE n.age < 18 DELETE n", mapping=naked)
-        assert "FILTER" in out.aql
-        assert "REMOVE n IN @@collection" in out.aql
+        assert "FILTER (n.age != null AND n.age < 18)" in out.aql
+        assert "REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes" in out.aql
 
     def test_unlabeled_detach_delete(self, naked):
         out = translate("MATCH (n) DETACH DELETE n", mapping=naked)
-        assert "ANY n" in out.aql  # incident edges removed first
-        assert "REMOVE n IN @@collection" in out.aql
+        assert "ANY _n" in out.aql  # incident edges collected, then removed
+        assert out.aql.index("@@deleteEdges") < out.aql.index("IN @@deleteNodes")
 
     def test_unlabeled_remove_property(self, naked):
         out = translate("MATCH (n) REMOVE n.tmp", mapping=naked)

@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 18, out_of_subset 5, syntax_error 4, translatable 31
-# lpg: fails_closed 14, out_of_subset 5, syntax_error 4, translatable 35
+# pg: fails_closed 15, out_of_subset 5, syntax_error 4, translatable 34
+# lpg: fails_closed 12, out_of_subset 5, syntax_error 4, translatable 37
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -45,18 +45,18 @@ translatable	BI8@lpg
 translatable	BI8@pg	
 translatable	BI9@lpg	
 translatable	BI9@pg	
-fails_closed	DEL1@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
-fails_closed	DEL1@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+translatable	DEL1@lpg	
+translatable	DEL1@pg	
 translatable	DEL2@lpg	
 translatable	DEL2@pg	
 translatable	DEL3@lpg	
 translatable	DEL3@pg	
-fails_closed	DEL4@lpg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
-fails_closed	DEL4@pg	UNSUPPORTED: SET/DELETE/REMOVE after more than one reading clause is not supported: only the first MATCH would be applied, writing rows the…
+translatable	DEL4@lpg	
+translatable	DEL4@pg	
 translatable	DEL5@lpg	
 translatable	DEL5@pg	
 translatable	DEL6@lpg	
-fails_closed	DEL6@pg	UNSUPPORTED: DELETE on 'message' is not supported: it is matched as the supertype 'Message', whose members live in several collections
+translatable	DEL6@pg	
 translatable	DEL7@lpg	
 translatable	DEL7@pg	
 translatable	DEL8@lpg	

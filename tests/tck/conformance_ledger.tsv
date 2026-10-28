@@ -141,14 +141,14 @@ translatable	clauses/delete/Delete1/[6] Detach delete on null node
 translatable	clauses/delete/Delete1/[7] Failing when deleting connected nodes
 correct_rejection	clauses/delete/Delete1/[8] Failing when deleting a label
 translatable	clauses/delete/Delete2/[1] Delete relationships
-translate_fail	clauses/delete/Delete2/[2] Delete optionally matched relationship
+translatable	clauses/delete/Delete2/[2] Delete optionally matched relationship
 translatable	clauses/delete/Delete2/[3] Delete relationship with bidirectional matching
 translatable	clauses/delete/Delete2/[4] Ignore null when deleting relationship
 correct_rejection	clauses/delete/Delete2/[5] Failing when deleting a relationship type
 translate_fail	clauses/delete/Delete3/[1] Detach deleting paths
 translate_fail	clauses/delete/Delete3/[2] Delete on null path
-translate_fail	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
-translate_fail	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
+translatable	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
+translatable	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
 translate_fail	clauses/delete/Delete4/[3] Create and delete in same query
 translate_fail	clauses/delete/Delete5/[1] Delete node from a list
 translate_fail	clauses/delete/Delete5/[2] Delete relationship from a list
