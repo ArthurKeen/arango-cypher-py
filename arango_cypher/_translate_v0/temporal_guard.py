@@ -14,6 +14,8 @@ declarations translates exactly as before.
 
 from __future__ import annotations
 
+import re
+
 from arango_query_core import CoreError, MappingResolver
 
 #: Mapping property types that hold Cypher temporal values.
@@ -98,5 +100,32 @@ def reject_temporal_accessor(keys: list[str], resolver: MappingResolver | None) 
                 f"declares '{prop}' as {declared}, and copying the accessor to AQL would read an "
                 f"attribute of the stored value and return null. Temporal functions are planned "
                 f"(docs/ldbc_benchmark_plan.md WP-41).",
+                code="UNSUPPORTED",
+            )
+
+
+_PROPERTY_ACCESS = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def reject_temporal_conversion(function: str, compiled_arg: str, resolver: MappingResolver | None) -> None:
+    """Raise ``UNSUPPORTED`` for ``date(n.p)`` / ``localdatetime(n.p)`` over a
+    property the mapping declares temporal.
+
+    ``date(x)`` lowers to ``DATE_ISO8601(x)``, which keeps the time of day, so
+    ``date(a.creationDate) = date($d)`` compares whole timestamps and matches
+    almost nothing (LDBC BI16). Converting a literal or a parameter is
+    unaffected.
+    """
+    if resolver is None:
+        return
+    temporal = temporal_properties(resolver)
+    for prop in _PROPERTY_ACCESS.findall(compiled_arg):
+        declared = temporal.get(prop)
+        if declared is not None:
+            raise CoreError(
+                f"{function}() of property '{prop}' is not supported yet: the mapping declares "
+                f"'{prop}' as {declared}, and its stored encoding is not known, so the converted "
+                f"value would not truncate or compare as Cypher's does. Temporal functions are "
+                f"planned (docs/ldbc_benchmark_plan.md WP-41).",
                 code="UNSUPPORTED",
             )

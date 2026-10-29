@@ -82,7 +82,7 @@ from .state import (
     _HopMeta,
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
-from .temporal_guard import reject_temporal_accessor
+from .temporal_guard import reject_temporal_accessor, reject_temporal_conversion
 from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
@@ -6074,10 +6074,12 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "date":
             if not compiled_args:
                 return "DATE_ISO8601(DATE_NOW())"
+            reject_temporal_conversion("date", compiled_args[0], _active_resolver.get())
             return f"DATE_ISO8601({compiled_args[0]})"
         if fn_norm == "localdatetime":
             if not compiled_args:
                 return "DATE_ISO8601(DATE_NOW())"
+            reject_temporal_conversion("localdatetime", compiled_args[0], _active_resolver.get())
             return f"DATE_ISO8601({compiled_args[0]})"
         if fn_norm == "e":
             return "2.718281828459045"

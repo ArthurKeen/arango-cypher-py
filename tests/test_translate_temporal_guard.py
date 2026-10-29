@@ -76,3 +76,17 @@ def test_guard_without_resolver_or_chain_is_a_no_op():
 
 def test_accessor_list_covers_the_ldbc_uses():
     assert {"year", "month", "day", "epochMillis"} <= TEMPORAL_ACCESSORS
+
+
+def test_date_of_a_temporal_property_is_refused_until_temporal_lowering() -> None:
+    mapping = mapping_bundle_for("ldbc_pg")
+    with pytest.raises(CoreError, match="date\\(\\) of property 'creationDate'") as err:
+        translate("MATCH (m:Post) WHERE date(m.creationDate) = date($d) RETURN m.id", mapping=mapping)
+    assert err.value.code == "UNSUPPORTED"
+    # A literal, a parameter or a property the mapping does not declare temporal is unaffected.
+    assert "DATE_ISO8601" in translate("RETURN date('2020-01-02') AS d", mapping=mapping).aql
+    assert "DATE_ISO8601(@d)" in translate("RETURN date($d) AS d", mapping=mapping).aql
+    assert (
+        "DATE_ISO8601(m.content)"
+        in translate("MATCH (m:Post) RETURN date(m.content) AS d", mapping=mapping).aql
+    )
