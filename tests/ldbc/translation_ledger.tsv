@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 3, out_of_subset 5, translatable 50
-# lpg: fails_closed 3, out_of_subset 5, translatable 50
+# pg: fails_closed 1, out_of_subset 5, translatable 52
+# lpg: fails_closed 1, out_of_subset 5, translatable 52
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -19,8 +19,8 @@ out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 translatable	BI16@lpg	
 translatable	BI16@pg	
-fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
-fails_closed	BI17@pg	UNSUPPORTED: Unsupported function in v0: duration
+translatable	BI17@lpg	
+translatable	BI17@pg	
 translatable	BI18@lpg	
 translatable	BI18@pg	
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
@@ -29,8 +29,8 @@ translatable	BI1@lpg
 translatable	BI1@pg	
 out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
-fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
-fails_closed	BI2@pg	UNSUPPORTED: Unsupported function in v0: duration
+translatable	BI2@lpg	
+translatable	BI2@pg	
 translatable	BI3@lpg	
 translatable	BI3@pg	
 translatable	BI4@lpg	

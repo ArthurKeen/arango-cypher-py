@@ -787,9 +787,10 @@ represent — tracked as future work.
 ### 8.4 Not yet supported
 
 Generic Neo4j `CALL`
-procedures; `duration()` and temporal arithmetic, `time()`, time zones and
-selecting from another temporal value (`date({date: d, day: 3})`) (WP-41
-continues); `allShortestPaths()` and a
+procedures; durations held in variables, adding durations, `duration.between()`,
+`time()` and time-of-day values (`a.time + duration(…)` is null), time zones,
+and selecting from another temporal value (`date({date: d, day: 3})`);
+`allShortestPaths()` and a
 `shortestPath()` whose endpoints are not bound earlier in the query; and
 multi-part write pipelines other than CREATE (mid-pipeline `DELETE`/`SET`
 before a following `WITH`), and a write that reads what the same query wrote.
@@ -853,13 +854,34 @@ all of them:
   DATE_YEAR(@p)`, LDBC BI13). Anywhere else `.year` stays attribute access
   (`m.year` of a movie). Components are UTC; a null value gives null; an
   accessor it cannot lower (`.timezone`) is refused (`UNSUPPORTED`).
-- A mapping that types the property as a number or string (as the analyzer
-  does for epoch-ms or ISO data) gets attribute access: `.year` of it is the
-  attribute.
+- `duration({years, quarters, months, weeks, days, hours, minutes, seconds,
+  milliseconds, microseconds, nanoseconds})` is an ISO-8601 duration
+  (`P14M`, `PT129600S`). `t ± duration({…})` and `duration({…}) + t` add the
+  months first, the day clamped to the target month as Neo4j does
+  (31 January + 1 month is 29 February), then the rest as milliseconds, exact
+  in UTC (LDBC BI2, BI17); a null value or field gives null. A duration held in
+  a variable, `duration('P1D')`, adding durations and arithmetic on a temporal
+  value without a duration (`datetime() - datetime()`) are refused.
+- A comparison between a temporal value the query computes and anything else
+  is made in epoch milliseconds (`DATE_TIMESTAMP` on both sides), since a
+  stored ISO string with an offset or an epoch number does not compare with it
+  as text. A property whose every declaration says `"encoding": "epoch_ms"`
+  (`PropertyInfo.encoding`, arango-query-core ≥ 0.2.6) keeps its plain form,
+  which an index on it serves. A comparison of a property with a parameter is
+  unchanged: the parameter is passed in the property's encoding.
+- An accessor on a property the mapping types as a string, number or boolean
+  is refused: such a value has no `.year`, and an epoch-ms timestamp typed by
+  its storage would read a missing attribute (null on every row).
 
 Copied to AQL as attribute access, `n.creationDate.year` read a stored
 timestamp's attribute and returned `null`, which is why accessors were refused
 until this lowering.
+
+**A pattern whose last node is bound is read from that node.** In a MATCH
+after WITH or an OPTIONAL MATCH, `(m:Message)-[:HAS_TAG]->(tag)` with `tag`
+already bound is compiled reversed (`… INBOUND tag …`), each relationship's
+direction flipped, instead of scanning every message and keeping those that
+reach `tag` (LDBC BI2 ran past 30 s at the smallest scale).
 
 **Supertype scans keep their place.** A scan of a `UNION` supertype after
 earlier clauses reads a variable bound before it (`FILTER x == x` in each

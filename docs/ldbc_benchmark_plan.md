@@ -839,8 +839,15 @@ beyond the fail-closed guard.
   closed (§3.2 item 2). BI1, BI13, BI16 and IC10 match on both layouts (BI1 on
   PG also needed a later supertype scan to stay below the variables bound
   before it). arango-query-core 0.2.6 adds `PropertyInfo.encoding`
-  (`epoch_ms` / `iso8601`). Second half: `duration()` arithmetic and temporal
-  comparisons (BI2, BI17).
+  (`epoch_ms` / `iso8601`).
+- **Status (2026-10-29), second half:** `duration({…})` values and
+  `t ± duration({…})`; comparisons between computed and stored temporal values
+  in epoch milliseconds, index-friendly on an `epoch_ms` property; the
+  execution harness declares each data set's encoding
+  (`tests/ldbc/mappings.with_encoding`). BI17 matches on both layouts. BI2 also
+  needed its OPTIONAL MATCH read from the bound `tag`
+  (`_translate_v0/pattern_reversal.py`): it scanned every message per tag and
+  ran past 30 s. WP-41 is complete for the LDBC queries.
 
 #### WP-42: `CALL { … }` subqueries (M) — implemented 2026-10-29
 - **Scope:**

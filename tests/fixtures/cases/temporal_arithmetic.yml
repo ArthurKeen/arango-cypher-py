@@ -1,0 +1,90 @@
+version: 1
+cases:
+- id: C877
+  name: a stored datetime in a window after a parameter compares in epoch milliseconds (LDBC BI2)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (m:Message) WHERE $date <= m.creationDate AND m.creationDate < $date + duration({days: 100}) RETURN
+    count(m) AS n'
+  params:
+    date: '2012-06-01T00:00:00.000+00:00'
+  expected:
+    aql: "FOR m IN UNION((FOR m IN @@mMember RETURN m), (FOR m IN @@mMember2 RETURN m))\n  FILTER ((@date != null\
+      \ AND m.creationDate != null AND @date <= m.creationDate) AND (DATE_TIMESTAMP(m.creationDate) != null AND\
+      \ DATE_TIMESTAMP(((@date == null) ? null : DATE_ADD(@date, ((100) * 86400000), \"millisecond\"))) != null\
+      \ AND DATE_TIMESTAMP(m.creationDate) < DATE_TIMESTAMP(((@date == null) ? null : DATE_ADD(@date, ((100) * 86400000),\
+      \ \"millisecond\")))))\n  COLLECT AGGREGATE _n_nonnull = SUM((m) == null ? 0 : 1)\n  LET n = NOT_NULL(_n_nonnull,\
+      \ 0)\n  RETURN n"
+    bind_vars:
+      date: '2012-06-01T00:00:00.000+00:00'
+      '@mMember': post
+      '@mMember2': comment
+- id: C878
+  name: a property plus a duration from a parameter (LDBC BI17)
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: 'MATCH (a:Post)<-[:REPLY_OF]-(b:Comment) WHERE b.creationDate > a.creationDate + duration({hours: $delta})
+    RETURN b.id AS id'
+  params:
+    delta: 4
+  expected:
+    aql: "WITH @@uCollection\nFOR a IN @@uCollection\n  FILTER a[@uTypeField] == @uTypeValue\n  FOR b, r IN 1..1\
+      \ INBOUND a @@edgeCollection OPTIONS {indexHint: {\"edges\": {\"inbound\": {\"base\": \"idx_edges_to_type\"\
+      }}}}\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    FILTER (DATE_TIMESTAMP(b.creationDate)\
+      \ != null AND DATE_TIMESTAMP(((a.creationDate == null OR @delta == null) ? null : DATE_ADD(a.creationDate,\
+      \ ((@delta) * 3600000), \"millisecond\"))) != null AND DATE_TIMESTAMP(b.creationDate) > DATE_TIMESTAMP(((a.creationDate\
+      \ == null OR @delta == null) ? null : DATE_ADD(a.creationDate, ((@delta) * 3600000), \"millisecond\"))))\n\
+      \    RETURN {id: b.id}"
+    bind_vars:
+      delta: 4
+      '@uCollection': nodes
+      uTypeField: type
+      uTypeValue: Post
+      '@edgeCollection': edges
+      vTypeField: type
+      vTypeValue: Comment
+      relTypeField: type
+      relTypeValue: REPLY_OF
+- id: C879
+  name: a duration value and months clamped to the target month
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'RETURN duration({years: 1, days: 2}) AS d, datetime(''2012-01-31T10:00:00Z'') + duration({months: 1})
+    AS t'
+  expected:
+    aql: 'RETURN {d: CONCAT("P", ((1) * 12), "M", "T", (((2) * 86400000) / 1000), "S"), t: ((DATE_ISO8601(''2012-01-31T10:00:00Z'')
+      == null) ? null : DATE_ISO8601(DATE_YEAR(DATE_ADD(DATE_ISO8601(DATE_YEAR(DATE_ISO8601(''2012-01-31T10:00:00Z'')),
+      DATE_MONTH(DATE_ISO8601(''2012-01-31T10:00:00Z'')), 1), ((1)), "month")), DATE_MONTH(DATE_ADD(DATE_ISO8601(DATE_YEAR(DATE_ISO8601(''2012-01-31T10:00:00Z'')),
+      DATE_MONTH(DATE_ISO8601(''2012-01-31T10:00:00Z'')), 1), ((1)), "month")), MIN([DATE_DAY(DATE_ISO8601(''2012-01-31T10:00:00Z'')),
+      DATE_DAYS_IN_MONTH(DATE_ADD(DATE_ISO8601(DATE_YEAR(DATE_ISO8601(''2012-01-31T10:00:00Z'')), DATE_MONTH(DATE_ISO8601(''2012-01-31T10:00:00Z'')),
+      1), ((1)), "month"))]), DATE_HOUR(DATE_ISO8601(''2012-01-31T10:00:00Z'')), DATE_MINUTE(DATE_ISO8601(''2012-01-31T10:00:00Z'')),
+      DATE_SECOND(DATE_ISO8601(''2012-01-31T10:00:00Z'')), DATE_MILLISECOND(DATE_ISO8601(''2012-01-31T10:00:00Z''))))}'
+    bind_vars: {}
+- id: C880
+  name: an OPTIONAL MATCH whose last node is bound is read from that node (LDBC BI2)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (tag:Tag) OPTIONAL MATCH (m:Message)-[:HAS_TAG]->(tag) RETURN tag.name AS tag, count(m) AS n
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5,\
+      \ @@withCollection6, @@withCollection7, @@collection, @@withCollection8, @@withCollection9\nFOR tag IN @@collection\n\
+      \  LET _opt_rows = (\n  FOR m, r IN 1..1 INBOUND tag @@edgeCollection\n    FILTER PARSE_IDENTIFIER(m).collection\
+      \ IN @mMembers\n    RETURN {m: m}\n    )\n    FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n\
+      \      LET m = _opt_row.m\n      COLLECT tag_g1 = tag.name AGGREGATE _n_nonnull = SUM((m) == null ? 0 : 1)\n\
+      \      LET n = NOT_NULL(_n_nonnull, 0)\n      RETURN {tag: tag_g1, n: n}"
+    bind_vars:
+      '@collection': tag
+      '@edgeCollection': has_tag
+      mMembers:
+      - post
+      - comment
+      '@withCollection0': city
+      '@withCollection1': comment
+      '@withCollection2': company
+      '@withCollection3': continent
+      '@withCollection4': country
+      '@withCollection5': forum
+      '@withCollection6': person
+      '@withCollection7': post
+      '@withCollection8': tag_class
+      '@withCollection9': university

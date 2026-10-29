@@ -94,7 +94,16 @@ from .subqueries import (
     translate_single_part_with_calls,
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
-from .temporal import bind_with, compile_property_chain, compile_temporal_function
+from .temporal import (
+    bind_with,
+    comparison_operands,
+    compile_duration,
+    compile_property_chain,
+    compile_temporal_arithmetic,
+    compile_temporal_function,
+    is_duration,
+    refuse_temporal_operands,
+)
 from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
@@ -145,7 +154,7 @@ def translate_v0(
     path_token = _active_path_vars.set(path_vars)
     user_vars_token = _active_user_vars.set([])
     user_params_token = _active_user_params.set(frozenset(params or {}))
-    temporal_token = _temporal_vars.set(frozenset())
+    temporal_token = _temporal_vars.set({})
 
     try:
         result = _translate_v0_inner(
@@ -5800,11 +5809,15 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         conjuncts = []
         for i, p in enumerate(partials):
             op = p.getChild(0).getText()
+            # A computed temporal value and a stored one compare as epoch milliseconds.
+            left, right = comparison_operands(
+                operand_ctxs[i], operands[i], operand_ctxs[i + 1], operands[i + 1]
+            )
             compared = None
-            if op in ("<", "<=", ">", ">="):
+            if op in ("<", "<=", ">", ">=") and (left, right) == (operands[i], operands[i + 1]):
                 # A known string orders by code point, as in ORDER BY.
-                compared = _code_point_operands(operands[i], types[i], operands[i + 1], types[i + 1])
-            conjuncts.append(_compile_comparison(operands[i], op, operands[i + 1], mode, compared=compared))
+                compared = _code_point_operands(left, types[i], right, types[i + 1])
+            conjuncts.append(_compile_comparison(left, op, right, mode, compared=compared))
         if len(conjuncts) == 1:
             return conjuncts[0]
         if mode is None:
@@ -5815,8 +5828,13 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         terms = ctx.oC_MultiplyDivideModuloExpression()
         if len(terms) == 1:
             return _compile_expression(terms[0], bind_vars)
-        types = [_static_type(t) for t in terms]
         ops = [_extract_interleaved_op(ctx, i, {"+", "-"}) for i in range(1, len(terms))]
+        if any(is_duration(t) for t in terms):
+            return compile_temporal_arithmetic(
+                list(terms), ops, compile_expr=lambda e: _compile_expression(e, bind_vars)
+            )
+        refuse_temporal_operands(list(terms))
+        types = [_static_type(t) for t in terms]
         if additive_chain_propagates_null(types, ops):
             return null_propagating(
                 lambda: raw_additive_chain([_compile_expression(t, bind_vars) for t in terms], types, ops)
@@ -6265,6 +6283,8 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             return f"[PARSE_IDENTIFIER({n_var}._id).collection]"
         if fn_norm == "timestamp":
             return "DATE_NOW()"
+        if fn_norm == "duration":
+            return compile_duration(list(args), compile_expr=lambda e: _compile_expression(e, bind_vars))
         if fn_norm in ("date", "datetime", "localdatetime"):
             return compile_temporal_function(
                 fn_norm, list(args), compiled_args, compile_expr=lambda e: _compile_expression(e, bind_vars)

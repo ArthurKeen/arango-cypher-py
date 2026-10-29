@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from arango_query_core import ExtensionPolicy, ExtensionRegistry, MappingResolver
@@ -39,8 +41,9 @@ _active_user_params: ContextVar[frozenset[str]] = ContextVar("_active_user_param
 #: so the caller can read its columns by name.
 _object_rows: ContextVar[bool] = ContextVar("_object_rows", default=False)
 
-#: Cypher variables a WITH bound to a temporal value (``temporal.bind_with``).
-_temporal_vars: ContextVar[frozenset[str]] = ContextVar("_temporal_vars", default=frozenset())
+#: Cypher variables a WITH bound to a temporal value or a duration, with which
+#: (``"computed"`` / ``"duration"``; ``temporal.bind_with``).
+_temporal_vars: ContextVar[Mapping[str, str]] = ContextVar("_temporal_vars", default=MappingProxyType({}))
 
 # Ordered list of the *user-named* variables currently in scope, used to expand
 # ``RETURN *`` / ``WITH *`` (auto-generated traversal / anonymous-node variables

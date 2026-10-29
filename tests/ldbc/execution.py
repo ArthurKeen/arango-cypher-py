@@ -34,7 +34,9 @@ from tests.helpers.result_equivalence import result_difference
 from tests.ldbc import oracle
 from tests.ldbc import params as P
 from tests.ldbc.corpus import LDBC_DIR, Operation, load
+from tests.ldbc.datasets import DATASETS
 from tests.ldbc.ledger import LAYOUTS, Cell, _detail, classify_error, load_ledger, write_cells
+from tests.ldbc.mappings import with_encoding
 from tests.ldbc.writes import arango_write_delta, delta_difference, dump_arango
 
 EXEC_LEDGER_PATH = LDBC_DIR / "execution_ledger.tsv"
@@ -76,7 +78,7 @@ def run_cell(
     if snapshot["sha256"] != op.sha256:
         return "crash", f"stale snapshot: recorded for {snapshot['sha256'][:12]}, query is {op.sha256[:12]}"
 
-    mapping = mapping_bundle_for(f"ldbc_{layout}")
+    mapping = with_encoding(mapping_bundle_for(f"ldbc_{layout}"), DATASETS[dataset_for(op)].encoding)
     for i, b in enumerate(snapshot["bindings"]):
         values = {k: P.to_arango(v) for k, v in b["binding"].items()}
         try:

@@ -2,8 +2,8 @@
 #   .venv/bin/python -m tests.ldbc.execution --write
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: matches_oracle. translates_wrong is a defect, not a state.
-# pg: fails_closed 3, matches_oracle 50, out_of_subset 5
-# lpg: fails_closed 3, matches_oracle 50, out_of_subset 5
+# pg: fails_closed 1, matches_oracle 52, out_of_subset 5
+# lpg: fails_closed 1, matches_oracle 52, out_of_subset 5
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 matches_oracle	BI11@lpg	3 binding(s)
@@ -18,8 +18,8 @@ out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dij
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 matches_oracle	BI16@lpg	3 binding(s)
 matches_oracle	BI16@pg	3 binding(s)
-fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
-fails_closed	BI17@pg	UNSUPPORTED: Unsupported function in v0: duration
+matches_oracle	BI17@lpg	1 binding(s)
+matches_oracle	BI17@pg	1 binding(s)
 matches_oracle	BI18@lpg	4 binding(s)
 matches_oracle	BI18@pg	4 binding(s)
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
@@ -28,8 +28,8 @@ matches_oracle	BI1@lpg	3 binding(s)
 matches_oracle	BI1@pg	3 binding(s)
 out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
-fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
-fails_closed	BI2@pg	UNSUPPORTED: Unsupported function in v0: duration
+matches_oracle	BI2@lpg	3 binding(s)
+matches_oracle	BI2@pg	3 binding(s)
 matches_oracle	BI3@lpg	4 binding(s)
 matches_oracle	BI3@pg	4 binding(s)
 matches_oracle	BI4@lpg	3 binding(s)

@@ -27,10 +27,14 @@ labels, which the resolver supports.
 from __future__ import annotations
 
 import argparse
+import copy
+import dataclasses
 import json
 import sys
 from pathlib import Path
 from typing import Any
+
+from arango_query_core import MappingBundle
 
 from tests.ldbc.loader import (
     LABELS_FIELD,
@@ -66,6 +70,26 @@ _PROP_TYPE = {
     "datetime": "datetime",
     "date": "date",
 }
+
+
+#: A data set's encoding → the mapping's ``encoding`` vocabulary.
+_ENCODING = {"epoch_ms": "epoch_ms", "iso": "iso8601"}
+
+
+def with_encoding(bundle: MappingBundle, encoding: str) -> MappingBundle:
+    """*bundle* with every date and datetime property declaring how the data
+    set stores it (``PropertyInfo.encoding``).
+
+    One fixture serves both data sets (Interactive is epoch-ms, BI is ISO), so
+    the encoding is added for the data set a query runs on.
+    """
+    physical = copy.deepcopy(bundle.physical_mapping)
+    for section in ("entities", "relationships"):
+        for spec in physical.get(section, {}).values():
+            for prop in (spec.get("properties") or {}).values():
+                if isinstance(prop, dict) and prop.get("type") in ("datetime", "date"):
+                    prop["encoding"] = _ENCODING[encoding]
+    return dataclasses.replace(bundle, physical_mapping=physical)
 
 
 def fixture_path(layout: Layout) -> Path:

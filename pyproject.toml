@@ -20,7 +20,7 @@ dependencies = [
   # co-development against the sibling checkout, `pip install -e
   # ../arango-query-core` first — pip skips index resolution when the
   # requirement is already satisfied.
-  "arango-query-core>=0.2.5,<0.3.0",
+  "arango-query-core>=0.2.6,<0.3.0",
   "python-arango>=8.1.1",
   # Imported directly by service/platform_auth.py to classify the decode
   # errors python-arango raises for a forwarded platform JWT; python-arango
