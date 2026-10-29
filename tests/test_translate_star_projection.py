@@ -66,7 +66,7 @@ class TestReturnStar:
 
     def test_star_with_order_by(self, pg):
         out = translate("MATCH (a:Person) RETURN * ORDER BY a.name", mapping=pg)
-        assert "SORT (a.name == null), TO_HEX(a.name)" in out.aql
+        assert "SORT (a.name == null), (IS_STRING(a.name) ? TO_HEX(a.name) : a.name)" in out.aql
         assert "{a: a}" in out.aql
 
     def test_star_with_aggregation_rejected(self, pg):

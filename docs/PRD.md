@@ -590,11 +590,13 @@ or `RETURN DISTINCT` keeps each value's first row in that order, so a
 following `LIMIT` keeps the top rows (AQL's `COLLECT` would re-sort them by
 value). `SKIP` and `LIMIT` count distinct rows (AQL applies a `LIMIT` before
 `RETURN DISTINCT`, so the distinct rows are read from a subquery). A string the
-query shows to be one (a string literal, a string function, a property the
-mapping declares `string`) sorts and range-compares (`<`, `<=`, `>`, `>=`) by
-code point, as in Cypher, through the hex of its UTF-8 bytes (`TO_HEX`):
-AQL's ICU collation ignores case at the first level and puts `é` beside `e`
-(LDBC BI2's tie-break by tag name). A value of unknown type keeps AQL's order
+query shows to be one (a string literal, a string function) sorts and
+range-compares (`<`, `<=`, `>`, `>=`) by code point, as in Cypher, through the
+hex of its UTF-8 bytes (`TO_HEX`): AQL's ICU collation ignores case at the
+first level and puts `é` beside `e` (LDBC BI2's tie-break by tag name). A
+property the mapping declares `string` does too, but only when its value is a
+string at run time (`IS_STRING(x) ? TO_HEX(x) : x`), since the declaration is
+not checked against the data. A value of unknown type keeps AQL's order
 in both, so sorting and comparing agree (TCK WithOrderBy1 [45]) and a range
 filter on it can still use an index. `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
@@ -655,11 +657,14 @@ adds numbers, concatenates a string with a string or number (`'a' + 1` is
 lists, and otherwise adds an element to a list, null included (`[1] + null`
 is `[1, null]`). The operation is chosen at translation time when the operand
 types are known: literals, functions with a fixed result type (`count()`,
-`toString()`, …), arithmetic results, and properties whose type every
-mapping declaration of that name agrees on (`string`, `integer`, `number`,
-`boolean`, `array`). Otherwise `+` dispatches on the operand types at run
-time. Dividing two operands known to be integers truncates toward zero
-(`7 / 2` is 3); a property typed `number` divides as a float.
+`toString()`, …) and arithmetic results. Otherwise `+` dispatches on the
+operand types at run time. A type the mapping declares for a property does
+not choose the operation: it is not checked against the data, and the schema
+analyzer declares numeric properties `string`, so `n.age + 1` concatenated
+and `ORDER BY n.id` sorted as text when it did. Dividing two operands known
+to be integers truncates toward zero (`7 / 2` is 3); two properties declared
+`integer` truncate when both values are whole at run time, and otherwise
+divide as numbers.
 
 The conversion functions return null where AQL's conversions are total.
 `toInteger()` truncates toward zero (`toInteger(3.7)` is 3; AQL's

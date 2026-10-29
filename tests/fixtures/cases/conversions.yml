@@ -1,24 +1,23 @@
 version: 1
 cases:
 - id: C835
-  name: toInteger of a property typed number truncates toward zero
+  name: toInteger of a property truncates toward zero, checking the value's type at run time
   mapping_fixture: ldbc_pg
   extensions_enabled: false
   cypher: MATCH (m:Post) RETURN toInteger(m.length) AS n, toFloat(m.length) AS f
   expected:
-    aql: "FOR m IN @@collection\n  RETURN {n: ((m.length == null) ? null : ((m.length >= 0) ? FLOOR(m.length) :\
-      \ CEIL(m.length))), f: m.length}"
+    aql: "FOR m IN @@collection\n  RETURN {n: (IS_NUMBER(m.length) ? ((m.length >= 0) ? FLOOR(m.length) : CEIL(m.length)) : (IS_STRING(m.length) ? (REGEX_TEST(m.length, '^ *[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)? *$') ? ((TO_NUMBER(m.length) >= 0) ? FLOOR(TO_NUMBER(m.length)) : CEIL(TO_NUMBER(m.length))) : null) : (IS_BOOL(m.length) ? TO_NUMBER(m.length) : null))), f: (IS_NUMBER(m.length) ? m.length : (IS_STRING(m.length) ? (REGEX_TEST(m.length, '^ *[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)? *$') ? TO_NUMBER(m.length) : null) : null))}\n"
     bind_vars:
-      '@collection': post
+      "@collection": post
 - id: C836
-  name: toString keeps null; of a string property it is the property
+  name: toString keeps null
   mapping_fixture: ldbc_pg
   extensions_enabled: false
   cypher: MATCH (p:Person) RETURN toString(p.id) AS id, toString(p.firstName) AS name
   expected:
-    aql: "FOR p IN @@collection\n  RETURN {id: ((p.id == null) ? null : TO_STRING(p.id)), name: p.firstName}"
+    aql: "FOR p IN @@collection\n  RETURN {id: ((p.id == null) ? null : TO_STRING(p.id)), name: ((p.firstName == null) ? null : TO_STRING(p.firstName))}\n"
     bind_vars:
-      '@collection': person
+      "@collection": person
 - id: C837
   name: an untyped argument is converted by its type at run time
   mapping_fixture: pg
@@ -38,9 +37,6 @@ cases:
   extensions_enabled: false
   cypher: MATCH (m:Post) RETURN sum(toInteger(m.length)) AS total, count(DISTINCT toString(m.id)) AS ids
   expected:
-    aql: "FOR m IN @@collection\n  COLLECT AGGREGATE _total_sum = SUM(((m.length == null) ? null : ((m.length >=\
-      \ 0) ? FLOOR(m.length) : CEIL(m.length)))), _ids_distinct = COUNT_DISTINCT(((m.id == null) ? null : TO_STRING(m.id))),\
-      \ _ids_has_null = MAX((((m.id == null) ? null : TO_STRING(m.id))) == null ? 1 : 0)\n  LET total = NOT_NULL(_total_sum,\
-      \ 0)\n  LET ids = _ids_distinct - NOT_NULL(_ids_has_null, 0)\n  RETURN {total: total, ids: ids}"
+    aql: "FOR m IN @@collection\n  COLLECT AGGREGATE _total_sum = SUM((IS_NUMBER(m.length) ? ((m.length >= 0) ? FLOOR(m.length) : CEIL(m.length)) : (IS_STRING(m.length) ? (REGEX_TEST(m.length, '^ *[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)? *$') ? ((TO_NUMBER(m.length) >= 0) ? FLOOR(TO_NUMBER(m.length)) : CEIL(TO_NUMBER(m.length))) : null) : (IS_BOOL(m.length) ? TO_NUMBER(m.length) : null)))), _ids_distinct = COUNT_DISTINCT(((m.id == null) ? null : TO_STRING(m.id))), _ids_has_null = MAX((((m.id == null) ? null : TO_STRING(m.id))) == null ? 1 : 0)\n  LET total = NOT_NULL(_total_sum, 0)\n  LET ids = _ids_distinct - NOT_NULL(_ids_has_null, 0)\n  RETURN {total: total, ids: ids}\n"
     bind_vars:
-      '@collection': post
+      "@collection": post

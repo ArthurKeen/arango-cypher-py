@@ -31,10 +31,11 @@ class TestAggInnerScalarFns:
 
     def test_tointeger_in_sum(self, pg):
         out = translate("MATCH (m:Movie) RETURN sum(toInteger(m.released)) AS s", mapping=pg)
-        # toInteger() truncates; AQL's TO_NUMBER does not.
+        # toInteger() truncates; AQL's TO_NUMBER does not. The mapping's declared
+        # type is not trusted, so the value's type is checked at run time.
         assert (
-            "SUM(((m.released == null) ? null : ((m.released >= 0) ? FLOOR(m.released) : CEIL(m.released))))"
-            in (out.aql)
+            "SUM((IS_NUMBER(m.released) ? ((m.released >= 0) ? FLOOR(m.released) : CEIL(m.released))"
+            in out.aql
         )
 
     def test_lower_in_count_distinct(self, pg):
