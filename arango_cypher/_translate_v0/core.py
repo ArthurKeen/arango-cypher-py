@@ -16,6 +16,7 @@ from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
 from .aggregates import aggregate_variable, aggregate_variables, lower_aggregate, nested_aggregates
 from .arithmetic import (
+    STRING,
     _numeric_type,
     _static_type,
     additive_chain_propagates_null,
@@ -3564,35 +3565,72 @@ def _compile_order_by(
     *,
     var_env: dict[str, str] | None = None,
     aliases: dict[str, str] | None = None,
+    alias_types: dict[str, str | None] | None = None,
 ) -> str:
     """``SORT`` for an ORDER BY. A sort item that is exactly a projection
     alias in *aliases* sorts by that alias's expression, even where a
-    variable has the same name (``RETURN a.name AS a ORDER BY a``)."""
+    variable has the same name (``RETURN a.name AS a ORDER BY a``), and
+    *alias_types* gives that expression's static type."""
     items = order_ctx.oC_SortItem() or []
     if not items:
         raise CoreError("ORDER BY requires at least one sort item", code="UNSUPPORTED")
     parts: list[str] = []
     for it in items:
         text = it.oC_Expression().getText().strip()
+        static_type = _static_type(it.oC_Expression())
         if aliases and text in aliases:
             expr = aliases[text]
+            static_type = (alias_types or {}).get(text)
         else:
             expr = _compile_expression(it.oC_Expression(), bind_vars)
             if var_env:
                 expr = _rewrite_vars(expr, var_env)
         descending = it.DESC() is not None or it.DESCENDING() is not None
+        key = _code_point_sort_key(expr, static_type)
         if not _is_obvious_non_null(expr):
             # Cypher sorts null after every value ascending and before every
             # value descending; AQL sorts null below every value. A first key
             # "is null" puts it back.
             parts.append(f"({expr} == null) DESC" if descending else f"({expr} == null)")
         if descending:
-            parts.append(f"{expr} DESC")
+            parts.append(f"{key} DESC")
         elif it.ASC() is not None or it.ASCENDING() is not None:
-            parts.append(f"{expr} ASC")
+            parts.append(f"{key} ASC")
         else:
-            parts.append(expr)
+            parts.append(key)
     return "SORT " + ", ".join(parts)
+
+
+def _code_point_sort_key(expr: str, static_type: str | None) -> str:
+    """A sort key that orders a known string as Cypher does, by code point.
+
+    AQL compares strings with the server's ICU collation: case is ignored at
+    the first level and ``é`` sorts beside ``e``, so ``Charles_de_Gaulle``
+    came before ``Charles_Haughey`` (LDBC BI2's tie-break by tag name). The
+    hex of a string's UTF-8 bytes sorts in code-point order, since UTF-8
+    keeps it. A value the query does not show to be a string keeps AQL's
+    order, as its ``<`` does (``_code_point_operands``): sorting and comparing
+    must agree, and a run-time check on every unknown value would keep an
+    index from serving range filters.
+    """
+    return f"TO_HEX({expr})" if static_type == STRING else expr
+
+
+def _code_point_operands(left: str, lt: str | None, right: str, rt: str | None) -> tuple[str, str]:
+    """``<`` / ``<=`` / ``>`` / ``>=`` operands, compared by code point when a side
+    is a known string (see :func:`_code_point_sort_key`). The other side, when
+    its type is unknown, is converted only if it is a string at run time."""
+    if STRING not in (lt, rt):
+        return left, right
+
+    def side(expr: str, static_type: str | None) -> str:
+        if static_type == STRING:
+            return f"TO_HEX({expr})"
+        if static_type is None:
+            return f"(IS_STRING({expr}) ? TO_HEX({expr}) : {expr})"
+        return expr
+
+    return side(left, lt), side(right, rt)
 
 
 def _order_env(
@@ -3737,9 +3775,13 @@ def _append_return(
     # Positions whose column name was supplied here rather than by an ``AS``:
     # a single such item still returns a scalar, as an unaliased one does.
     implicit_names: set[int] = set()
+    # The static type of each aliased projection, for ORDER BY of the alias.
+    item_types: dict[str, str | None] = {}
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        if alias is not None:
+            item_types[alias] = _static_type(expr_ctx)
         expr_txt = expr_ctx.getText().strip()
         if rel_type_exprs and expr_txt.lower().startswith("type(") and expr_txt.endswith(")"):
             inner = expr_txt[5:-1].strip()
@@ -3802,6 +3844,7 @@ def _append_return(
                         bind_vars,
                         var_env=_order_env(var_env, compiled_items),
                         aliases={a: e for a, e in compiled_items if a},
+                        alias_types=item_types,
                     )
                 )
             append_distinct_return(
@@ -3821,6 +3864,7 @@ def _append_return(
                 bind_vars,
                 var_env=_order_env(var_env, compiled_items),
                 aliases={a: e for a, e in compiled_items if a},
+                alias_types=item_types,
             )
         )
     _append_skip_limit(lines, skip_value, limit_value)
@@ -5679,12 +5723,17 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             return _compile_expression(ctx.oC_AddOrSubtractExpression(), bind_vars)
         # A chained comparison ``a < b < c`` means ``a < b AND b < c``
         # (openCypher §Comparison): compile each adjacent pair and AND them.
-        operands = [_compile_value(ctx.oC_AddOrSubtractExpression(), bind_vars)]
-        operands += [_compile_value(p.oC_AddOrSubtractExpression(), bind_vars) for p in partials]
-        conjuncts = [
-            _compile_comparison(operands[i], p.getChild(0).getText(), operands[i + 1], mode)
-            for i, p in enumerate(partials)
-        ]
+        operand_ctxs = [ctx.oC_AddOrSubtractExpression(), *(p.oC_AddOrSubtractExpression() for p in partials)]
+        operands = [_compile_value(c, bind_vars) for c in operand_ctxs]
+        types = [_static_type(c) for c in operand_ctxs]
+        conjuncts = []
+        for i, p in enumerate(partials):
+            op = p.getChild(0).getText()
+            compared = None
+            if op in ("<", "<=", ">", ">="):
+                # A known string orders by code point, as in ORDER BY.
+                compared = _code_point_operands(operands[i], types[i], operands[i + 1], types[i + 1])
+            conjuncts.append(_compile_comparison(operands[i], op, operands[i + 1], mode, compared=compared))
         if len(conjuncts) == 1:
             return conjuncts[0]
         if mode is None:

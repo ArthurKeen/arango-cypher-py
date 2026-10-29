@@ -589,7 +589,14 @@ order of the rows it reads, as Neo4j does: after `ORDER BY …` a `WITH DISTINCT
 or `RETURN DISTINCT` keeps each value's first row in that order, so a
 following `LIMIT` keeps the top rows (AQL's `COLLECT` would re-sort them by
 value). `SKIP` and `LIMIT` count distinct rows (AQL applies a `LIMIT` before
-`RETURN DISTINCT`, so the distinct rows are read from a subquery). `RETURN type(r)` on its own is a
+`RETURN DISTINCT`, so the distinct rows are read from a subquery). A string the
+query shows to be one (a string literal, a string function, a property the
+mapping declares `string`) sorts and range-compares (`<`, `<=`, `>`, `>=`) by
+code point, as in Cypher, through the hex of its UTF-8 bytes (`TO_HEX`):
+AQL's ICU collation ignores case at the first level and puts `é` beside `e`
+(LDBC BI2's tie-break by tag name). A value of unknown type keeps AQL's order
+in both, so sorting and comparing agree (TCK WithOrderBy1 [45]) and a range
+filter on it can still use an index. `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
 `CALL { … }` subqueries (`arango_cypher/_translate_v0/subqueries.py`): for

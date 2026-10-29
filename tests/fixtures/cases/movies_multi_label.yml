@@ -18,7 +18,7 @@ cases:
             FILTER m[@vTypeField] == @vTypeValue
             FILTER r[@relTypeField] == @relTypeValue
             FILTER (m.title == "Forrest Gump")
-            SORT (a.name == null), a.name
+            SORT (a.name == null), TO_HEX(a.name)
             RETURN a.name
       bind_vars:
         "@uCollection": nodes
@@ -48,7 +48,7 @@ cases:
             FILTER r[@relTypeField] == @relTypeValue
             FILTER (r.role == "Forrest")
             FILTER (m.title == "Forrest Gump")
-            SORT (a.name == null), a.name
+            SORT (a.name == null), TO_HEX(a.name)
             RETURN a.name
       bind_vars:
         "@uCollection": nodes
@@ -76,7 +76,7 @@ cases:
           FOR m, r IN 1..1 OUTBOUND d @@edgeCollection
             FILTER m[@vTypeField] == @vTypeValue
             FILTER r[@relTypeField] == @relTypeValue
-            SORT (d.name == null), d.name, (m.title == null), m.title
+            SORT (d.name == null), TO_HEX(d.name), (m.title == null), TO_HEX(m.title)
             RETURN {name: d.name, title: m.title}
       bind_vars:
         "@uCollection": nodes
@@ -112,7 +112,7 @@ cases:
               FILTER ("Person" IN b.labels)
               FILTER r_1[@relTypeField2] == @relTypeValue2
               FILTER r._id != r_1._id
-              SORT (b.name == null), b.name
+              SORT (b.name == null), TO_HEX(b.name)
               RETURN b.name
       bind_vars:
         "@uCollection": nodes
@@ -146,7 +146,7 @@ cases:
             FILTER r[@relTypeField] == @relTypeValue
             FILTER (r.role == "Forrest")
             FILTER (m.title == "Forrest Gump")
-            SORT (a.name == null), a.name
+            SORT (a.name == null), TO_HEX(a.name)
             RETURN a.name
       bind_vars:
         "@uCollection": nodes
