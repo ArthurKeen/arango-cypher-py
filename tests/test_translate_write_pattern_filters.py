@@ -27,7 +27,7 @@ def _t(cypher: str, layout: str):
 
 @pytest.mark.parametrize("layout", ["pg", "lpg"])
 def test_delete_keeps_the_end_node_property_filter(layout):
-    assert "FILTER (v.id == @postId)" in _t(_DEL2, layout).aql
+    assert "FILTER (@postId != null AND v.id == @postId)" in _t(_DEL2, layout).aql
 
 
 def test_delete_keeps_a_collection_style_end_label_on_a_polymorphic_edge():

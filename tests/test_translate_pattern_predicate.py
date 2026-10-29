@@ -73,7 +73,7 @@ def test_end_node_and_relationship_properties_are_filters():
         "pg",
     )
     assert "(_pp_e.classYear == 2004)" in aql
-    assert "LOWER(_pp_v.name) == LOWER('X')" in aql or 'LOWER(_pp_v.name) == LOWER("X")' in aql
+    assert "(_pp_v.name == 'X')" in aql or '(_pp_v.name == "X")' in aql
 
 
 def test_start_node_labels_are_checked_on_the_bound_variable():

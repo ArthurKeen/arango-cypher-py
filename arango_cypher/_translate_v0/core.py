@@ -72,6 +72,7 @@ from .shortest_path import (
 )
 from .state import (
     TranslateOptions,
+    _active_case_insensitive_inline,
     _active_path_vars,
     _active_registry,
     _active_resolver,
@@ -122,6 +123,7 @@ def translate_v0(
     opts = options or TranslateOptions()
     registry = opts.registry
     reg_token = _active_registry.set(registry)
+    ci_token = _active_case_insensitive_inline.set(opts.case_insensitive_inline_strings)
     resolver = MappingResolver(mapping)
     res_token = _active_resolver.set(resolver)
     warnings: list[str] = []
@@ -159,6 +161,7 @@ def translate_v0(
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
         _active_registry.reset(reg_token)
+        _active_case_insensitive_inline.reset(ci_token)
 
 
 def _translate_v0_inner(
@@ -4550,11 +4553,12 @@ def _compile_node_pattern_properties(
         expr = _compile_expression(v_ctx, bind_vars)
         if var_env:
             expr = _rewrite_vars(expr, var_env)
-        # Use case-insensitive comparison for string literals
-        if expr.startswith('"') or expr.startswith("'"):
+        if _active_case_insensitive_inline.get() and (expr.startswith('"') or expr.startswith("'")):
+            # Opt-in (TranslateOptions.case_insensitive_inline_strings).
             out.append(f"(LOWER({var}.{key}) == LOWER({expr}))")
         else:
-            out.append(f"({var}.{key} == {expr})")
+            # Cypher's ``=``: exact, and a null value matches nothing.
+            out.append(_compile_comparison(f"{var}.{key}", "=", expr, "true"))
     return out
 
 
@@ -4596,7 +4600,7 @@ def _compile_relationship_pattern_properties(
         expr = _compile_expression(v_ctx, bind_vars)
         if var_env:
             expr = _rewrite_vars(expr, var_env)
-        out.append(f"({var}.{key} == {expr})")
+        out.append(_compile_comparison(f"{var}.{key}", "=", expr, "true"))
     return out
 
 

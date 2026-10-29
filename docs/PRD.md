@@ -612,6 +612,13 @@ whose value is returned or stored keeps null (`RETURN n.age > 30` is null for
 a null `age`). The quantifiers `any`/`all`/`none`/`single` treat a null
 element predicate as not true rather than returning null.
 
+An inline pattern property (`(n {name: 'Alice'})`, `[r {since: $s}]`) is the
+same `=`: exact, served by an index on the property, and never true for a
+null value. `translate(..., case_insensitive_inline_strings=True)` (also a
+`TranslateOptions` field) opts string literals into a case-insensitive match
+(`LOWER(n.name) == LOWER('alice')`, which no index serves) for callers, such
+as an NL front end, that want it; it is part of the translation cache key.
+
 Arithmetic follows Cypher, where AQL's operators are numeric only and read
 null as 0 (`null + 1` is 1, `'a' + 'b'` is 0). An arithmetic expression with
 a null operand is null; nested arithmetic shares one null guard over its

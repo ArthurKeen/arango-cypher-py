@@ -8,12 +8,11 @@ cases:
   params:
     id: 1
   expected:
-    aql: "FOR m IN UNION((FOR m IN @@mMember FILTER (m.id == @id) RETURN m), (FOR m IN @@mMember2 FILTER\
-      \ (m.id == @id) RETURN m))\n  RETURN {id: m.id}"
+    aql: "FOR m IN UNION((FOR m IN @@mMember FILTER (@id != null AND m.id == @id) RETURN m), (FOR m IN @@mMember2 FILTER (@id != null AND m.id == @id) RETURN m))\n  RETURN {id: m.id}\n"
     bind_vars:
       id: 1
-      '@mMember': post
-      '@mMember2': comment
+      "@mMember": post
+      "@mMember2": comment
 - id: C814
   name: PG supertype traversal target tests collection membership
   mapping_fixture: ldbc_pg
@@ -22,27 +21,22 @@ cases:
   params:
     id: 1
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4,\
-      \ @@withCollection5, @@withCollection6, @@withCollection7, @@uCollection, @@withCollection8, @@withCollection9\n\
-      FOR t IN @@uCollection\n  FILTER (t.id == @id)\n  FOR m, r IN 1..1 INBOUND t @@edgeCollection\n\
-      \    FILTER PARSE_IDENTIFIER(m).collection IN @mMembers\n    RETURN {id: m.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5, @@withCollection6, @@withCollection7, @@uCollection, @@withCollection8, @@withCollection9\nFOR t IN @@uCollection\n  FILTER (@id != null AND t.id == @id)\n  FOR m, r IN 1..1 INBOUND t @@edgeCollection\n    FILTER PARSE_IDENTIFIER(m).collection IN @mMembers\n    RETURN {id: m.id}\n"
     bind_vars:
       id: 1
-      '@uCollection': tag
-      '@edgeCollection': has_tag
-      mMembers:
-      - post
-      - comment
-      '@withCollection0': city
-      '@withCollection1': comment
-      '@withCollection2': company
-      '@withCollection3': continent
-      '@withCollection4': country
-      '@withCollection5': forum
-      '@withCollection6': person
-      '@withCollection7': post
-      '@withCollection8': tag_class
-      '@withCollection9': university
+      "@uCollection": tag
+      "@edgeCollection": has_tag
+      mMembers: [post, comment]
+      "@withCollection0": city
+      "@withCollection1": comment
+      "@withCollection2": company
+      "@withCollection3": continent
+      "@withCollection4": country
+      "@withCollection5": forum
+      "@withCollection6": person
+      "@withCollection7": post
+      "@withCollection8": tag_class
+      "@withCollection9": university
 - id: C815
   name: PG supertype target the edge's range guarantees needs no membership test
   mapping_fixture: ldbc_pg
@@ -51,24 +45,21 @@ cases:
   params:
     id: 1
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4,\
-      \ @@withCollection5, @@uCollection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\n\
-      FOR p IN @@uCollection\n  FILTER (p.id == @id)\n  FOR m, r IN 1..1 INBOUND p @@edgeCollection\n\
-      \    RETURN {id: m.id}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5, @@uCollection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\nFOR p IN @@uCollection\n  FILTER (@id != null AND p.id == @id)\n  FOR m, r IN 1..1 INBOUND p @@edgeCollection\n    RETURN {id: m.id}\n"
     bind_vars:
       id: 1
-      '@uCollection': person
-      '@edgeCollection': has_creator
-      '@withCollection0': city
-      '@withCollection1': comment
-      '@withCollection2': company
-      '@withCollection3': continent
-      '@withCollection4': country
-      '@withCollection5': forum
-      '@withCollection6': post
-      '@withCollection7': tag
-      '@withCollection8': tag_class
-      '@withCollection9': university
+      "@uCollection": person
+      "@edgeCollection": has_creator
+      "@withCollection0": city
+      "@withCollection1": comment
+      "@withCollection2": company
+      "@withCollection3": continent
+      "@withCollection4": country
+      "@withCollection5": forum
+      "@withCollection6": post
+      "@withCollection7": tag
+      "@withCollection8": tag_class
+      "@withCollection9": university
 - id: C816
   name: PG supertype as the start node of a relationship
   mapping_fixture: ldbc_pg

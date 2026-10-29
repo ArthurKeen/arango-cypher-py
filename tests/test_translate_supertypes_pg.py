@@ -49,8 +49,8 @@ def test_scan_start_unions_the_member_collections():
 
 def test_inline_properties_filter_inside_each_branch():
     q = _t("MATCH (m:Message {id: $id}) RETURN m.content", id=1)
-    assert q.aql.count("FILTER (m.id == @id)") == 2, q.aql
-    assert "\n  FILTER (m.id == @id)" not in q.aql  # not repeated after the union
+    assert q.aql.count("FILTER (@id != null AND m.id == @id)") == 2, q.aql
+    assert "\n  FILTER (@id != null AND m.id == @id)" not in q.aql  # not repeated after the union
     assert "indexHint" not in q.aql  # a hint names one collection's index; the branches have no OPTIONS
 
 

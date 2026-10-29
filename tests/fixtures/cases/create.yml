@@ -53,10 +53,10 @@ cases:
 
     '
   expected:
-    aql: "FOR a IN @@collection\n  FILTER (LOWER(a.name) == LOWER(\"Alice\"))\n  LET b = FIRST(INSERT {name: \"Bob\"} INTO @@collection RETURN NEW)\n  INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection\n"
+    aql: "FOR a IN @@collection\n  FILTER (a.name == \"Alice\")\n  LET b = FIRST(INSERT {name: \"Bob\"} INTO @@collection RETURN NEW)\n  INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection\n"
     bind_vars:
-      '@collection': persons
-      '@edgeCollection': follows
+      "@collection": persons
+      "@edgeCollection": follows
 - id: C264
   name: CREATE with RETURN
   mapping_fixture: pg
