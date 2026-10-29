@@ -9,15 +9,14 @@ cases:
     aql: 'RETURN {s: CONCAT(''a'', ''b''), t: CONCAT((1 + 2), ''a''), u: CONCAT(''a'', 1, 2)}'
     bind_vars: {}
 - id: C830
-  name: properties the mapping types as strings concatenate under one null guard
+  name: properties the mapping types as strings still dispatch on the values at run time (declared types are not trusted)
   mapping_fixture: ldbc_pg
   extensions_enabled: false
   cypher: MATCH (p:Person) RETURN p.firstName + ' ' + p.lastName AS name
   expected:
-    aql: "FOR p IN @@collection\n  RETURN {name: ((p.firstName == null OR p.lastName == null) ? null : CONCAT(p.firstName,\
-      \ ' ', p.lastName))}"
+    aql: "FOR p IN @@collection\n  RETURN {name: ((IS_NUMBER((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' ')))) AND IS_NUMBER(p.lastName)) ? ((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' '))) + p.lastName) : ((IS_ARRAY((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' ')))) OR IS_ARRAY(p.lastName)) ? (IS_ARRAY((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' ')))) ? (IS_ARRAY(p.lastName) ? APPEND((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' '))), p.lastName) : PUSH((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' '))), p.lastName)) : UNSHIFT(p.lastName, (IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' '))))) : (((IS_STRING((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' ')))) AND (IS_STRING(p.lastName) OR IS_NUMBER(p.lastName))) OR (IS_NUMBER((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' ')))) AND IS_STRING(p.lastName))) ? CONCAT((IS_ARRAY(p.firstName) ? PUSH(p.firstName, ' ') : ((p.firstName == null) ? null : CONCAT(p.firstName, ' '))), p.lastName) : null)))}\n"
     bind_vars:
-      '@collection': person
+      "@collection": person
 - id: C831
   name: arithmetic on a typed property shares one null guard
   mapping_fixture: ldbc_pg

@@ -9,6 +9,13 @@ The translator knows an operand's type only when the query shows it (a
 literal, ``count()``, ``toString()``, …; see ``_static_type``). Then ``+``
 compiles to the one operation that type allows. Otherwise it compiles to a
 runtime dispatch on the operand types.
+
+A type the mapping declares for a property is not one the query shows: it is
+not checked against the data, and the analyzer declares numeric properties
+``"string"``. Taken at its word it turned ``n.age + 1`` into ``CONCAT`` (and
+``ORDER BY n.id`` into a text sort), so it never decides what an operator
+computes. ``declared_static_type`` reads it, for callers whose AQL still
+checks the value at run time.
 """
 
 from __future__ import annotations
@@ -33,6 +40,10 @@ BOOL = "bool"
 MAP = "map"
 NULL = "null"
 _NUMERIC = {INT, FLOAT, NUMBER}
+
+#: Whether ``_static_type`` takes a property's mapping-declared type as its
+#: type (``declared_static_type``); off otherwise (module docstring).
+_TRUST_DECLARED: ContextVar[bool] = ContextVar("_TRUST_DECLARED", default=False)
 
 # Mapping property types (``properties.<name>.type``) as static types.
 _DECLARED_TYPES = {
@@ -157,6 +168,8 @@ def _static_type(ctx: Any) -> str | None:
     if isinstance(ctx, CypherParser.OC_PropertyOrLabelsExpressionContext):
         lookups = ctx.oC_PropertyLookup()
         if len(lookups) == 1 and ctx.oC_NodeLabels() is None:
+            if not _TRUST_DECLARED.get():
+                return None
             return declared_property_type(
                 lookups[0].oC_PropertyKeyName().getText().strip(), _active_resolver.get()
             )
@@ -168,6 +181,19 @@ def _static_type(ctx: Any) -> str | None:
     if isinstance(ctx, CypherParser.OC_AtomContext):
         return _atom_type(ctx)
     return None
+
+
+def declared_static_type(ctx: Any) -> str | None:
+    """``_static_type`` with mapping-declared property types taken at their word.
+
+    Only for AQL that checks the value at run time anyway (a declared string
+    sorts by code point through ``IS_STRING(x) ? TO_HEX(x) : x``).
+    """
+    token = _TRUST_DECLARED.set(True)
+    try:
+        return _static_type(ctx)
+    finally:
+        _TRUST_DECLARED.reset(token)
 
 
 def declared_property_type(prop: str, resolver: MappingResolver | None) -> str | None:
@@ -389,14 +415,29 @@ def raw_additive_chain(texts: list[str], types: list[str | None], ops: list[str]
     return result
 
 
-def raw_arithmetic(left: str, op: str, right: str, lt: str | None, rt: str | None) -> str:
+def raw_arithmetic(
+    left: str,
+    op: str,
+    right: str,
+    lt: str | None,
+    rt: str | None,
+    *,
+    declared: tuple[str | None, str | None] = (None, None),
+) -> str:
     """``left <op> right`` for ``*``, ``/`` and ``%``, without null guards.
 
     Two integers divide with truncation toward zero, as in Cypher (``7 / 2``
     is 3; AQL gives 3.5); AQL's ``%`` already takes the sign of the dividend.
+    Operands the mapping declares integers (*declared*, see
+    ``declared_static_type``) truncate when both values are whole numbers at
+    run time, and otherwise divide as numbers.
     """
+    truncated = f"(({left} - {left} % {right}) / {right})"
     if op == "/" and lt == rt == INT:
-        return f"(({left} - {left} % {right}) / {right})"
+        return truncated
+    if op == "/" and {lt, declared[0]} & {INT} and {rt, declared[1]} & {INT}:
+        whole = f"FLOOR({left}) == {left} AND FLOOR({right}) == {right}"
+        return f"(({whole}) ? {truncated} : ({left} / {right}))"
     return f"({left} {op} {right})"
 
 

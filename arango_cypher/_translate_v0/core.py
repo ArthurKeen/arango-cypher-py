@@ -23,6 +23,7 @@ from .arithmetic import (
     collecting_null_operands,
     compile_additive_chain,
     compile_null_operand,
+    declared_static_type,
     is_arithmetic_transparent,
     null_propagating,
     raw_additive_chain,
@@ -3657,7 +3658,7 @@ def _compile_order_by(
     parts: list[str] = []
     for it in items:
         text = it.oC_Expression().getText().strip()
-        static_type = _static_type(it.oC_Expression())
+        static_type = _string_kind(it.oC_Expression())
         if aliases and text in aliases:
             expr = aliases[text]
             static_type = (alias_types or {}).get(text)
@@ -3681,36 +3682,58 @@ def _compile_order_by(
     return "SORT " + ", ".join(parts)
 
 
-def _code_point_sort_key(expr: str, static_type: str | None) -> str:
-    """A sort key that orders a known string as Cypher does, by code point.
+#: A property the mapping declares ``string``: not checked against the data
+#: (the analyzer declares numeric properties ``string``), so its code-point
+#: key is taken only when the value is a string at run time.
+DECLARED_STRING = "declared_string"
+
+
+def _string_kind(ctx: Any) -> str | None:
+    """The static type of *ctx*, or ``DECLARED_STRING`` for a property the
+    mapping declares a string (see ``arithmetic.declared_static_type``)."""
+    static_type = _static_type(ctx)
+    if static_type is None and declared_static_type(ctx) == STRING:
+        return DECLARED_STRING
+    return static_type
+
+
+def _code_point_sort_key(expr: str, kind: str | None) -> str:
+    """A sort key that orders a string as Cypher does, by code point.
 
     AQL compares strings with the server's ICU collation: case is ignored at
     the first level and ``é`` sorts beside ``e``, so ``Charles_de_Gaulle``
     came before ``Charles_Haughey`` (LDBC BI2's tie-break by tag name). The
     hex of a string's UTF-8 bytes sorts in code-point order, since UTF-8
-    keeps it. A value the query does not show to be a string keeps AQL's
-    order, as its ``<`` does (``_code_point_operands``): sorting and comparing
-    must agree, and a run-time check on every unknown value would keep an
-    index from serving range filters.
+    keeps it. A value the query shows to be a string (*kind* ``STRING``) is
+    converted; one the mapping declares a string (``DECLARED_STRING``) only
+    if it is one at run time. Any other value keeps AQL's order, as its ``<``
+    does (``_code_point_operands``): sorting and comparing must agree, and a
+    run-time check on every unknown value would keep an index from serving
+    range filters.
     """
-    return f"TO_HEX({expr})" if static_type == STRING else expr
+    if kind == STRING:
+        return f"TO_HEX({expr})"
+    if kind == DECLARED_STRING:
+        return f"(IS_STRING({expr}) ? TO_HEX({expr}) : {expr})"
+    return expr
 
 
-def _code_point_operands(left: str, lt: str | None, right: str, rt: str | None) -> tuple[str, str]:
+def _code_point_operands(left: str, lk: str | None, right: str, rk: str | None) -> tuple[str, str]:
     """``<`` / ``<=`` / ``>`` / ``>=`` operands, compared by code point when a side
-    is a known string (see :func:`_code_point_sort_key`). The other side, when
-    its type is unknown, is converted only if it is a string at run time."""
-    if STRING not in (lt, rt):
+    is a string the query shows or the mapping declares (see
+    :func:`_code_point_sort_key`). A side that is not certainly a string is
+    converted only if it is one at run time."""
+    if STRING not in (lk, rk) and DECLARED_STRING not in (lk, rk):
         return left, right
 
-    def side(expr: str, static_type: str | None) -> str:
-        if static_type == STRING:
+    def side(expr: str, kind: str | None) -> str:
+        if kind == STRING:
             return f"TO_HEX({expr})"
-        if static_type is None:
+        if kind is None or kind == DECLARED_STRING:
             return f"(IS_STRING({expr}) ? TO_HEX({expr}) : {expr})"
         return expr
 
-    return side(left, lt), side(right, rt)
+    return side(left, lk), side(right, rk)
 
 
 def _order_env(
@@ -3861,7 +3884,7 @@ def _append_return(
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
         if alias is not None:
-            item_types[alias] = _static_type(expr_ctx)
+            item_types[alias] = _string_kind(expr_ctx)
         expr_txt = expr_ctx.getText().strip()
         if rel_type_exprs and expr_txt.lower().startswith("type(") and expr_txt.endswith(")"):
             inner = expr_txt[5:-1].strip()
@@ -5805,7 +5828,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         # (openCypher §Comparison): compile each adjacent pair and AND them.
         operand_ctxs = [ctx.oC_AddOrSubtractExpression(), *(p.oC_AddOrSubtractExpression() for p in partials)]
         operands = [_compile_value(c, bind_vars) for c in operand_ctxs]
-        types = [_static_type(c) for c in operand_ctxs]
+        types = [_string_kind(c) for c in operand_ctxs]
         conjuncts = []
         for i, p in enumerate(partials):
             op = p.getChild(0).getText()
@@ -5854,7 +5877,13 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             for i in range(1, len(terms)):
                 op = _extract_interleaved_op(ctx, i, {"*", "/", "%"})
                 right = _compile_expression(terms[i], bind_vars)
-                result = raw_arithmetic(result, op, right, result_type, _static_type(terms[i]))
+                declared = (
+                    declared_static_type(terms[i - 1]) if i == 1 else None,
+                    declared_static_type(terms[i]),
+                )
+                result = raw_arithmetic(
+                    result, op, right, result_type, _static_type(terms[i]), declared=declared
+                )
                 result_type = _numeric_type(result_type, terms[i])
             return result
 
