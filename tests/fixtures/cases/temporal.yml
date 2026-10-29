@@ -1,0 +1,113 @@
+version: 1
+cases:
+- id: C870
+  name: temporal accessor on a declared property on PG (LDBC BI1)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Message) WHERE m.creationDate < $d RETURN m.creationDate.year AS year, count(m) AS n
+  params:
+    d: '2012-01-01T00:00:00.000+00:00'
+  expected:
+    aql: "FOR m IN UNION((FOR m IN @@mMember RETURN m), (FOR m IN @@mMember2 RETURN m))\n  FILTER (m.creationDate\
+      \ != null AND @d != null AND m.creationDate < @d)\n  COLLECT year = ((m.creationDate == null) ? null : DATE_YEAR(m.creationDate))\
+      \ AGGREGATE _n_nonnull = SUM((m) == null ? 0 : 1)\n  LET n = NOT_NULL(_n_nonnull, 0)\n  RETURN {year: year,\
+      \ n: n}"
+    bind_vars:
+      d: '2012-01-01T00:00:00.000+00:00'
+      '@mMember': post
+      '@mMember2': comment
+- id: C871
+  name: temporal accessor on a declared property on LPG
+  mapping_fixture: ldbc_lpg
+  extensions_enabled: false
+  cypher: MATCH (m:Message) WHERE m.creationDate < $d RETURN m.creationDate.year AS year, count(m) AS n
+  params:
+    d: '2012-01-01T00:00:00.000+00:00'
+  expected:
+    aql: "FOR m IN @@collection\n  FILTER @labelValue IN m[@labelsField]\n  FILTER (m.creationDate != null AND @d\
+      \ != null AND m.creationDate < @d)\n  COLLECT year = ((m.creationDate == null) ? null : DATE_YEAR(m.creationDate))\
+      \ AGGREGATE _n_nonnull = SUM((m) == null ? 0 : 1)\n  LET n = NOT_NULL(_n_nonnull, 0)\n  RETURN {year: year,\
+      \ n: n}"
+    bind_vars:
+      d: '2012-01-01T00:00:00.000+00:00'
+      '@collection': nodes
+      labelsField: labels
+      labelValue: Message
+- id: C872
+  name: accessors on a WITH variable bound to datetime({epochMillis}) (LDBC IC10)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: 'MATCH (p:Person) WITH p, datetime({epochMillis: p.birthday}) AS birthday WHERE birthday.month = $month
+    AND birthday.day >= 21 RETURN p.id AS id'
+  params:
+    month: 12
+  expected:
+    aql: "FOR p IN @@collection\n  LET birthday = ((p.birthday == null) ? null : DATE_ISO8601(p.birthday))\n  FILTER\
+      \ ((@month != null AND ((birthday == null) ? null : DATE_MONTH(birthday)) == @month) AND (((birthday == null)\
+      \ ? null : DATE_DAY(birthday)) != null AND ((birthday == null) ? null : DATE_DAY(birthday)) >= 21))\n  RETURN\
+      \ {id: p.id}"
+    bind_vars:
+      month: 12
+      '@collection': person
+- id: C873
+  name: an accessor on a parameter is decided at run time (LDBC BI13)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (p:Person) RETURN 12 * ($endDate.year - p.creationDate.year) AS months
+  params:
+    endDate: '2013-01-01'
+  expected:
+    aql: "FOR p IN @@collection\n  RETURN {months: (((IS_OBJECT(@endDate) ? @endDate.year : ((@endDate == null)\
+      \ ? null : DATE_YEAR(@endDate))) == null OR ((p.creationDate == null) ? null : DATE_YEAR(p.creationDate))\
+      \ == null) ? null : (12 * ((IS_OBJECT(@endDate) ? @endDate.year : ((@endDate == null) ? null : DATE_YEAR(@endDate)))\
+      \ - ((p.creationDate == null) ? null : DATE_YEAR(p.creationDate)))))}"
+    bind_vars:
+      endDate: '2013-01-01'
+      '@collection': person
+- id: C874
+  name: date() truncates a stored datetime to its day (LDBC BI16)
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Message) WHERE date(m.creationDate) = date($d) RETURN m.id AS id
+  params:
+    d: '2012-09-16'
+  expected:
+    aql: "FOR m IN UNION((FOR m IN @@mMember RETURN m), (FOR m IN @@mMember2 RETURN m))\n  FILTER (((DATE_ISO8601(m.creationDate)\
+      \ == null) ? null : LEFT(DATE_ISO8601(m.creationDate), 10)) != null AND ((DATE_ISO8601(m.creationDate) ==\
+      \ null) ? null : LEFT(DATE_ISO8601(m.creationDate), 10)) == ((DATE_ISO8601(@d) == null) ? null : LEFT(DATE_ISO8601(@d),\
+      \ 10)))\n  RETURN {id: m.id}"
+    bind_vars:
+      d: '2012-09-16'
+      '@mMember': post
+      '@mMember2': comment
+- id: C875
+  name: 'temporal constructors: ISO week date and epoch millis'
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: 'RETURN date({year: 1984, week: 10, dayOfWeek: 3}) AS w, datetime({epochMillis: 1262531431499}) AS e'
+  expected:
+    aql: 'RETURN {w: ((DATE_ISO8601(DATE_YEAR(DATE_ADD(DATE_ISO8601(1984, 1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984,
+      1, 4)) + 6) % 7), "day")), DATE_MONTH(DATE_ADD(DATE_ISO8601(1984, 1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984,
+      1, 4)) + 6) % 7), "day")), DATE_DAY(DATE_ADD(DATE_ISO8601(1984, 1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984,
+      1, 4)) + 6) % 7), "day")), 0, 0, 0, 0) == null) ? null : LEFT(DATE_ISO8601(DATE_YEAR(DATE_ADD(DATE_ISO8601(1984,
+      1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984, 1, 4)) + 6) % 7), "day")), DATE_MONTH(DATE_ADD(DATE_ISO8601(1984,
+      1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984, 1, 4)) + 6) % 7), "day")), DATE_DAY(DATE_ADD(DATE_ISO8601(1984,
+      1, 4), ((10) - 1) * 7 + ((3) - 1) - ((DATE_DAYOFWEEK(DATE_ISO8601(1984, 1, 4)) + 6) % 7), "day")), 0, 0, 0,
+      0), 10)), e: DATE_ISO8601(1262531431499)}'
+    bind_vars: {}
+- id: C876
+  name: a later UNION supertype scan reads a bound variable, so it is not hoisted
+  mapping_fixture: ldbc_pg
+  extensions_enabled: false
+  cypher: MATCH (m:Message) WITH count(m) AS total MATCH (x:Message) RETURN total, count(x) AS n
+  expected:
+    aql: "FOR m IN UNION((FOR m IN @@mMember RETURN m), (FOR m IN @@mMember2 RETURN m))\n  COLLECT AGGREGATE _total_nonnull\
+      \ = SUM((m) == null ? 0 : 1)\n  LET total = NOT_NULL(_total_nonnull, 0)\n  FOR x IN UNION((FOR x IN @@xMember\
+      \ FILTER total == total RETURN x), (FOR x IN @@xMember2 FILTER total == total RETURN x))\n    COLLECT total_g1\
+      \ = total AGGREGATE _n_nonnull = SUM((x) == null ? 0 : 1)\n    LET n = NOT_NULL(_n_nonnull, 0)\n    RETURN\
+      \ {total: total_g1, n: n}"
+    bind_vars:
+      '@mMember': post
+      '@mMember2': comment
+      '@xMember': post
+      '@xMember2': comment

@@ -82,6 +82,7 @@ from .state import (
     _active_warnings,
     _HopMeta,
     _object_rows,
+    _temporal_vars,
 )
 from .subqueries import (
     compile_subquery_call,
@@ -91,7 +92,7 @@ from .subqueries import (
     translate_single_part_with_calls,
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
-from .temporal_guard import reject_temporal_accessor, reject_temporal_conversion
+from .temporal import bind_with, compile_property_chain, compile_temporal_function
 from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
@@ -142,6 +143,7 @@ def translate_v0(
     path_token = _active_path_vars.set(path_vars)
     user_vars_token = _active_user_vars.set([])
     user_params_token = _active_user_params.set(frozenset(params or {}))
+    temporal_token = _temporal_vars.set(frozenset())
 
     try:
         result = _translate_v0_inner(
@@ -169,6 +171,7 @@ def translate_v0(
     finally:
         _active_user_vars.reset(user_vars_token)
         _active_user_params.reset(user_params_token)
+        _temporal_vars.reset(temporal_token)
         _active_path_vars.reset(path_token)
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
@@ -3303,6 +3306,33 @@ def _apply_with(
     forbidden_vars: set[str],
     incoming_env: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    """Compile a WITH stage; see :func:`_apply_with_projection`. Tracks the
+    variables it binds to temporal values, whose ``.year`` etc. are lowered."""
+    during, after = bind_with(with_ctx)
+    token = _temporal_vars.set(during)
+    try:
+        env = _apply_with_projection(
+            with_ctx,
+            lines=lines,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            incoming_env=incoming_env,
+        )
+    except BaseException:
+        _temporal_vars.reset(token)
+        raise
+    _temporal_vars.set(after)
+    return env
+
+
+def _apply_with_projection(
+    with_ctx: CypherParser.OC_WithContext,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    incoming_env: dict[str, str] | None = None,
+) -> dict[str, str]:
     proj = with_ctx.oC_ProjectionBody()
     distinct = proj.DISTINCT() is not None
 
@@ -5886,9 +5916,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         atom = _compile_expression(ctx.oC_Atom(), bind_vars)
         lookups = ctx.oC_PropertyLookup()
         keys = [lk.oC_PropertyKeyName().getText().strip() for lk in lookups or []]
-        reject_temporal_accessor(keys, _active_resolver.get())
-        for key in keys:
-            atom = f"{atom}.{key}"
+        atom = compile_property_chain(ctx.oC_Atom(), atom, keys, _active_resolver.get())
         labels_ctx = ctx.oC_NodeLabels()
         if labels_ctx is not None and not lookups:
             # Label predicate on a bare variable (`n:Label`, `n:A:B`), e.g.
@@ -6186,16 +6214,10 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             return f"[PARSE_IDENTIFIER({n_var}._id).collection]"
         if fn_norm == "timestamp":
             return "DATE_NOW()"
-        if fn_norm == "date":
-            if not compiled_args:
-                return "DATE_ISO8601(DATE_NOW())"
-            reject_temporal_conversion("date", compiled_args[0], _active_resolver.get())
-            return f"DATE_ISO8601({compiled_args[0]})"
-        if fn_norm == "localdatetime":
-            if not compiled_args:
-                return "DATE_ISO8601(DATE_NOW())"
-            reject_temporal_conversion("localdatetime", compiled_args[0], _active_resolver.get())
-            return f"DATE_ISO8601({compiled_args[0]})"
+        if fn_norm in ("date", "datetime", "localdatetime"):
+            return compile_temporal_function(
+                fn_norm, list(args), compiled_args, compile_expr=lambda e: _compile_expression(e, bind_vars)
+            )
         if fn_norm == "e":
             return "2.718281828459045"
         if fn_norm == "pi":

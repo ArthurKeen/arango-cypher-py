@@ -3,30 +3,30 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 7, out_of_subset 5, translatable 46
-# lpg: fails_closed 7, out_of_subset 5, translatable 46
+# pg: fails_closed 3, out_of_subset 5, translatable 50
+# lpg: fails_closed 3, out_of_subset 5, translatable 50
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
 translatable	BI11@pg	
 translatable	BI12@lpg	
 translatable	BI12@pg	
-fails_closed	BI13@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
-fails_closed	BI13@pg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
+translatable	BI13@lpg	
+translatable	BI13@pg	
 translatable	BI14@lpg	
 translatable	BI14@pg	
 out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
-fails_closed	BI16@lpg	UNSUPPORTED: date() of property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, and its stored encodi…
-fails_closed	BI16@pg	UNSUPPORTED: date() of property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, and its stored encodi…
+translatable	BI16@lpg	
+translatable	BI16@pg	
 fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI17@pg	UNSUPPORTED: Unsupported function in v0: duration
 translatable	BI18@lpg	
 translatable	BI18@pg	
 out_of_subset	BI19@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
 out_of_subset	BI19@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-19-create-graph.cypher)
-fails_closed	BI1@lpg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
-fails_closed	BI1@pg	UNSUPPORTED: Temporal accessor '.year' on property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, an…
+translatable	BI1@lpg	
+translatable	BI1@pg	
 out_of_subset	BI20@lpg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 out_of_subset	BI20@pg	Neo4j GDS (gds.shortestPath.dijkstra.stream over a graph projected by bi-20-create-graph.cypher)
 fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
@@ -61,8 +61,8 @@ translatable	DEL7@lpg
 translatable	DEL7@pg	
 translatable	DEL8@lpg	
 translatable	DEL8@pg	
-fails_closed	IC10@lpg	UNSUPPORTED: Unsupported function in v0: datetime
-fails_closed	IC10@pg	UNSUPPORTED: Unsupported function in v0: datetime
+translatable	IC10@lpg	
+translatable	IC10@pg	
 translatable	IC11@lpg	
 translatable	IC11@pg	
 translatable	IC12@lpg	
