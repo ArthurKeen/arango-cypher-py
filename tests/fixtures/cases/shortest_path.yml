@@ -10,27 +10,23 @@ cases:
     a: 1
     b: 2
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5,\
-      \ @@collection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\nFOR a IN @@collection\n\
-      \  FILTER (a.id == @a)\n  FOR b IN @@collection2\n    FILTER (b.id == @b)\n    LET p = FIRST(FOR _sp_v, _sp_e,\
-      \ _sp_p IN 1..10 ANY a @@spEdge OPTIONS {order: \"bfs\", uniqueVertices: \"global\"} FILTER _sp_v._id == b._id\
-      \ LIMIT 1 RETURN {nodes: _sp_p.vertices, edges: _sp_p.edges})\n    FILTER p != null\n    RETURN {n: LENGTH(p.edges)}"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@withCollection5, @@collection, @@withCollection6, @@withCollection7, @@withCollection8, @@withCollection9\nFOR a IN @@collection\n  FILTER (@a != null AND a.id == @a)\n  FOR b IN @@collection2\n    FILTER (@b != null AND b.id == @b)\n    LET p = FIRST(FOR _sp_v, _sp_e, _sp_p IN 1..10 ANY a @@spEdge OPTIONS {order: \"bfs\", uniqueVertices: \"global\"} FILTER _sp_v._id == b._id LIMIT 1 RETURN {nodes: _sp_p.vertices, edges: _sp_p.edges})\n    FILTER p != null\n    RETURN {n: LENGTH(p.edges)}\n"
     bind_vars:
       a: 1
       b: 2
-      '@collection': person
-      '@collection2': person
-      '@spEdge': knows
-      '@withCollection0': city
-      '@withCollection1': comment
-      '@withCollection2': company
-      '@withCollection3': continent
-      '@withCollection4': country
-      '@withCollection5': forum
-      '@withCollection6': post
-      '@withCollection7': tag
-      '@withCollection8': tag_class
-      '@withCollection9': university
+      "@collection": person
+      "@collection2": person
+      "@spEdge": knows
+      "@withCollection0": city
+      "@withCollection1": comment
+      "@withCollection2": company
+      "@withCollection3": continent
+      "@withCollection4": country
+      "@withCollection5": forum
+      "@withCollection6": post
+      "@withCollection7": tag
+      "@withCollection8": tag_class
+      "@withCollection9": university
 - id: C861
   name: shortestPath on LPG keeps the edge-type guard on every edge
   mapping_fixture: ldbc_lpg
@@ -41,21 +37,16 @@ cases:
     a: 1
     b: 2
   expected:
-    aql: "WITH @@collection\nFOR a IN @@collection\n  FILTER a[@aTypeField] == @aTypeValue\n  FILTER (a.id == @a)\n\
-      \  FOR b IN @@collection2\n    FILTER b[@bTypeField] == @bTypeValue\n    FILTER (b.id == @b)\n    LET p =\
-      \ FIRST(FOR _sp_v, _sp_e, _sp_p IN 1..10 ANY a @@spEdge PRUNE _sp_e != null AND _sp_e[@spRelTF] != @spRelTV\
-      \ OPTIONS {order: \"bfs\", uniqueVertices: \"global\"} FILTER _sp_e[@spRelTF] == @spRelTV FILTER _sp_v._id\
-      \ == b._id LIMIT 1 RETURN {nodes: _sp_p.vertices, edges: _sp_p.edges})\n    FILTER p != null\n    RETURN {n:\
-      \ LENGTH(p.edges)}"
+    aql: "WITH @@collection\nFOR a IN @@collection\n  FILTER a[@aTypeField] == @aTypeValue\n  FILTER (@a != null AND a.id == @a)\n  FOR b IN @@collection2\n    FILTER b[@bTypeField] == @bTypeValue\n    FILTER (@b != null AND b.id == @b)\n    LET p = FIRST(FOR _sp_v, _sp_e, _sp_p IN 1..10 ANY a @@spEdge PRUNE _sp_e != null AND _sp_e[@spRelTF] != @spRelTV OPTIONS {order: \"bfs\", uniqueVertices: \"global\"} FILTER _sp_e[@spRelTF] == @spRelTV FILTER _sp_v._id == b._id LIMIT 1 RETURN {nodes: _sp_p.vertices, edges: _sp_p.edges})\n    FILTER p != null\n    RETURN {n: LENGTH(p.edges)}\n"
     bind_vars:
       a: 1
       b: 2
-      '@collection': nodes
+      "@collection": nodes
       aTypeField: type
       aTypeValue: Person
-      '@collection2': nodes
+      "@collection2": nodes
       bTypeField: type
       bTypeValue: Person
-      '@spEdge': edges
+      "@spEdge": edges
       spRelTF: type
       spRelTV: KNOWS
