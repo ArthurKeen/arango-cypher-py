@@ -103,7 +103,9 @@ def test_an_unlabeled_target_after_with(db: Any) -> None:
 def test_an_unlabeled_start_is_scanned_where_its_edge_leads(db: Any) -> None:
     rows = _rows(
         db,
-        "MATCH (p:Post {id: 1}) WITH p OPTIONAL MATCH (x)<-[:HAS_CREATOR]-(p) RETURN x.id AS creator",
+        # The end ``m`` is not bound, so the pattern is read from ``x`` (pattern_reversal).
+        "MATCH (p:Post {id: 1}) WITH p OPTIONAL MATCH (x)<-[:HAS_CREATOR]-(m) WHERE m.id = p.id "
+        "RETURN x.id AS creator",
     )
     assert rows == [{"creator": 10}]
 
@@ -111,4 +113,11 @@ def test_an_unlabeled_start_is_scanned_where_its_edge_leads(db: Any) -> None:
 def test_an_unlabeled_start_the_edge_does_not_settle_is_refused() -> None:
     """LINKS starts at a Post or a Person: two collections, no guess."""
     with pytest.raises(CoreError, match="single label is required"):
-        translate("MATCH (c:Comment) WITH c MATCH (x)-[:LINKS]->(c) RETURN x", mapping=_MAPPING)
+        translate("MATCH (c:Comment) WITH c MATCH (x)-[:LINKS]->(y) RETURN x", mapping=_MAPPING)
+
+
+def test_an_unlabeled_start_with_a_bound_end_is_read_from_the_end(db: Any) -> None:
+    """``(x)-[:LINKS]->(c)`` with ``c`` bound traverses from ``c``; ``x`` is any
+    node the edge comes from, so no collection has to be picked for it."""
+    rows = _rows(db, "MATCH (c:Comment) WITH c MATCH (x)-[:LINKS]->(c) RETURN x.id AS id")
+    assert rows == [{"id": 1}]

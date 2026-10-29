@@ -135,7 +135,7 @@ def _atom_state(atom_ctx: CypherParser.OC_AtomContext) -> str | None:
         return "maybe"
     if atom_ctx.oC_Variable() is not None:
         name = atom_ctx.oC_Variable().getText().strip()
-        return "temporal" if name in _temporal_vars.get() else "variable"
+        return "temporal" if _temporal_vars.get().get(name) == "computed" else "variable"
     if is_temporal_value(atom_ctx):
         return "temporal"
     return None
@@ -143,37 +143,244 @@ def _atom_state(atom_ctx: CypherParser.OC_AtomContext) -> str | None:
 
 def is_temporal_value(ctx: Any) -> bool:
     """Whether the expression *ctx* is a temporal value: a temporal function, a
-    declared temporal property of a variable, or a variable bound to one."""
+    declared temporal property of a variable, a variable bound to one, or one
+    of these plus or minus a duration."""
+    operand = temporal_operand(ctx)
+    return operand is not None and operand[0] in ("property", "computed")
+
+
+def temporal_operand(ctx: Any) -> tuple[str, str] | None:
+    """What kind of temporal operand *ctx* is: ``("property", encoding)`` for a
+    declared temporal property of a variable (encoding ``""`` when the mapping
+    does not say), ``("computed", "")`` for a value the query computes,
+    ``("duration", "")`` for ``duration(…)``, else None."""
     while True:
+        if isinstance(ctx, CypherParser.OC_AddOrSubtractExpressionContext):
+            terms = ctx.oC_MultiplyDivideModuloExpression()
+            if len(terms) > 1:
+                kinds = [temporal_operand(t) for t in terms]
+                if not any(k is not None and k[0] == "duration" for k in kinds):
+                    return None
+                if all(k is not None and k[0] == "duration" for k in kinds):
+                    return ("duration", "")
+                return ("computed", "")
         if isinstance(ctx, CypherParser.OC_PropertyOrLabelsExpressionContext):
             lookups = ctx.oC_PropertyLookup() or []
             if ctx.oC_NodeLabels() is not None or len(lookups) > 1:
-                return False
+                return None
             if lookups:
                 atom = ctx.oC_Atom()
                 key = lookups[0].oC_PropertyKeyName().getText().strip()
                 resolver = _active_resolver.get()
-                return (
-                    atom.oC_Variable() is not None
-                    and resolver is not None
-                    and key in temporal_properties(resolver)
-                )
+                if atom.oC_Variable() is None or resolver is None or key not in temporal_properties(resolver):
+                    return None
+                return ("property", declared_encoding(key, resolver))
             ctx = ctx.oC_Atom()
             continue
         if isinstance(ctx, CypherParser.OC_AtomContext):
             if ctx.oC_FunctionInvocation() is not None:
                 name = ctx.oC_FunctionInvocation().oC_FunctionName().getText().strip().lower()
-                return name in TEMPORAL_FUNCTIONS
+                if name == "duration":
+                    return ("duration", "")
+                return ("computed", "") if name in TEMPORAL_FUNCTIONS else None
             if ctx.oC_Variable() is not None:
-                return ctx.oC_Variable().getText().strip() in _temporal_vars.get()
+                kind = _temporal_vars.get().get(ctx.oC_Variable().getText().strip())
+                return (kind, "") if kind is not None else None
             if ctx.oC_ParenthesizedExpression() is not None:
                 ctx = ctx.oC_ParenthesizedExpression().oC_Expression()
                 continue
-            return False
+            return None
         child = _single_child(ctx)
         if child is None:
-            return False
+            return None
         ctx = child
+
+
+def refuse_temporal_operands(terms: list[Any]) -> None:
+    """``+`` / ``-`` with a temporal value the query computes and no duration.
+
+    The value is an ISO string, so AQL would concatenate or subtract text
+    (``datetime() - datetime()`` is ``duration.between`` in Cypher).
+    """
+    for term in terms:
+        operand = temporal_operand(term)
+        if operand is not None and operand[0] == "computed":
+            raise CoreError(
+                "Arithmetic on a temporal value is supported with a duration({…}) operand only "
+                "(datetime() + duration({days: 1})); duration.between() is not supported yet",
+                code="NOT_IMPLEMENTED",
+            )
+
+
+def is_duration(ctx: Any) -> bool:
+    operand = temporal_operand(ctx)
+    return operand is not None and operand[0] == "duration"
+
+
+def declared_encoding(prop: str, resolver: MappingResolver) -> str:
+    """The encoding every declaration of *prop* agrees on, else ``""``."""
+    found = {
+        info.encoding
+        for name in [*resolver.all_entity_labels(), *resolver.all_relationship_types()]
+        if (info := resolver.resolve_properties(name).get(prop)) is not None
+    }
+    return found.pop() if len(found) == 1 else ""
+
+
+# --- Durations and temporal arithmetic ------------------------------------
+
+#: duration({…}) fields → (months, milliseconds) per unit. Months and years
+#: are calendar units; days and finer are fixed lengths, exact in UTC.
+_DURATION_FIELDS: dict[str, tuple[int, float]] = {
+    "years": (12, 0),
+    "quarters": (3, 0),
+    "months": (1, 0),
+    "weeks": (0, 7 * 86_400_000),
+    "days": (0, 86_400_000),
+    "hours": (0, 3_600_000),
+    "minutes": (0, 60_000),
+    "seconds": (0, 1_000),
+    "milliseconds": (0, 1),
+    "microseconds": (0, 0.001),
+    "nanoseconds": (0, 0.000001),
+}
+
+
+def duration_fields(
+    args: list[Any], *, compile_expr: Callable[[Any], str]
+) -> tuple[str | None, str | None, list[str]]:
+    """``duration({…})`` as ``(months, milliseconds)`` AQL amounts (None when
+    absent) and the field values (null makes the result null), or refuse a
+    form that is not a map literal."""
+    fields = map_literal(args[0]) if len(args) == 1 else None
+    if fields is None:
+        raise CoreError(
+            "duration() of a map literal is supported (duration({days: 1, hours: 2})); a duration "
+            "string or a duration held in a variable is not yet",
+            code="NOT_IMPLEMENTED",
+        )
+    unknown = sorted(set(fields) - set(_DURATION_FIELDS))
+    if unknown:
+        raise CoreError(f"duration({{…}}) with {', '.join(unknown)} is not supported", code="UNSUPPORTED")
+    months: list[str] = []
+    millis: list[str] = []
+    values: list[str] = []
+    for name, value in fields.items():
+        per_month, per_ms = _DURATION_FIELDS[name]
+        compiled = compile_expr(value)
+        values.append(compiled)
+        amount = f"({compiled})"
+        if per_month:
+            months.append(amount if per_month == 1 else f"{amount} * {per_month}")
+        else:
+            factor = int(per_ms) if per_ms == int(per_ms) else per_ms
+            millis.append(amount if factor == 1 else f"{amount} * {factor}")
+    return (" + ".join(months) or None), (" + ".join(millis) or None), values
+
+
+def compile_duration(args: list[Any], *, compile_expr: Callable[[Any], str]) -> str:
+    """``duration({…})`` as a value: its ISO-8601 duration (``P3M``, ``PT36H``)."""
+    months, millis, values = duration_fields(args, compile_expr=compile_expr)
+    parts = ['"P"']
+    if months is not None:
+        parts += [f"({months})", '"M"']
+    if millis is not None:
+        parts += ['"T"', f"(({millis}) / 1000)", '"S"']
+    elif months is None:
+        parts += ['"T0S"']
+    iso = f"CONCAT({', '.join(parts)})"
+    return _three_valued(iso, iso, tuple(values), None) if values else iso
+
+
+def add_duration(value: str, op: str, args: list[Any], *, compile_expr: Callable[[Any], str]) -> str:
+    """``value ± duration({…})``: months first (the day clamped to the target
+    month, as Neo4j does), then the fixed-length part in milliseconds."""
+    months, millis, values = duration_fields(args, compile_expr=compile_expr)
+    sign = "" if op == "+" else "-"
+    result = value
+    if months is not None:
+        result = _add_months(result, f"{sign}({months})")
+    if millis is not None:
+        result = f'DATE_ADD({result}, {sign}({millis}), "millisecond")'
+    return _three_valued(result, result, (value, *values), None)
+
+
+def _add_months(value: str, months: str) -> str:
+    first = f'DATE_ADD(DATE_ISO8601(DATE_YEAR({value}), DATE_MONTH({value}), 1), {months}, "month")'
+    day = f"MIN([DATE_DAY({value}), DATE_DAYS_IN_MONTH({first})])"
+    time = ", ".join(f"DATE_{u}({value})" for u in ("HOUR", "MINUTE", "SECOND", "MILLISECOND"))
+    return f"DATE_ISO8601(DATE_YEAR({first}), DATE_MONTH({first}), {day}, {time})"
+
+
+def compile_temporal_arithmetic(
+    terms: list[Any], ops: list[str], *, compile_expr: Callable[[Any], str]
+) -> str:
+    """``t ± duration({…}) ± …`` and ``duration({…}) + t`` (module docstring)."""
+    kinds = [temporal_operand(t) for t in terms]
+    if all(k is not None and k[0] == "duration" for k in kinds):
+        raise CoreError("Adding or subtracting durations is not supported yet", code="NOT_IMPLEMENTED")
+    first_kind = kinds[0]
+    if first_kind is not None and first_kind[0] == "duration":
+        if not ops or ops[0] != "+" or len(terms) < 2:
+            raise CoreError("A duration can only be added to a temporal value", code="UNSUPPORTED")
+        terms = [terms[1], terms[0], *terms[2:]]
+    result = compile_expr(terms[0])
+    for op, term in zip(ops, terms[1:], strict=True):
+        kind = temporal_operand(term)
+        if kind is None or kind[0] != "duration":
+            raise CoreError(
+                "Temporal arithmetic other than value ± duration({…}) is not supported yet",
+                code="NOT_IMPLEMENTED",
+            )
+        result = add_duration(result, op, _duration_args(term), compile_expr=compile_expr)
+    return result
+
+
+def _duration_args(ctx: Any) -> list[Any]:
+    """The argument list of the ``duration(…)`` call *ctx* is."""
+    while not isinstance(ctx, CypherParser.OC_AtomContext):
+        nxt = (
+            ctx.oC_Atom()
+            if isinstance(ctx, CypherParser.OC_PropertyOrLabelsExpressionContext)
+            else _single_child(ctx)
+        )
+        if nxt is None:
+            raise CoreError(
+                "Only a duration({…}) call can be added to a temporal value", code="NOT_IMPLEMENTED"
+            )
+        ctx = nxt
+    if ctx.oC_ParenthesizedExpression() is not None:
+        return _duration_args(ctx.oC_ParenthesizedExpression().oC_Expression())
+    fn = ctx.oC_FunctionInvocation()
+    if fn is None:
+        raise CoreError("Only a duration({…}) call can be added to a temporal value", code="NOT_IMPLEMENTED")
+    return list(fn.oC_Expression() or [])
+
+
+# --- Comparisons ---------------------------------------------------------
+
+
+def comparison_operands(left_ctx: Any, left: str, right_ctx: Any, right: str) -> tuple[str, str]:
+    """Operands of a comparison, read on one time line when one side is a
+    temporal value the query computes (an ISO string in UTC) and the other is not.
+
+    A stored ISO string's offset form, or an epoch number, does not compare
+    with a computed ISO string as text, so both sides become epoch
+    milliseconds. A property the mapping declares ``epoch_ms`` already is one,
+    and keeps its plain form, which an index can serve.
+    """
+    lk, rk = temporal_operand(left_ctx), temporal_operand(right_ctx)
+    lc = lk is not None and lk[0] == "computed"
+    rc = rk is not None and rk[0] == "computed"
+    if lc == rc:
+        return left, right
+    return _on_time_line(left, lk), _on_time_line(right, rk)
+
+
+def _on_time_line(operand: str, kind: tuple[str, str] | None) -> str:
+    if kind is not None and kind == ("property", "epoch_ms"):
+        return operand
+    return f"DATE_TIMESTAMP({operand})"
 
 
 def _single_child(ctx: Any) -> Any | None:
@@ -211,25 +418,29 @@ def _single_child(ctx: Any) -> Any | None:
     return None
 
 
-def bind_with(with_ctx: CypherParser.OC_WithContext) -> tuple[frozenset[str], frozenset[str]]:
-    """The temporal variables while a WITH compiles, and after it.
+def bind_with(with_ctx: CypherParser.OC_WithContext) -> tuple[dict[str, str], dict[str, str]]:
+    """The temporal variables (name → ``computed`` / ``duration``) while a WITH
+    compiles, and after it.
 
     While it compiles (its WHERE reads the new names) both the incoming and the
     projected ones count; after it only the projected ones.
     """
-    incoming = _temporal_vars.get()
+    incoming = dict(_temporal_vars.get())
     items_ctx = with_ctx.oC_ProjectionBody().oC_ProjectionItems()
     star = items_ctx.getText().startswith("*")
-    projected: set[str] = set(incoming) if star else set()
+    projected: dict[str, str] = dict(incoming) if star else {}
     for item in items_ctx.oC_ProjectionItem() or []:
         expr = item.oC_Expression()
         alias = item.oC_Variable()
         name = alias.getText().strip() if alias is not None else expr.getText().strip()
-        if is_temporal_value(expr):
-            projected.add(name)
+        operand = temporal_operand(expr)
+        if operand is not None and operand[0] in ("property", "computed"):
+            projected[name] = "computed"
+        elif operand is not None and operand[0] == "duration":
+            projected[name] = "duration"
         else:
-            projected.discard(name)
-    return frozenset(incoming | projected), frozenset(projected)
+            projected.pop(name, None)
+    return {**incoming, **projected}, projected
 
 
 def compile_temporal_function(
