@@ -160,7 +160,9 @@ def _three_valued(holds: str, fails: str, operands: Sequence[str], mode: str | N
     return "(" + " AND ".join([f"{op} != null" for op in nullable] + [body]) + ")"
 
 
-def _compile_comparison(left: str, op: str, right: str, mode: str | None) -> str:
+def _compile_comparison(
+    left: str, op: str, right: str, mode: str | None, *, compared: tuple[str, str] | None = None
+) -> str:
     """Compile ``left <op> right`` (Cypher operator *op*) in *mode*.
 
     Cypher compares with three-valued logic: any comparison with a null
@@ -169,12 +171,17 @@ def _compile_comparison(left: str, op: str, right: str, mode: str | None) -> str
     guarded. An equality that holds needs only one guard (``a == b`` with a
     non-null ``a`` already rules out a null ``b``), placed by
     ``_guard_preference``.
+
+    *compared* replaces the operands in the comparison itself (code-point keys
+    of strings, ``TO_HEX(x)``, which is ``""`` for null); the guards still read
+    *left* and *right*.
     """
     aql_op = _AQL_COMPARISON.get(op)
     if aql_op is None:
         raise CoreError(f"Unsupported comparison op: {op}", code="UNSUPPORTED")
-    holds = f"{left} {aql_op} {right}"
-    fails = f"{left} {_NEGATED_COMPARISON[aql_op]} {right}"
+    cl, cr = compared or (left, right)
+    holds = f"{cl} {aql_op} {cr}"
+    fails = f"{cl} {_NEGATED_COMPARISON[aql_op]} {cr}"
     if mode == "true" and aql_op == "==":
         nullable = [s for s in (left, right) if not _is_obvious_non_null(s)]
         if len(nullable) < 2:
