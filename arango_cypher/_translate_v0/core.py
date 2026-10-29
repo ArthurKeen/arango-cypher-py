@@ -2086,6 +2086,12 @@ def _compile_match_multi_parts(
     )
 
 
+#: The variables a ``FOR v[, e[, p]] IN`` line declares.
+_FOR_LOOP_VARS = re.compile(
+    r"\s*FOR\s+(\w+|`[^`]+`)(?:\s*,\s*(\w+|`[^`]+`))?(?:\s*,\s*(\w+|`[^`]+`))?\s+IN\b"
+)
+
+
 def _compile_match_multi_parts_from_parts(
     parts: list,
     *,
@@ -2112,10 +2118,20 @@ def _compile_match_multi_parts_from_parts(
         level = 1 if for_count <= 1 else 2
         return "  " * level
 
+    # Variables of the FOR lines so far, in order: a later part's member scan
+    # runs below the latest (see union_scan_source).
+    loop_vars: list[str] = []
+
     def add_for(line: str) -> None:
         nonlocal for_count
         lines.append(f"{indent_for_line()}{line}")
         for_count += 1
+        declared = _FOR_LOOP_VARS.match(line)
+        if declared is not None:
+            loop_vars.extend(g for g in declared.groups() if g)
+
+    def latest_loop_var() -> str | None:
+        return loop_vars[-1] if loop_vars else None
 
     def add_filter(expr: str) -> None:
         lines.append(f"{indent_filter_line()}FILTER {expr}")
@@ -2237,7 +2253,14 @@ def _compile_match_multi_parts_from_parts(
                 entity_style = entity_mapping.get("style")
 
                 source, pushed = node_scan_source(
-                    var, primary, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=prop_filters
+                    var,
+                    primary,
+                    entity_mapping,
+                    resolver,
+                    bind_vars,
+                    coll_key=coll_key,
+                    filters=prop_filters,
+                    after=latest_loop_var(),
                 )
                 if pushed:
                     prop_filters = []
@@ -2293,7 +2316,14 @@ def _compile_match_multi_parts_from_parts(
                 u_map = resolver.resolve_entity(_strip_label_backticks(u_primary))
                 u_style = u_map.get("style")
                 u_source, pushed = node_scan_source(
-                    u_var, u_primary, u_map, resolver, bind_vars, coll_key=ucoll_key, filters=u_prop_filters
+                    u_var,
+                    u_primary,
+                    u_map,
+                    resolver,
+                    bind_vars,
+                    coll_key=ucoll_key,
+                    filters=u_prop_filters,
+                    after=latest_loop_var(),
                 )
                 if pushed:
                     u_prop_filters = []
@@ -2533,6 +2563,8 @@ def _compile_bound_part(
             if not label:
                 raise CoreError("Invalid label in MATCH", code="UNSUPPORTED")
 
+        # The scan runs below the variables bound so far (see union_scan_source).
+        after = next((v for v in reversed(out_env.values()) if _BARE_IDENTIFIER_RE.fullmatch(v)), None)
         u_aql = _pick_fresh_var(u_cy, forbidden_vars=forbidden_vars)
         out_env[u_cy] = u_aql
 
@@ -2546,7 +2578,14 @@ def _compile_bound_part(
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(label))
             entity_style = entity_mapping.get("style")
             tail_source, pushed = node_scan_source(
-                u_aql, label, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=tail_props
+                u_aql,
+                label,
+                entity_mapping,
+                resolver,
+                bind_vars,
+                coll_key=coll_key,
+                filters=tail_props,
+                after=after,
             )
             if pushed:
                 tail_props = []
