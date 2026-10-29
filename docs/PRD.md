@@ -129,8 +129,8 @@ integration into notebooks, CLIs, services, and agentic workflows.
 | v0.2 | Write clauses compile and execute; live-DB mapping; CLI complete |
 | v0.3 | UI connect→translate→execute→view without touching JSON; Movies corpus passes PG+LPG; TCK ≥ 25% |
 | v0.4+ | Translation-only Full TCK ≥ 60% and execution-grounded compatibility reported separately; agentic tool contract functional |
-| LDBC M2 (after WP-35) | Every LDBC SNB Interactive v2 read and update except IC14 (GDS) matches the Neo4j oracle (`matches_oracle`) on both PG and LPG (`tests/ldbc/execution_ledger.tsv`) |
-| LDBC M3 | Every LDBC BI query except BI10, BI15, BI19 and BI20 (GDS/APOC) matches the oracle on both layouts |
+| LDBC M2 (after WP-35) | Every LDBC SNB Interactive v2 read and update except IC14 (GDS) matches the Neo4j oracle (`matches_oracle`) on both PG and LPG (`tests/ldbc/execution_ledger.tsv`). INS1 counts when its verbatim text fails closed on the upstream schema bug it carries (`WORKS_AT` for `WORK_AT`, [ldbc_snb_interactive_v2_impls#10](https://github.com/ldbc/ldbc_snb_interactive_v2_impls/issues/10)) and its labelled schema-fix variant matches (LDBC-1). **Achieved 2026-10-29.** |
+| LDBC M3 | Every LDBC BI query except BI10, BI15, BI19 and BI20 (GDS/APOC) matches the oracle on both layouts. **Achieved 2026-10-29.** |
 
 ---
 
@@ -1369,7 +1369,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **In progress**: WP-31 (data sets and PG/LPG loader, `tests/ldbc/`) done; WP-32 (mapping fixtures, temporal-accessor guard, vendored corpus, translation ratchet) done; WP-33 (Neo4j oracle loader and snapshots, Neo4j pinned 5.26.27, read and write execution ratchet in `tests/ldbc/execution_ledger.tsv`) and WP-34 done, so Phase 0 is complete. Defects execution found so far are listed in the plan §3.5. Dated baseline in [`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3. Current translation figures are in `tests/ldbc/translation_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **Correctness done, performance in progress.** Phase 0 (WP-31 to WP-34) and Phase 1 (WP-35 to WP-42) are complete, and milestones M2 and M3 were achieved on 2026-10-29: every operation in subset matches the Neo4j oracle on PG and LPG, with no `translates_wrong` cell. Open: the live mapping diff (LDBC-2), the benchmark runner and SF0.1/SF1 runs (LDBC-6, LDBC-8, WP-43/44), then the hybrid layout. Current figures are in `tests/ldbc/execution_ledger.tsv` and `translation_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |

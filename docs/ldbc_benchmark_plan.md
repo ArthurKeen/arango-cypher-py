@@ -1,6 +1,6 @@
 # LDBC SNB Benchmark — Research & Implementation Plan
 
-**Status:** Proposed — awaiting maintainer review
+**Status:** Phases 0 and 1 complete (M2 and M3 achieved 2026-10-29); Phase 2 (performance) in progress
 **Date:** 2026-10-23
 **Implements:** [`PRD.md`](./PRD.md) §12.1 (LDBC SNB benchmark)
 **Work packages:** WP-31 … WP-44 (continues the numbering in [`implementation_plan.md`](./implementation_plan.md))
@@ -863,10 +863,12 @@ beyond the fail-closed guard.
 
 **Milestone M2 (end of WP-35 to WP-40).** All 21 Interactive reads (except
 IC10 and the GDS part of IC14) and all 16 updates reach `matches_oracle` on
-**both** layouts.
+**both** layouts. **Achieved 2026-10-29**, IC10 included. Verbatim INS1 fails
+closed on its upstream schema bug and its schema-fix variant matches, which
+M2 accepts (decision 7 in §10).
 
 **Milestone M3 (after WP-41 and WP-42).** All BI operations without GDS or APOC
-reach `matches_oracle`.
+reach `matches_oracle`. **Achieved 2026-10-29.**
 
 ### Phase 2 — Performance
 
@@ -981,7 +983,19 @@ Decided by the maintainer on 2026-10-26:
    [ldbc/ldbc_snb_interactive_v2_impls#10](https://github.com/ldbc/ldbc_snb_interactive_v2_impls/issues/10).
    v1 has the same bug.
 
-Still open:
+Decided by the maintainer on 2026-10-29, closing out correctness:
 
-- **D9, GDS queries.** Are Arango-dialect variants (`K_SHORTEST_PATHS`) for
-  IC14, BI15, BI19 and BI20 worth the effort without a Neo4j oracle?
+7. **INS1 and M2.** Verbatim INS1 counts toward M2 when it fails closed on
+   the upstream schema bug and its labelled schema-fix variant matches (PRD §3).
+8. **D9, GDS/APOC queries: deferred.** IC14, BI10, BI15, BI19 and BI20 stay
+   `out_of_subset`. Arango-dialect variants would test the extension functions
+   and ArangoDB's path engine, not the transpiler, and have no Neo4j oracle.
+   Revisit only for a weighted-path performance comparison (IC14 first).
+9. **Performance environment.** SF1 runs on a dedicated cloud VM, both engines
+   under identical limits, for reproducible comparative numbers; one run on an
+   Arango Platform deployment checks the result. SF0.1 runs nightly in CI,
+   non-blocking: plan-shape changes and large p50 moves are flagged, since
+   shared runners make p99 unreliable.
+10. **Hybrid layout (D2): after the performance work.** It is not part of the
+    PRD's LDBC-2 (PG and LPG), so LDBC closes without it; it then adds a third
+    layout to the benchmark and its own correctness ledger column.
