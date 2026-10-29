@@ -65,6 +65,7 @@ from .naming import (
     _rewrite_vars,
     _strip_label_backticks,
 )
+from .pattern_reversal import from_bound_end
 from .shortest_path import (
     compile_shortest_path,
     pattern_element,
@@ -2499,7 +2500,8 @@ def _compile_match_from_bound(
             continue
         if part.oC_AnonymousPatternPart() is None:
             raise CoreError("Named paths in a MATCH after WITH are not supported", code="UNSUPPORTED")
-        elem = part.oC_AnonymousPatternPart().oC_PatternElement()
+        # Read from the bound end when only the last node is bound (pattern_reversal).
+        elem = from_bound_end(part.oC_AnonymousPatternPart().oC_PatternElement(), out_env)
         has_chain = _compile_bound_part(
             elem,
             resolver=resolver,

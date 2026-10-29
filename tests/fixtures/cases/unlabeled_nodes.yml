@@ -27,18 +27,16 @@ cases:
   name: an unlabeled start after WITH is scanned in the collection its first edge guarantees
   mapping_fixture: ldbc_pg
   extensions_enabled: false
-  cypher: 'MATCH (f:Forum {id: $id}) WITH f OPTIONAL MATCH (x)<-[:HAS_CREATOR]-(p)<-[:CONTAINER_OF]-(f) RETURN x.id
-    AS id'
+  cypher: 'MATCH (f:Forum {id: $id}) WITH f OPTIONAL MATCH (x)<-[:HAS_CREATOR]-(p) WHERE p.id = f.id RETURN x.id AS id'
   params:
     id: 1
   expected:
-    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@collection, @@tailCollection, @@withCollection5, @@withCollection6, @@withCollection7, @@withCollection8\nFOR f IN @@collection\n  OPTIONS {indexHint: \"idx_forum_id\", forceIndexHint: false}\n  FILTER (@id != null AND f.id == @id)\n  LET _opt_rows = (\n  FOR x IN @@tailCollection\n    FOR p, r IN 1..1 INBOUND x @@edgeCollection\n      FOR f_1, r_1 IN 1..1 INBOUND p @@edgeCollection2\n        FILTER f_1._id == f._id\n        RETURN {x: x, p: p}\n        )\n        FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n          LET x = _opt_row.x\n          LET p = _opt_row.p\n          RETURN {id: x.id}\n"
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@withCollection3, @@withCollection4, @@collection, @@tailCollection, @@withCollection5, @@withCollection6, @@withCollection7, @@withCollection8\nFOR f IN @@collection\n  OPTIONS {indexHint: \"idx_forum_id\", forceIndexHint: false}\n  FILTER (@id != null AND f.id == @id)\n  LET _opt_rows = (\n  FOR x IN @@tailCollection\n    FOR p, r IN 1..1 INBOUND x @@edgeCollection\n      FILTER (p.id != null AND p.id == f.id)\n      RETURN {x: x, p: p}\n      )\n      FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n        LET x = _opt_row.x\n        LET p = _opt_row.p\n        RETURN {id: x.id}\n"
     bind_vars:
       id: 1
       "@collection": forum
       "@tailCollection": person
       "@edgeCollection": has_creator
-      "@edgeCollection2": container_of
       "@withCollection0": city
       "@withCollection1": comment
       "@withCollection2": company
