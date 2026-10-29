@@ -161,7 +161,7 @@ class TestUntypedTraversalTranslation:
             mapping=mapping_bundle_for("lpg"),
         )
         assert "COLLECT t = (r.type != null ? r.type : PARSE_IDENTIFIER(r._id).collection)" in out.aql
-        assert "AGGREGATE c = COUNT(1)" in out.aql
+        assert "AGGREGATE _c_rows = SUM(1)" in out.aql
         # Group key is well-formed (regression: previously yielded ``collection)``).
         assert "collection)" not in out.aql.split("RETURN")[-1].split("COLLECT")[0]
 

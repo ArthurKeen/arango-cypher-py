@@ -16,8 +16,9 @@ def _reserve(name: str) -> str:
     return name
 
 
-def test_count_star_counts_rows():
-    assert lower_aggregate("c", "COUNT(1)", _reserve) == (["c = COUNT(1)"], None)
+def test_count_star_sums_ones():
+    # Not COUNT(1): a subquery after a counting COLLECT is null (arangodb/arangodb#23553).
+    assert lower_aggregate("c", "COUNT(1)", _reserve) == (["_c_rows = SUM(1)"], "NOT_NULL(_c_rows, 0)")
 
 
 def test_count_sums_non_null_indicators():

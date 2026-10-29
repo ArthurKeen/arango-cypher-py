@@ -7,7 +7,11 @@ Cypher aggregates skip nulls; several AQL aggregates do not. On ArangoDB 3.11:
 - ``SUM`` over no rows is null, where Cypher's ``sum()`` is 0;
 - ``AVG``, ``MIN`` and ``MAX`` already ignore nulls.
 
-``count(*)`` (``COUNT(1)``) counts rows, nulls included, and is left alone.
+``count(*)`` counts rows, nulls included. It is ``SUM(1)``, not ``COUNT(1)``:
+after a ``COLLECT`` with no group keys that counts, ArangoDB (3.11.14, 3.12.12)
+evaluates a later uncorrelated subquery to null (arangodb/arangodb#23553), so
+``WITH count(*) AS c RETURN c, [x IN range(1, 3) | x]`` lost its list and a
+``MATCH`` after it lost its rows. ``SUM`` is not affected.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ def lower_aggregate(aql: str, agg_expr: str, reserve: Callable[[str], str]) -> t
     ``LET {aql} = …`` must evaluate. *reserve* returns a fresh variable name and
     marks it used.
 
+    - ``count(*)`` sums ones, ``SUM(1)`` (the module docstring says why not
+      ``COUNT(1)``), falling back to 0 over no rows;
     - ``count(x)`` sums non-null indicators: ``SUM(x == null ? 0 : 1)``;
     - ``count(DISTINCT x)`` subtracts the one distinct null that
       ``COUNT_DISTINCT`` counted, if any value was null;
@@ -41,7 +47,10 @@ def lower_aggregate(aql: str, agg_expr: str, reserve: Callable[[str], str]) -> t
     """
     expr = agg_expr.strip()
     m = _NULL_COUNTING.fullmatch(expr)
-    if m is None or expr == "COUNT(1)":
+    if expr == "COUNT(1)":
+        rows = reserve(_affix_name(aql, prefix="_", suffix="_rows"))
+        return [f"{rows} = SUM(1)"], f"NOT_NULL({rows}, 0)"
+    if m is None:
         return [f"{aql} = {expr}"], None
     fn, inner = m.group(1), m.group(2).strip()
     if fn == "COUNT":

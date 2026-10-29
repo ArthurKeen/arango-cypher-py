@@ -887,7 +887,18 @@ reach `tag` (LDBC BI2 ran past 30 s at the smallest scale).
 earlier clauses reads a variable bound before it (`FILTER x == x` in each
 member branch), so ArangoDB cannot hoist it above the loop that binds it:
 hoisted, the member documents ride along every row of that loop, and LDBC BI1
-on PG passed the 1 GB query memory limit.
+on PG passed the 1 GB query memory limit on ArangoDB 3.11 (3.12.12 does not
+carry them; the dependency can go when CI's correctness tier moves to 3.12).
+
+**ArangoDB behaviour the translation avoids.** After a `COLLECT` that has no
+group keys and counts (`COLLECT WITH COUNT INTO`, `AGGREGATE x = COUNT(…)`), a
+later uncorrelated subquery evaluates to null on 3.11.14 and 3.12.12
+([arangodb/arangodb#23553](https://github.com/arangodb/arangodb/issues/23553)).
+`count(*)` therefore compiles to `SUM(1)` (it was `COUNT(1)`, and
+`WITH count(*) AS c RETURN c, [x IN range(1, 3) | x]` lost its list while a
+`MATCH` after `WITH count(*)` lost its rows) and `count(x)` to
+`SUM(x == null ? 0 : 1)`; an expected-failure live test reports when a server
+release fixes the issue.
 
 The LDBC baseline probe found both problems
 ([`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3.2).
