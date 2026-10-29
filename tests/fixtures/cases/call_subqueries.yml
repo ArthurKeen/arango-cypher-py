@@ -1,0 +1,82 @@
+version: 1
+cases:
+- id: C866
+  name: CALL subquery with an imported variable on PG
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) CALL { WITH n MATCH (n)-[:FOLLOWS]->(f:User) RETURN count(f) AS c } RETURN n.id AS id,
+    c
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR n IN @@collection\n  FOR\
+      \ _call IN (\n    FOR f, r IN 1..1 OUTBOUND n @@edgeCollection\n      FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ f)\n      COLLECT AGGREGATE _c_nonnull = SUM((f) == null ? 0 : 1)\n      LET c = NOT_NULL(_c_nonnull, 0)\n\
+      \      RETURN {c: c}\n      )\n      LET c = _call[\"c\"]\n      RETURN {id: n.id, c: c}"
+    bind_vars:
+      '@collection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
+- id: C867
+  name: CALL subquery with an imported variable on LPG
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: MATCH (n:User) CALL { WITH n MATCH (n)-[:FOLLOWS]->(f:User) RETURN count(f) AS c } RETURN n.id AS id,
+    c
+  expected:
+    aql: "WITH @@collection\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  FOR _call IN (\n   \
+      \ FOR f, r IN 1..1 OUTBOUND n @@edgeCollection\n      FILTER IS_SAME_COLLECTION(@vCollection, f)\n      FILTER\
+      \ f[@vTypeField] == @vTypeValue\n      FILTER r[@relTypeField] == @relTypeValue\n      COLLECT AGGREGATE _c_nonnull\
+      \ = SUM((f) == null ? 0 : 1)\n      LET c = NOT_NULL(_c_nonnull, 0)\n      RETURN {c: c}\n      )\n      LET\
+      \ c = _call[\"c\"]\n      RETURN {id: n.id, c: c}"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+      '@edgeCollection': edges
+      vCollection: vertices
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C868
+  name: CALL subquery UNION ALL over an imported list (LDBC BI4 shape)
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH collect(n) AS ns CALL { WITH ns UNWIND ns AS m MATCH (m)-[:FOLLOWS]->(f:User) RETURN
+    f.id AS fid UNION ALL WITH ns UNWIND ns AS m RETURN m.id AS fid } RETURN fid, count(*) AS n
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@collection\nFOR n IN @@collection\n  COLLECT\
+      \ _collect_group = 1 INTO _collect_rows = {ns: n}\n  LET ns = REMOVE_VALUE(_collect_rows[*].ns, null)\n  FOR\
+      \ _call IN UNION((\n    FOR m IN ns\n      FOR f, r IN 1..1 OUTBOUND m @@edgeCollection\n        FILTER IS_SAME_COLLECTION(@vCollection,\
+      \ f)\n        RETURN {fid: f.id}\n        ), (\n        FOR m IN ns\n          RETURN {fid: m.id}\n      \
+      \    ))\n          LET fid = _call[\"fid\"]\n          COLLECT fid_g1 = fid AGGREGATE n = COUNT(1)\n     \
+      \     RETURN {fid: fid_g1, n: n}"
+    bind_vars:
+      '@collection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places
+- id: C869
+  name: uncorrelated CALL subquery renames the names it shares with the outer query
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (u:User)-[:FOLLOWS]->(f:User) CALL { MATCH (u:User)-[:FOLLOWS]->(f:User) RETURN count(f) AS edges
+    } RETURN u.id AS id, edges
+  expected:
+    aql: "WITH @@withCollection0, @@withCollection1, @@withCollection2, @@uCollection\nFOR u IN @@uCollection\n\
+      \  FOR f, r IN 1..1 OUTBOUND u @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, f)\n    FOR _call\
+      \ IN (\n      FOR u_1 IN @@uCollection\n        FOR f_1, r_1 IN 1..1 OUTBOUND u_1 @@edgeCollection\n     \
+      \     FILTER IS_SAME_COLLECTION(@vCollection, f_1)\n          COLLECT AGGREGATE _edges_nonnull = SUM((f_1)\
+      \ == null ? 0 : 1)\n          LET edges = NOT_NULL(_edges_nonnull, 0)\n          RETURN {edges: edges}\n \
+      \         )\n          LET edges = _call[\"edges\"]\n          RETURN {id: u.id, edges: edges}"
+    bind_vars:
+      '@uCollection': users
+      '@edgeCollection': follows
+      vCollection: users
+      '@withCollection0': docs
+      '@withCollection1': persons
+      '@withCollection2': places

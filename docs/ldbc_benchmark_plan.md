@@ -832,12 +832,17 @@ beyond the fail-closed guard.
 - **Unlocks:** IC10 BI1 BI2 BI13 BI16 BI17. It also moves the TCK temporal
   category (14.6% today).
 
-#### WP-42: `CALL { … }` subqueries (M)
+#### WP-42: `CALL { … }` subqueries (M) — implemented 2026-10-29
 - **Scope:**
   - Grammar support.
   - Lower to an AQL subquery with an imported-variable `WITH`.
   - `UNION ALL` inside the subquery body.
 - **Unlocks:** BI4 BI16 (BI15 also needs GDS).
+- **Status (2026-10-29):** `CALL { … }` compiles to an AQL subquery over the
+  outer variables (`_translate_v0/subqueries.py`), with `UNION` / `UNION ALL`
+  bodies. BI4 matches the oracle on both layouts; it also needed `DISTINCT`
+  to keep the order of its rows (the top 100 forums). BI16 now parses and
+  fails closed on `date(message.creationDate)` until WP-41.
 
 **Milestone M2 (end of WP-35 to WP-40).** All 21 Interactive reads (except
 IC10 and the GDS part of IC14) and all 16 updates reach `matches_oracle` on

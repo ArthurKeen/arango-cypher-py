@@ -77,12 +77,21 @@ from .state import (
     _active_path_vars,
     _active_registry,
     _active_resolver,
+    _active_user_params,
     _active_user_vars,
     _active_warnings,
     _HopMeta,
+    _object_rows,
+)
+from .subqueries import (
+    compile_subquery_call,
+    has_subquery_call,
+    refuse_unsupported_subquery_calls,
+    subquery_call,
+    translate_single_part_with_calls,
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
-from .temporal_guard import reject_temporal_accessor
+from .temporal_guard import reject_temporal_accessor, reject_temporal_conversion
 from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
@@ -132,6 +141,7 @@ def translate_v0(
     path_vars: dict[str, tuple[list[str], list[str]]] = {}
     path_token = _active_path_vars.set(path_vars)
     user_vars_token = _active_user_vars.set([])
+    user_params_token = _active_user_params.set(frozenset(params or {}))
 
     try:
         result = _translate_v0_inner(
@@ -158,6 +168,7 @@ def translate_v0(
         return result
     finally:
         _active_user_vars.reset(user_vars_token)
+        _active_user_params.reset(user_params_token)
         _active_path_vars.reset(path_token)
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
@@ -179,6 +190,7 @@ def _translate_v0_inner(
     _reject_unsafe_escaped_names(tree)
     _quote_aql_reserved_names(tree)
     refuse_shortest_path_in_writes(tree)
+    refuse_unsupported_subquery_calls(tree)
 
     query_ctx = tree.oC_Statement().oC_Query()
 
@@ -305,6 +317,8 @@ def _translate_single_query(
 
     # Gather reading clauses and return.
     reading_clauses = spq.oC_ReadingClause() or []
+    if has_subquery_call(reading_clauses):
+        return translate_single_part_with_calls(spq, resolver=resolver, bind_vars=bind_vars)
     if not reading_clauses:
         # A bare RETURN of constant/computed expressions (no MATCH/UNWIND/CALL)
         # maps directly to a top-level AQL ``RETURN <expr>``.
@@ -424,7 +438,7 @@ def _wrap_optional_match(
     items_ctx = proj.oC_ProjectionItems()
     items = items_ctx.oC_ProjectionItem() or []
 
-    if len(items) == 1 and items[0].oC_Variable() is None:
+    if len(items) == 1 and items[0].oC_Variable() is None and not _object_rows.get():
         null_row = "null"
     else:
         keys = []
@@ -1446,6 +1460,9 @@ def _translate_computational_multi_part(
     mpq: CypherParser.OC_MultiPartQueryContext,
     *,
     bind_vars: dict[str, Any],
+    resolver: MappingResolver,
+    imports: dict[str, str] | None = None,
+    outer_names: frozenset[str] = frozenset(),
 ) -> AqlQuery:
     """Translate a multi-part query that has **no MATCH and no writes** — a pure
     computational pipeline over literals: leading ``WITH`` (constant projections)
@@ -1457,10 +1474,13 @@ def _translate_computational_multi_part(
         WITH [1, 2, 3] AS list UNWIND list AS x RETURN x
         UNWIND range(1, 2) AS row WITH collect(row) AS rows UNWIND rows AS x RETURN x
         WITH {a: {b: 1}} AS m RETURN m.a.b
+
+    A ``CALL { … }`` stage compiles in place, and *imports* / *outer_names*
+    are as for :func:`_translate_multi_part_query`.
     """
     lines: list[str] = []
-    var_env: dict[str, str] = {}
-    forbidden: set[str] = set()
+    var_env: dict[str, str] = dict(imports or {})
+    forbidden: set[str] = set(outer_names) | set(var_env.values())
 
     def _emit_unwind(uw: CypherParser.OC_UnwindContext) -> None:
         expr = _compile_expression(uw.oC_Expression(), bind_vars)
@@ -1472,6 +1492,19 @@ def _translate_computational_multi_part(
         forbidden.add(var)
 
     def _emit_reading(rc: CypherParser.OC_ReadingClauseContext) -> None:
+        call = subquery_call(rc)
+        if call is not None:
+            var_env.update(
+                compile_subquery_call(
+                    call,
+                    resolver=resolver,
+                    bind_vars=bind_vars,
+                    var_env=var_env,
+                    forbidden_vars=forbidden,
+                    lines=lines,
+                )
+            )
+            return
         uw = rc.oC_Unwind()
         if uw is None:
             # Routing guarantees no MATCH here; anything else is unsupported.
@@ -1481,7 +1514,10 @@ def _translate_computational_multi_part(
             )
         _emit_unwind(uw)
 
+    importing = mpq.oC_With(0) if imports is not None else None
     for child in mpq.getChildren():
+        if child is importing:
+            continue
         if isinstance(child, CypherParser.OC_ReadingClauseContext):
             _emit_reading(child)
         elif isinstance(child, CypherParser.OC_WithContext):
@@ -1620,10 +1656,17 @@ def _translate_multi_part_query(
     *,
     resolver: MappingResolver,
     bind_vars: dict[str, Any],
+    imports: dict[str, str] | None = None,
+    outer_names: frozenset[str] = frozenset(),
 ) -> AqlQuery:
     """
     Minimal MultiPartQuery support for v0.1 corpus:
     MATCH ... WITH ... RETURN ...
+
+    *imports* is set for the body of a ``CALL { WITH a, b … }`` subquery: the
+    imported Cypher variables and the outer AQL names they are bound to. The
+    importing ``WITH`` is then skipped, and *outer_names* (every AQL name in
+    scope outside) are never declared again.
     """
     with_ctxs = mpq.oC_With() or []
     if not with_ctxs:
@@ -1640,14 +1683,16 @@ def _translate_multi_part_query(
     )
     _has_updating = bool(mpq.oC_UpdatingClause()) or (_tail is not None and bool(_tail.oC_UpdatingClause()))
     if not _has_match and not _has_updating:
-        return _translate_computational_multi_part(mpq, bind_vars=bind_vars)
+        return _translate_computational_multi_part(
+            mpq, bind_vars=bind_vars, resolver=resolver, imports=imports, outer_names=outer_names
+        )
     if is_create_pipeline(mpq):
         return translate_create_pipeline(mpq, resolver=resolver, bind_vars=bind_vars)
     if mpq.oC_UpdatingClause():
         raise CoreError("Updating clauses are not supported in v0", code="UNSUPPORTED")
 
     reading_clauses = mpq.oC_ReadingClause() or []
-    if not reading_clauses:
+    if not reading_clauses and imports is None:
         raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
 
     # Walk the clauses in query order: a MATCH after a WITH reads the rows that
@@ -1655,10 +1700,13 @@ def _translate_multi_part_query(
     # traversal), so it must be compiled at its own position, never hoisted
     # above the WITH stages.
     lines: list[str] = []
-    forbidden_vars: set[str] = set()
-    var_env: dict[str, str] = {}
-    seen_match = False
-    for child in mpq.children or []:
+    forbidden_vars: set[str] = set(outer_names) | set((imports or {}).values())
+    var_env: dict[str, str] = dict(imports or {})
+    seen_match = imports is not None
+    children = list(mpq.children or [])
+    if imports is not None:
+        children.remove(mpq.oC_With(0))  # the importing WITH: var_env holds the imports
+    for child in children:
         if isinstance(child, CypherParser.OC_WithContext):
             if not seen_match:
                 raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
@@ -1671,6 +1719,18 @@ def _translate_multi_part_query(
             )
             continue
         if not isinstance(child, CypherParser.OC_ReadingClauseContext):
+            continue
+        call = subquery_call(child)
+        if call is not None:
+            var_env = compile_subquery_call(
+                call,
+                resolver=resolver,
+                bind_vars=bind_vars,
+                var_env=var_env,
+                forbidden_vars=forbidden_vars,
+                lines=lines,
+            )
+            seen_match = True
             continue
         uw = child.oC_Unwind()
         if uw is not None and seen_match:
@@ -1710,6 +1770,17 @@ def _translate_multi_part_query(
     tail_reading = tail.oC_ReadingClause() or []
     rel_type_exprs: dict[str, str] = {}
     for rc in tail_reading:
+        tail_call = subquery_call(rc)
+        if tail_call is not None:
+            var_env = compile_subquery_call(
+                tail_call,
+                resolver=resolver,
+                bind_vars=bind_vars,
+                var_env=var_env,
+                forbidden_vars=forbidden_vars,
+                lines=lines,
+            )
+            continue
         tail_uw = rc.oC_Unwind()
         if tail_uw is not None:
             var_env = _compile_pipeline_unwind(
@@ -3691,7 +3762,8 @@ def _append_return(
     if distinct:
         # `RETURN *` always projects named columns, so it uses the object form
         # even for a single variable (a scalar COLLECT would drop the name).
-        if len(compiled_items) == 1 and not is_star and order_ctx is None and live_sort_terms(lines):
+        single = len(compiled_items) == 1 and not is_star and not _object_rows.get()
+        if single and order_ctx is None and live_sort_terms(lines):
             # Rows sorted by an earlier WITH: AQL's RETURN DISTINCT keeps the
             # first of each value in order, where COLLECT would re-sort them.
             append_distinct_return(
@@ -3701,7 +3773,7 @@ def _append_return(
                 limit_value=limit_value,
                 append_skip_limit=_append_skip_limit,
             )
-        elif len(compiled_items) == 1 and not is_star:
+        elif single:
             alias, expr = compiled_items[0]
             col_var = alias or _infer_key(expr) or "value"
             # `RETURN DISTINCT p` infers the key `p`, and `COLLECT p = p`
@@ -3753,7 +3825,11 @@ def _append_return(
         )
     _append_skip_limit(lines, skip_value, limit_value)
 
-    if len(compiled_items) == 1 and (compiled_items[0][0] is None or 0 in implicit_names):
+    if (
+        len(compiled_items) == 1
+        and (compiled_items[0][0] is None or 0 in implicit_names)
+        and not _object_rows.get()
+    ):
         lines.append(f"  RETURN {compiled_items[0][1]}")
         return
 
@@ -3832,6 +3908,9 @@ def _append_return_aggregation(
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
         expr_txt = expr_ctx.getText().strip()
+        # The column of an unaliased item is named in Cypher: ``person``, not
+        # the ``person_1`` it is bound to after a rename.
+        cypher_key = _infer_key(expr_txt)
         if var_env:
             expr_txt = _rewrite_vars(expr_txt, var_env)
 
@@ -3868,7 +3947,7 @@ def _append_return_aggregation(
             if var_env:
                 post = _rewrite_vars(post, var_env)
             idx = len(compiled_nonagg) + len(compiled_post) + 1
-            key = claim_key(alias or _infer_key(expr_txt) or f"expr{idx}", expr_txt, used_keys)
+            key = claim_key(alias or cypher_key or f"expr{idx}", expr_txt, used_keys)
             compiled_post.append((key, _alloc(key), post))
             continue
 
@@ -3884,6 +3963,7 @@ def _append_return_aggregation(
         # would yield a malformed identifier (``...collection)``).
         key = claim_key(
             alias
+            or cypher_key
             or _infer_key(expr_txt)
             or _infer_key(expr)
             or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}",
@@ -3942,7 +4022,7 @@ def _append_return_aggregation(
     columns = {k: aql for k, aql, _ in compiled_nonagg + compiled_agg + compiled_post}
     columns.update({k: aql for k, aql, _ in compiled_collects})
     all_items: list[tuple[str, str]] = [(k, columns[k]) for k in column_order if k not in hidden]
-    if len(all_items) == 1:
+    if len(all_items) == 1 and not _object_rows.get():
         lines.append(f"  RETURN {all_items[0][1]}")
     else:
         parts = ", ".join(f"{k}: {aql}" for k, aql in all_items)
@@ -6070,10 +6150,12 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "date":
             if not compiled_args:
                 return "DATE_ISO8601(DATE_NOW())"
+            reject_temporal_conversion("date", compiled_args[0], _active_resolver.get())
             return f"DATE_ISO8601({compiled_args[0]})"
         if fn_norm == "localdatetime":
             if not compiled_args:
                 return "DATE_ISO8601(DATE_NOW())"
+            reject_temporal_conversion("localdatetime", compiled_args[0], _active_resolver.get())
             return f"DATE_ISO8601({compiled_args[0]})"
         if fn_norm == "e":
             return "2.718281828459045"

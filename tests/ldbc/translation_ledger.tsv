@@ -3,8 +3,8 @@
 # Format: <outcome>\t<operation>@<layout>\t<detail>, sorted by cell.
 # Passing outcomes: translatable. Translatable is not correct;
 # the execution ledger (WP-33) records which translations return the oracle's rows.
-# pg: fails_closed 6, out_of_subset 5, syntax_error 2, translatable 45
-# lpg: fails_closed 6, out_of_subset 5, syntax_error 2, translatable 45
+# pg: fails_closed 7, out_of_subset 5, translatable 46
+# lpg: fails_closed 7, out_of_subset 5, translatable 46
 out_of_subset	BI10@lpg	APOC (apoc.path.subgraphNodes)
 out_of_subset	BI10@pg	APOC (apoc.path.subgraphNodes)
 translatable	BI11@lpg	
@@ -17,8 +17,8 @@ translatable	BI14@lpg
 translatable	BI14@pg	
 out_of_subset	BI15@lpg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
 out_of_subset	BI15@pg	Neo4j GDS (gds.graph.project.cypher, gds.shortestPath.dijkstra.stream, gds.graph.drop)
-syntax_error	BI16@lpg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
-syntax_error	BI16@pg	Cypher syntax error at 17:5: no viable alternative at input 'CALL {'
+fails_closed	BI16@lpg	UNSUPPORTED: date() of property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, and its stored encodi…
+fails_closed	BI16@pg	UNSUPPORTED: date() of property 'creationDate' is not supported yet: the mapping declares 'creationDate' as datetime, and its stored encodi…
 fails_closed	BI17@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI17@pg	UNSUPPORTED: Unsupported function in v0: duration
 translatable	BI18@lpg	
@@ -33,8 +33,8 @@ fails_closed	BI2@lpg	UNSUPPORTED: Unsupported function in v0: duration
 fails_closed	BI2@pg	UNSUPPORTED: Unsupported function in v0: duration
 translatable	BI3@lpg	
 translatable	BI3@pg	
-syntax_error	BI4@lpg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
-syntax_error	BI4@pg	Cypher syntax error at 14:5: no viable alternative at input 'CALL {'
+translatable	BI4@lpg	
+translatable	BI4@pg	
 translatable	BI5@lpg	
 translatable	BI5@pg	
 translatable	BI6@lpg	
