@@ -23,6 +23,7 @@ resolvable `MappingBundle` and the physical Arango graph layout.
 | `WITH`, aggregation, star projection | 63–89% by TCK category | Golden fixtures | Partial | Multi-aggregation/scope and filter-placement shapes remain. |
 | `UNWIND`, `UNION` | 85.7%, 83.3% | Golden fixtures | Partial | Multi-part write-pipeline combinations remain. |
 | `EXISTS {}` / `COUNT {}` pattern subqueries | 10/10 | Dedicated tests | Supported | Complex multi-`WITH`/non-count aggregation bodies reject clearly. |
+| `CALL { … }` subqueries, `UNION` / `UNION ALL` bodies | LDBC BI4 | Golden fixtures; live (`tests/integration/test_call_subqueries_live.py`) | Supported | Writes in the body, `IN TRANSACTIONS`, and importing `WITH` beyond a variable list are refused. |
 | List quantifiers `any`/`all`/`none`/`single` | 544/604 (90.1%) | Dedicated tests | Partial | Null predicate behavior differs from Cypher three-valued logic. |
 | `reduce()` | Dedicated tests | — | Constrained | Numeric sum-fold only; general folds reject. |
 | `CREATE`, `MERGE`, `SET`, `REMOVE`, `DELETE`, `FOREACH` | 58.7–82.1% by relevant TCK category | Golden fixtures; limited TCK execution | Partial | Complex/multi-hop/pipeline forms and Arango multi-write constraints. |

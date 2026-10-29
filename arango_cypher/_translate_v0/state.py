@@ -29,6 +29,16 @@ _active_case_insensitive_inline: ContextVar[bool] = ContextVar(
     "_active_case_insensitive_inline",
     default=False,
 )
+
+#: The caller's parameter names: bind variables merged from a CALL subquery
+#: never rename them (``_merge_bind_vars``).
+_active_user_params: ContextVar[frozenset[str]] = ContextVar("_active_user_params", default=frozenset())
+
+#: Every RETURN row is an object keyed by its columns, even a single column
+#: (which otherwise comes back bare). Set while a CALL subquery body compiles,
+#: so the caller can read its columns by name.
+_object_rows: ContextVar[bool] = ContextVar("_object_rows", default=False)
+
 # Ordered list of the *user-named* variables currently in scope, used to expand
 # ``RETURN *`` / ``WITH *`` (auto-generated traversal / anonymous-node variables
 # must not appear in a ``*`` projection). Pattern compilation sets it from the

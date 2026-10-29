@@ -540,7 +540,7 @@ pipelines + aggregation (`count`, `avg`, `sum`, `min`, `max`, `collect`);
 AQL has no `CASE`; a null condition falls through, a missing `ELSE` is null);
 `UNION` / `UNION ALL`; list & pattern
 comprehensions; named paths + `length`/`nodes`/`relationships`; `EXISTS { }` and
-`COUNT { }` subqueries; label predicates on untyped vars
+`COUNT { }` subqueries; `CALL { … }` subqueries (below); label predicates on untyped vars
 (`WHERE risk:RISK_FACTOR`); scalar/builtin functions and `arango.*` extensions
 (§9); inline pattern properties; named parameters `$param`; dot-path property
 access (`n.address.zip`). A parameter that shares its name with a bind
@@ -592,6 +592,21 @@ value). `SKIP` and `LIMIT` count distinct rows (AQL applies a `LIMIT` before
 `RETURN DISTINCT`, so the distinct rows are read from a subquery). `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
+`CALL { … }` subqueries (`arango_cypher/_translate_v0/subqueries.py`): for
+each incoming row the body runs once, and the row continues once per row it
+returns, with its columns added; a row whose body returns nothing is dropped.
+A leading `WITH a, b` imports outer variables (only plain variables, as in
+Cypher); a body without one is uncorrelated. Every `RETURN` item of the body
+is a variable or aliased, and none may rebind a variable in scope. Bodies
+joined by `UNION` / `UNION ALL` must return the same columns. The body is an
+AQL subquery over the outer variables; names it shares with the outer query
+are renamed (AQL refuses to redeclare a name in scope, ERR 1511), and its bind
+variables merge as a `UNION` branch's do. Writes in the body, a `CALL { … }`
+in a query that writes or inside `EXISTS { }` / `COUNT { }`, an importing
+`WITH` with `WHERE`/`DISTINCT`/`ORDER BY`/`SKIP`/`LIMIT`/aliases, `RETURN *`
+in the body and `CALL { … } IN TRANSACTIONS` are refused. An aggregate
+column keeps its Cypher name when its variable is bound under another AQL name
+(`RETURN a, count(b)` returned the column as `a_1`).
 An unlabeled node reached by a traversal matches any node its edges lead to:
 on a mapping with several node collections it gets no collection check (it
 was refused, "A single label is required"); with one node collection, or one
@@ -815,7 +830,10 @@ arango-query-core ≥ 0.2.5 resolves the hierarchy
 **Temporal accessors** (`n.creationDate.year`) on a property the mapping
 declares `date`/`datetime`/`time`/`duration` are refused (`UNSUPPORTED`,
 `arango_cypher/_translate_v0/temporal_guard.py`). Copied to AQL as attribute
-access, they read a stored timestamp's attribute and return `null`. A mapping
+access, they read a stored timestamp's attribute and return `null`. So is
+`date()` / `localdatetime()` of such a property: it lowers to `DATE_ISO8601()`,
+which keeps the time of day, so `date(m.creationDate) = date($d)` compared
+whole timestamps (LDBC BI16); a literal or a parameter still converts. A mapping
 that types the property as a number or string (as the analyzer does for
 epoch-ms or ISO data) still gets attribute access, until temporal lowering
 lands (WP-41).

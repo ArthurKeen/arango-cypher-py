@@ -18,6 +18,7 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError
 
 from .._antlr.CypherParser import CypherParser
+from .state import _object_rows
 
 
 def _translate_standalone_return(
@@ -64,7 +65,7 @@ def _translate_standalone_return(
     # A single unaliased expression returns a scalar column (Cypher
     # ``RETURN "hello"`` → AQL ``RETURN "hello"``); anything else returns an
     # object keyed by alias/inferred name to preserve column identity.
-    if len(compiled_items) == 1 and compiled_items[0][0] is None:
+    if len(compiled_items) == 1 and compiled_items[0][0] is None and not _object_rows.get():
         body = compiled_items[0][1]
     else:
         body = _compile_return_object(compiled_items)

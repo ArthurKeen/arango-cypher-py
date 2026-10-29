@@ -76,6 +76,7 @@ oC_ReadingClause
  : oC_Match
  | oC_Unwind
  | oC_InQueryCall
+ | oC_SubqueryCall
  ;
 
 oC_Match
@@ -145,6 +146,9 @@ FOREACH : ( 'F' | 'f' ) ( 'O' | 'o' ) ( 'R' | 'r' ) ( 'E' | 'e' ) ( 'A' | 'a' ) 
 
 oC_InQueryCall
  : CALL SP oC_ExplicitProcedureInvocation ( SP? YIELD SP oC_YieldItems )? ;
+
+oC_SubqueryCall
+ : CALL SP? '{' SP? oC_RegularQuery SP? '}' ;
 
 CALL : ( 'C' | 'c' ) ( 'A' | 'a' ) ( 'L' | 'l' ) ( 'L' | 'l' ) ;
 
