@@ -584,7 +584,12 @@ column. `ORDER BY` sorts null after every value ascending and before every
 value descending, as Cypher does (AQL sorts null below every value), through
 a leading "is null" sort key on each key that can be null. `RETURN DISTINCT`
 honours the sort direction, and a projection alias named like a variable
-(`RETURN a.name AS a ORDER BY a`) sorts by the alias. `RETURN type(r)` on its own is a
+(`RETURN a.name AS a ORDER BY a`) sorts by the alias. `DISTINCT` keeps the
+order of the rows it reads, as Neo4j does: after `ORDER BY …` a `WITH DISTINCT`
+or `RETURN DISTINCT` keeps each value's first row in that order, so a
+following `LIMIT` keeps the top rows (AQL's `COLLECT` would re-sort them by
+value). `SKIP` and `LIMIT` count distinct rows (AQL applies a `LIMIT` before
+`RETURN DISTINCT`, so the distinct rows are read from a subquery). `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
 An unlabeled node reached by a traversal matches any node its edges lead to:
