@@ -6,11 +6,9 @@ cases:
   extensions_enabled: false
   cypher: MATCH (n:User) RETURN n.city AS city, 100 * count(*) + count(n.age) AS score
   expected:
-    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _agg = COUNT(1), __agg_g1_nonnull = SUM((n.age)\
-      \ == null ? 0 : 1)\n  LET _agg_g1 = NOT_NULL(__agg_g1_nonnull, 0)\n  LET score = ((_agg == null OR _agg_g1\
-      \ == null) ? null : ((100 * _agg) + _agg_g1))\n  RETURN {city: city, score: score}"
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE __agg_rows = SUM(1), __agg_g1_nonnull = SUM((n.age) == null ? 0 : 1)\n  LET _agg = NOT_NULL(__agg_rows, 0)\n  LET _agg_g1 = NOT_NULL(__agg_g1_nonnull, 0)\n  LET score = ((_agg == null OR _agg_g1 == null) ? null : ((100 * _agg) + _agg_g1))\n  RETURN {city: city, score: score}\n"
     bind_vars:
-      '@collection': users
+      "@collection": users
 - id: C844
   name: a function of collect() in WITH
   mapping_fixture: pg
@@ -36,15 +34,9 @@ cases:
   extensions_enabled: false
   cypher: MATCH (n:User) RETURN n.city AS city, n.city + ':' + toString(count(*)) AS label
   expected:
-    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _agg = COUNT(1)\n  LET label = ((((_agg == null)\
-      \ ? null : TO_STRING(_agg)) == null) ? null : (IS_ARRAY((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
-      \ ? null : CONCAT(city, ':')))) ? PUSH((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city,\
-      \ ':'))), ((_agg == null) ? null : TO_STRING(_agg))) : (((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
-      \ ? null : CONCAT(city, ':'))) == null) ? null : CONCAT((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null)\
-      \ ? null : CONCAT(city, ':'))), ((_agg == null) ? null : TO_STRING(_agg))))))\n  RETURN {city: city, label:\
-      \ label}"
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE __agg_rows = SUM(1)\n  LET _agg = NOT_NULL(__agg_rows, 0)\n  LET label = ((((_agg == null) ? null : TO_STRING(_agg)) == null) ? null : (IS_ARRAY((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city, ':')))) ? PUSH((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city, ':'))), ((_agg == null) ? null : TO_STRING(_agg))) : (((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city, ':'))) == null) ? null : CONCAT((IS_ARRAY(city) ? PUSH(city, ':') : ((city == null) ? null : CONCAT(city, ':'))), ((_agg == null) ? null : TO_STRING(_agg))))))\n  RETURN {city: city, label: label}\n"
     bind_vars:
-      '@collection': users
+      "@collection": users
 - id: C847
   name: a list comprehension over collect()
   mapping_fixture: pg

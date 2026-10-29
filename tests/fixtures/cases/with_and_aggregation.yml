@@ -13,7 +13,8 @@ cases:
     expected:
       aql: |
         FOR u IN @@collection
-          COLLECT city = u.city AGGREGATE c = COUNT(1)
+          COLLECT city = u.city AGGREGATE _c_rows = SUM(1)
+          LET c = NOT_NULL(_c_rows, 0)
           SORT (c == null) DESC, c DESC
           LIMIT 10
           RETURN {city: city, c: c}
@@ -110,11 +111,11 @@ cases:
     expected:
       aql: |
         FOR u IN @@collection
-          COLLECT AGGREGATE n = COUNT(1)
+          COLLECT AGGREGATE _n_rows = SUM(1)
+          LET n = NOT_NULL(_n_rows, 0)
           RETURN n
       bind_vars:
         "@collection": users
-
   - id: C025
     name: avg aggregation
     mapping_fixture: pg
@@ -146,16 +147,16 @@ cases:
         FOR u IN @@uCollection
           FOR v, r IN 1..1 OUTBOUND u @@edgeCollection
             FILTER IS_SAME_COLLECTION(@vCollection, v)
-            COLLECT city = v.city AGGREGATE c = COUNT(1)
+            COLLECT city = v.city AGGREGATE _c_rows = SUM(1)
+            LET c = NOT_NULL(_c_rows, 0)
             RETURN {city: city, c: c}
       bind_vars:
         "@uCollection": users
         "@edgeCollection": follows
         vCollection: users
-
-        '@withCollection0': docs
-        '@withCollection1': persons
-        '@withCollection2': places
+        "@withCollection0": docs
+        "@withCollection1": persons
+        "@withCollection2": places
   - id: C033
     name: multi-stage with filter and skip
     mapping_fixture: pg
@@ -171,7 +172,8 @@ cases:
     expected:
       aql: |
         FOR u IN @@collection
-          COLLECT city = u.city AGGREGATE c = COUNT(1)
+          COLLECT city = u.city AGGREGATE _c_rows = SUM(1)
+          LET c = NOT_NULL(_c_rows, 0)
           FILTER (c != null AND c > 1)
           SORT (c == null) DESC, c DESC
           LIMIT 1, 1

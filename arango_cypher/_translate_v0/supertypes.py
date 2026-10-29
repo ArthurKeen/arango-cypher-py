@@ -113,6 +113,9 @@ def union_scan_source(
     ArangoDB cannot hoist them above the loop that binds it: hoisted, the
     member documents ride along every row of that loop and the query's memory
     grows with rows × documents (LDBC BI1 on PG, 3,660 messages, passed 1 GB).
+    That growth is ArangoDB 3.11's: on 3.12.12 the same hoisted plan peaks at
+    about 2 MB. The dependency can go when the correctness tier moves off 3.11
+    (``tests/integration/test_supertype_scan_placement_live.py`` pins it).
     """
     branches: list[str] = []
     seen: set[str] = set()
