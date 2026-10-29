@@ -1,0 +1,45 @@
+version: 1
+cases:
+- id: C862
+  name: WITH DISTINCT after ORDER BY keeps the order its LIMIT reads
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH n.city AS city, count(n) AS c ORDER BY c DESC, city WITH DISTINCT city LIMIT 2 RETURN
+    city
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _c_nonnull = SUM((n) == null ? 0 : 1)\n  LET\
+      \ c = NOT_NULL(_c_nonnull, 0)\n  SORT (c == null) DESC, c DESC, (city == null), city\n  COLLECT city_1 = city\
+      \ INTO _distinct_rows = [(c == null), c, (city == null), city]\n  LET _distinct_first = FIRST(FOR _d IN _distinct_rows\
+      \ SORT _d[0] DESC, _d[1] DESC, _d[2] ASC, _d[3] ASC RETURN _d)\n  SORT _distinct_first[0] DESC, _distinct_first[1]\
+      \ DESC, _distinct_first[2] ASC, _distinct_first[3] ASC\n  LIMIT 2\n  RETURN city_1"
+    bind_vars:
+      '@collection': users
+- id: C863
+  name: WITH DISTINCT with no order in force is a plain COLLECT
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH DISTINCT n.city AS city RETURN city
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city\n  RETURN city"
+    bind_vars:
+      '@collection': users
+- id: C864
+  name: RETURN DISTINCT with LIMIT slices the distinct rows
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN DISTINCT n.city AS city, n.country AS country ORDER BY city LIMIT 2
+  expected:
+    aql: "FOR _distinct_row IN (\n  FOR n IN @@collection\n    SORT (n.city == null), n.city\n    RETURN DISTINCT\
+      \ {city: n.city, country: n.country}\n    )\n    LIMIT 2\n    RETURN _distinct_row"
+    bind_vars:
+      '@collection': users
+- id: C865
+  name: single-column RETURN DISTINCT after ORDER BY keeps the order
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH n ORDER BY n.age DESC RETURN DISTINCT n.city SKIP 1 LIMIT 2
+  expected:
+    aql: "FOR _distinct_row IN (\n  FOR n IN @@collection\n    SORT (n.age == null) DESC, n.age DESC\n    RETURN\
+      \ DISTINCT n.city\n    )\n    LIMIT 1, 2\n    RETURN _distinct_row"
+    bind_vars:
+      '@collection': users

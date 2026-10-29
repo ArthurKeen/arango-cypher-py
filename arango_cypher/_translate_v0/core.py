@@ -35,6 +35,7 @@ from .calls import (
 )
 from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
 from .deletes import translate_delete_query
+from .distinct_order import append_distinct_return, live_sort_terms, order_keeping_collect
 from .formatting import _guard_varlength_edge_types, _prepend_with_collections, _reindent_aql
 from .hints import (
     _build_collection_index_hint,
@@ -3404,10 +3405,20 @@ def _apply_with(
     # Non-aggregation path: LETs + (optional) DISTINCT (COLLECT)
     if distinct:
         collect_parts = ", ".join(f"{aql} = {expr}" for _, aql, expr in compiled_nonagg)
-        lines.append(f"  COLLECT {collect_parts}")
+        # A DISTINCT after a SORT keeps that order (see distinct_order).
+        sort_terms = live_sort_terms(lines) if order_ctx is None else None
+        restore_order: list[str] = []
+        if sort_terms:
+            collect, restore_order = order_keeping_collect(
+                collect_parts, sort_terms, forbidden_vars=forbidden_vars
+            )
+            lines.extend(collect)
+        else:
+            lines.append(f"  COLLECT {collect_parts}")
         with_filter = _rewrite_vars(with_filter_raw, env) if with_filter_raw else None
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
+        lines.extend(restore_order)
     else:
         for _, aql, expr in compiled_nonagg:
             if aql != expr:
@@ -3680,7 +3691,17 @@ def _append_return(
     if distinct:
         # `RETURN *` always projects named columns, so it uses the object form
         # even for a single variable (a scalar COLLECT would drop the name).
-        if len(compiled_items) == 1 and not is_star:
+        if len(compiled_items) == 1 and not is_star and order_ctx is None and live_sort_terms(lines):
+            # Rows sorted by an earlier WITH: AQL's RETURN DISTINCT keeps the
+            # first of each value in order, where COLLECT would re-sort them.
+            append_distinct_return(
+                lines,
+                compiled_items[0][1],
+                skip_value=skip_value,
+                limit_value=limit_value,
+                append_skip_limit=_append_skip_limit,
+            )
+        elif len(compiled_items) == 1 and not is_star:
             alias, expr = compiled_items[0]
             col_var = alias or _infer_key(expr) or "value"
             # `RETURN DISTINCT p` infers the key `p`, and `COLLECT p = p`
@@ -3711,8 +3732,13 @@ def _append_return(
                         aliases={a: e for a, e in compiled_items if a},
                     )
                 )
-            _append_skip_limit(lines, skip_value, limit_value)
-            lines.append("  RETURN DISTINCT " + _compile_return_object(compiled_items))
+            append_distinct_return(
+                lines,
+                _compile_return_object(compiled_items),
+                skip_value=skip_value,
+                limit_value=limit_value,
+                append_skip_limit=_append_skip_limit,
+            )
         return
 
     if order_ctx is not None:
