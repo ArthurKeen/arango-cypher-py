@@ -30,7 +30,7 @@ resolvable `MappingBundle` and the physical Arango graph layout.
 | `WITH … SET/DELETE/REMOVE` | Dedicated write-tail tests | — | Supported | Requires a MATCH-bound document variable (computed WITH projections reject). |
 | `UNWIND … WITH … <write>` | Explicit `NOT_IMPLEMENTED` tests | — | Unsupported | Needs leading-UNWIND multi-part write routing. |
 | `CALL` procedures | 2/52 (3.8%) | — | Unsupported | `arango.*` opt-in extensions are not Neo4j procedure compatibility. |
-| Temporal values/functions | 147/1,004 (14.6%) | — | Unsupported | Requires a temporal type/coercion/result model. |
+| Temporal values/functions | 147/1,004 (14.6%) before WP-41 | Golden fixtures; live (`tests/integration/test_temporal_live.py`) | Partial | `datetime()`/`localdatetime()`/`date()` (strings, epoch millis, calendar fields), accessors (`.year` … `.epochMillis`) on declared temporal properties, temporal functions, WITH variables and parameters. Values are ISO-8601 strings in UTC. Not yet: `duration()` and temporal arithmetic, `time()`, time zones, selecting from another temporal. |
 | Named dollar parameters | Profile + TCK | Golden fixtures | Supported | Positional parameters are unsupported. |
 
 ## Evidence levels

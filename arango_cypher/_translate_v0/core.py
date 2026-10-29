@@ -82,6 +82,7 @@ from .state import (
     _active_warnings,
     _HopMeta,
     _object_rows,
+    _temporal_vars,
 )
 from .subqueries import (
     compile_subquery_call,
@@ -91,7 +92,7 @@ from .subqueries import (
     translate_single_part_with_calls,
 )
 from .supertypes import node_collection_filter, node_scan_source, union_membership_filter
-from .temporal_guard import reject_temporal_accessor, reject_temporal_conversion
+from .temporal import bind_with, compile_property_chain, compile_temporal_function
 from .three_valued import (
     _PREDICATE_MODE,
     _closing_bracket,
@@ -142,6 +143,7 @@ def translate_v0(
     path_token = _active_path_vars.set(path_vars)
     user_vars_token = _active_user_vars.set([])
     user_params_token = _active_user_params.set(frozenset(params or {}))
+    temporal_token = _temporal_vars.set(frozenset())
 
     try:
         result = _translate_v0_inner(
@@ -169,6 +171,7 @@ def translate_v0(
     finally:
         _active_user_vars.reset(user_vars_token)
         _active_user_params.reset(user_params_token)
+        _temporal_vars.reset(temporal_token)
         _active_path_vars.reset(path_token)
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
@@ -2086,6 +2089,12 @@ def _compile_match_multi_parts(
     )
 
 
+#: The variables a ``FOR v[, e[, p]] IN`` line declares.
+_FOR_LOOP_VARS = re.compile(
+    r"\s*FOR\s+(\w+|`[^`]+`)(?:\s*,\s*(\w+|`[^`]+`))?(?:\s*,\s*(\w+|`[^`]+`))?\s+IN\b"
+)
+
+
 def _compile_match_multi_parts_from_parts(
     parts: list,
     *,
@@ -2112,10 +2121,20 @@ def _compile_match_multi_parts_from_parts(
         level = 1 if for_count <= 1 else 2
         return "  " * level
 
+    # Variables of the FOR lines so far, in order: a later part's member scan
+    # runs below the latest (see union_scan_source).
+    loop_vars: list[str] = []
+
     def add_for(line: str) -> None:
         nonlocal for_count
         lines.append(f"{indent_for_line()}{line}")
         for_count += 1
+        declared = _FOR_LOOP_VARS.match(line)
+        if declared is not None:
+            loop_vars.extend(g for g in declared.groups() if g)
+
+    def latest_loop_var() -> str | None:
+        return loop_vars[-1] if loop_vars else None
 
     def add_filter(expr: str) -> None:
         lines.append(f"{indent_filter_line()}FILTER {expr}")
@@ -2237,7 +2256,14 @@ def _compile_match_multi_parts_from_parts(
                 entity_style = entity_mapping.get("style")
 
                 source, pushed = node_scan_source(
-                    var, primary, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=prop_filters
+                    var,
+                    primary,
+                    entity_mapping,
+                    resolver,
+                    bind_vars,
+                    coll_key=coll_key,
+                    filters=prop_filters,
+                    after=latest_loop_var(),
                 )
                 if pushed:
                     prop_filters = []
@@ -2293,7 +2319,14 @@ def _compile_match_multi_parts_from_parts(
                 u_map = resolver.resolve_entity(_strip_label_backticks(u_primary))
                 u_style = u_map.get("style")
                 u_source, pushed = node_scan_source(
-                    u_var, u_primary, u_map, resolver, bind_vars, coll_key=ucoll_key, filters=u_prop_filters
+                    u_var,
+                    u_primary,
+                    u_map,
+                    resolver,
+                    bind_vars,
+                    coll_key=ucoll_key,
+                    filters=u_prop_filters,
+                    after=latest_loop_var(),
                 )
                 if pushed:
                     u_prop_filters = []
@@ -2533,6 +2566,8 @@ def _compile_bound_part(
             if not label:
                 raise CoreError("Invalid label in MATCH", code="UNSUPPORTED")
 
+        # The scan runs below the variables bound so far (see union_scan_source).
+        after = next((v for v in reversed(out_env.values()) if _BARE_IDENTIFIER_RE.fullmatch(v)), None)
         u_aql = _pick_fresh_var(u_cy, forbidden_vars=forbidden_vars)
         out_env[u_cy] = u_aql
 
@@ -2546,7 +2581,14 @@ def _compile_bound_part(
             entity_mapping = resolver.resolve_entity(_strip_label_backticks(label))
             entity_style = entity_mapping.get("style")
             tail_source, pushed = node_scan_source(
-                u_aql, label, entity_mapping, resolver, bind_vars, coll_key=coll_key, filters=tail_props
+                u_aql,
+                label,
+                entity_mapping,
+                resolver,
+                bind_vars,
+                coll_key=coll_key,
+                filters=tail_props,
+                after=after,
             )
             if pushed:
                 tail_props = []
@@ -3257,6 +3299,33 @@ _BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|`[^`]+`")
 
 
 def _apply_with(
+    with_ctx: CypherParser.OC_WithContext,
+    *,
+    lines: list[str],
+    bind_vars: dict[str, Any],
+    forbidden_vars: set[str],
+    incoming_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Compile a WITH stage; see :func:`_apply_with_projection`. Tracks the
+    variables it binds to temporal values, whose ``.year`` etc. are lowered."""
+    during, after = bind_with(with_ctx)
+    token = _temporal_vars.set(during)
+    try:
+        env = _apply_with_projection(
+            with_ctx,
+            lines=lines,
+            bind_vars=bind_vars,
+            forbidden_vars=forbidden_vars,
+            incoming_env=incoming_env,
+        )
+    except BaseException:
+        _temporal_vars.reset(token)
+        raise
+    _temporal_vars.set(after)
+    return env
+
+
+def _apply_with_projection(
     with_ctx: CypherParser.OC_WithContext,
     *,
     lines: list[str],
@@ -5847,9 +5916,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         atom = _compile_expression(ctx.oC_Atom(), bind_vars)
         lookups = ctx.oC_PropertyLookup()
         keys = [lk.oC_PropertyKeyName().getText().strip() for lk in lookups or []]
-        reject_temporal_accessor(keys, _active_resolver.get())
-        for key in keys:
-            atom = f"{atom}.{key}"
+        atom = compile_property_chain(ctx.oC_Atom(), atom, keys, _active_resolver.get())
         labels_ctx = ctx.oC_NodeLabels()
         if labels_ctx is not None and not lookups:
             # Label predicate on a bare variable (`n:Label`, `n:A:B`), e.g.
@@ -6147,16 +6214,10 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             return f"[PARSE_IDENTIFIER({n_var}._id).collection]"
         if fn_norm == "timestamp":
             return "DATE_NOW()"
-        if fn_norm == "date":
-            if not compiled_args:
-                return "DATE_ISO8601(DATE_NOW())"
-            reject_temporal_conversion("date", compiled_args[0], _active_resolver.get())
-            return f"DATE_ISO8601({compiled_args[0]})"
-        if fn_norm == "localdatetime":
-            if not compiled_args:
-                return "DATE_ISO8601(DATE_NOW())"
-            reject_temporal_conversion("localdatetime", compiled_args[0], _active_resolver.get())
-            return f"DATE_ISO8601({compiled_args[0]})"
+        if fn_norm in ("date", "datetime", "localdatetime"):
+            return compile_temporal_function(
+                fn_norm, list(args), compiled_args, compile_expr=lambda e: _compile_expression(e, bind_vars)
+            )
         if fn_norm == "e":
             return "2.718281828459045"
         if fn_norm == "pi":

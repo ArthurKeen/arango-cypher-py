@@ -831,6 +831,16 @@ beyond the fail-closed guard.
   - Accessors on non-temporal properties **fail closed** (closing §3.2 item 2).
 - **Unlocks:** IC10 BI1 BI2 BI13 BI16 BI17. It also moves the TCK temporal
   category (14.6% today).
+- **Status (2026-10-29), first half:** temporal values, functions and accessors
+  (`_translate_v0/temporal.py`): `datetime()` / `date()` / `localdatetime()`,
+  `.year` … `.epochMillis` on declared temporal properties, temporal functions,
+  WITH variables and parameters (run-time choice: a parameter may be a map).
+  An accessor on a property the mapping types as a string or number fails
+  closed (§3.2 item 2). BI1, BI13, BI16 and IC10 match on both layouts (BI1 on
+  PG also needed a later supertype scan to stay below the variables bound
+  before it). arango-query-core 0.2.6 adds `PropertyInfo.encoding`
+  (`epoch_ms` / `iso8601`). Second half: `duration()` arithmetic and temporal
+  comparisons (BI2, BI17).
 
 #### WP-42: `CALL { … }` subqueries (M) — implemented 2026-10-29
 - **Scope:**

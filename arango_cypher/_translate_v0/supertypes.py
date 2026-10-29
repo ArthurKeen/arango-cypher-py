@@ -100,18 +100,27 @@ def union_scan_source(
     bind_vars: dict[str, Any],
     *,
     filters: Sequence[str] = (),
+    after: str | None = None,
 ) -> str:
     """An AQL expression over every document of *label*'s members, for ``FOR var IN <it>``.
 
     Each branch declares *var* itself, so *filters* (written against *var*)
     apply inside it unchanged; AQL accepts the outer ``FOR var`` declared
     after the branches close.
+
+    *after* names a variable already bound where the scan runs. The branches
+    then read it (``FILTER x == x``, true for any value, null included), so
+    ArangoDB cannot hoist them above the loop that binds it: hoisted, the
+    member documents ride along every row of that loop and the query's memory
+    grows with rows × documents (LDBC BI1 on PG, 3,660 messages, passed 1 GB).
     """
     branches: list[str] = []
     seen: set[str] = set()
     for member, emap in _union_members(label, resolver):
         coll = _collection_of(member, emap)
         member_filters = list(filters)
+        if after is not None:
+            member_filters.insert(0, f"{after} == {after}")
         if emap.get("style") == "LABEL":
             member_filters.insert(0, _member_type_filter(var, member, emap, bind_vars))
         elif coll in seen:
@@ -152,6 +161,7 @@ def node_scan_source(
     *,
     coll_key: str,
     filters: Sequence[str] = (),
+    after: str | None = None,
 ) -> tuple[str, bool]:
     """What ``FOR var IN …`` iterates for a node labelled *label*.
 
@@ -159,9 +169,9 @@ def node_scan_source(
     member union and *pushed* is true: *filters* are already applied inside it
     and the caller must not apply them again. Otherwise *coll_key* is bound to
     the label's collection, *source* is its ``@@`` reference, and *filters* are
-    left to the caller.
+    left to the caller. *after* is as for :func:`union_scan_source`.
     """
     if emap.get("style") == "UNION":
-        return union_scan_source(var, label, resolver, bind_vars, filters=filters), True
+        return union_scan_source(var, label, resolver, bind_vars, filters=filters, after=after), True
     bind_vars[coll_key] = _collection_of(label, emap)
     return _aql_collection_ref(coll_key), False

@@ -780,7 +780,9 @@ represent — tracked as future work.
 ### 8.4 Not yet supported
 
 Generic Neo4j `CALL`
-procedures; temporal values and functions; `allShortestPaths()` and a
+procedures; `duration()` and temporal arithmetic, `time()`, time zones and
+selecting from another temporal value (`date({date: d, day: 3})`) (WP-41
+continues); `allShortestPaths()` and a
 `shortestPath()` whose endpoints are not bound earlier in the query; and
 multi-part write pipelines other than CREATE (mid-pipeline `DELETE`/`SET`
 before a following `WITH`), and a write that reads what the same query wrote.
@@ -827,16 +829,36 @@ arango-query-core ≥ 0.2.5 resolves the hierarchy
   type field with the supertype's name, which no document holds. The result is
   empty rows.
 
-**Temporal accessors** (`n.creationDate.year`) on a property the mapping
-declares `date`/`datetime`/`time`/`duration` are refused (`UNSUPPORTED`,
-`arango_cypher/_translate_v0/temporal_guard.py`). Copied to AQL as attribute
-access, they read a stored timestamp's attribute and return `null`. So is
-`date()` / `localdatetime()` of such a property: it lowers to `DATE_ISO8601()`,
-which keeps the time of day, so `date(m.creationDate) = date($d)` compared
-whole timestamps (LDBC BI16); a literal or a parameter still converts. A mapping
-that types the property as a number or string (as the analyzer does for
-epoch-ms or ISO data) still gets attribute access, until temporal lowering
-lands (WP-41).
+**Temporal values** (`arango_cypher/_translate_v0/temporal.py`, WP-41). A
+stored temporal property is an epoch-ms number or an ISO-8601 string; a value
+the query computes is an ISO-8601 string in UTC. AQL's `DATE_*` functions read
+all of them:
+- `datetime(x)` / `localdatetime(x)` → `DATE_ISO8601(x)`, also from
+  `{epochMillis}`, `{epochSeconds}` or calendar fields (year with month/day,
+  ordinalDay, quarter/dayOfQuarter or ISO week/dayOfWeek, plus hour … nanosecond,
+  kept to the millisecond); `date(x)` is the `YYYY-MM-DD` of `x`, so
+  `date(m.creationDate) = date($d)` compares days (LDBC BI16).
+- `.year`, `.month`, `.day`, `.hour` … `.epochMillis` lower to `DATE_YEAR(…)` and
+  friends on a property the mapping declares `date`/`datetime`/…
+  (`n.creationDate.year`), on a temporal function, and on a variable a `WITH`
+  bound to one (LDBC IC10's `birthday.month`). On a parameter, which may be a
+  map, the accessor is chosen at run time (`IS_OBJECT(@p) ? @p.year :
+  DATE_YEAR(@p)`, LDBC BI13). Anywhere else `.year` stays attribute access
+  (`m.year` of a movie). Components are UTC; a null value gives null; an
+  accessor it cannot lower (`.timezone`) is refused (`UNSUPPORTED`).
+- A mapping that types the property as a number or string (as the analyzer
+  does for epoch-ms or ISO data) gets attribute access: `.year` of it is the
+  attribute.
+
+Copied to AQL as attribute access, `n.creationDate.year` read a stored
+timestamp's attribute and returned `null`, which is why accessors were refused
+until this lowering.
+
+**Supertype scans keep their place.** A scan of a `UNION` supertype after
+earlier clauses reads a variable bound before it (`FILTER x == x` in each
+member branch), so ArangoDB cannot hoist it above the loop that binds it:
+hoisted, the member documents ride along every row of that loop, and LDBC BI1
+on PG passed the 1 GB query memory limit.
 
 The LDBC baseline probe found both problems
 ([`ldbc_benchmark_plan.md`](./ldbc_benchmark_plan.md) §3.2).
