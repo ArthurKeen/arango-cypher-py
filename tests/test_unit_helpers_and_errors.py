@@ -259,6 +259,24 @@ def test_rewrite_vars_never_rewrites_a_replacement():
     assert _rewrite_vars("a.name ASC, b.name", env) == "name ASC, name_g1"
 
 
+def test_rewrite_vars_leaves_bind_parameters_alone():
+    """Renaming a CALL subquery's ``id`` must not turn ``@id`` into ``@id_1``."""
+    env = {"id": "id_1", "collection": "collection_1"}
+    assert _rewrite_vars("FOR x IN @@collection FILTER x.id == @id RETURN id", env) == (
+        "FOR x IN @@collection FILTER x.id == @id RETURN id_1"
+    )
+
+
+def test_an_aggregate_column_is_named_after_the_cypher_variable():
+    """``a`` bound again after a WITH is ``a_1`` in AQL; its column is still ``a``."""
+    out = translate(
+        "MATCH (a:User)-[:FOLLOWS]->(b:User) WITH a, count(b) AS c "
+        "MATCH (a)-[:FOLLOWS]->(b2:User) RETURN a, count(b2) AS d",
+        mapping=mapping_bundle_for("pg"),
+    )
+    assert "RETURN {a: " in out.aql, out.aql
+
+
 def test_unique_projection_key_prefers_var_and_property_then_a_suffix():
     used: set[str] = set()
     assert _unique_projection_key("name", "a.name", used) == "name"

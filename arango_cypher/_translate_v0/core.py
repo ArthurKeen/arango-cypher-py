@@ -3832,6 +3832,9 @@ def _append_return_aggregation(
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
         expr_txt = expr_ctx.getText().strip()
+        # The column of an unaliased item is named in Cypher: ``person``, not
+        # the ``person_1`` it is bound to after a rename.
+        cypher_key = _infer_key(expr_txt)
         if var_env:
             expr_txt = _rewrite_vars(expr_txt, var_env)
 
@@ -3868,7 +3871,7 @@ def _append_return_aggregation(
             if var_env:
                 post = _rewrite_vars(post, var_env)
             idx = len(compiled_nonagg) + len(compiled_post) + 1
-            key = claim_key(alias or _infer_key(expr_txt) or f"expr{idx}", expr_txt, used_keys)
+            key = claim_key(alias or cypher_key or f"expr{idx}", expr_txt, used_keys)
             compiled_post.append((key, _alloc(key), post))
             continue
 
@@ -3884,6 +3887,7 @@ def _append_return_aggregation(
         # would yield a malformed identifier (``...collection)``).
         key = claim_key(
             alias
+            or cypher_key
             or _infer_key(expr_txt)
             or _infer_key(expr)
             or f"expr{len(compiled_nonagg) + len(compiled_agg) + 1}",

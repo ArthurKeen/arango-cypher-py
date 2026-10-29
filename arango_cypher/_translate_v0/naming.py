@@ -205,10 +205,11 @@ def _rewrite_vars(text: str, var_env: dict[str, str]) -> str:
     if not text or not var_env:
         return text
     keys = sorted(var_env.keys(), key=len, reverse=True)
-    # A key is a whole name: not part of a longer word, a quoted name or a
-    # property access (``x.v`` keeps its property ``v``).
+    # A key is a whole name: not part of a longer word, a quoted name, a
+    # property access (``x.v`` keeps its property ``v``) or a bind parameter
+    # (``@id`` is never the variable ``id``).
     pattern = re.compile(
-        r"(?P<pre>[{,]\s*)?(?<![\w`.])(?P<name>"
+        r"(?P<pre>[{,]\s*)?(?<![\w`.@])(?P<name>"
         + "|".join(re.escape(k) for k in keys)
         + r")(?![\w`])(?P<post>\s*:(?!:))?"
     )
