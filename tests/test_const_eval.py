@@ -140,6 +140,16 @@ class TestTranslation:
         out = translate("WITH [1, 2, 3] AS l RETURN size(l) AS s", mapping=self.mapping)
         assert "s: 3" in out.aql
 
+    def test_translation_cache_keys_on_folding(self) -> None:
+        # A translation cached with folding on must not answer one with it
+        # off (the arithmetic goldens failed after test_corpus_smoke).
+        from arango_cypher._translate_v0.const_eval import constant_folding
+
+        folded = translate("RETURN 'a' + 'b' AS s", mapping=self.mapping)
+        with constant_folding(False):
+            lowered = translate("RETURN 'a' + 'b' AS s", mapping=self.mapping)
+        assert "@cv0" in folded.aql and "CONCAT" in lowered.aql
+
     def test_unaliased_folded_literal_is_not_used_as_a_bare_key(self) -> None:
         # ``x > d`` folds to ``false``; a bare ``false`` key is AQL ERR 1501.
         out = translate("WITH 1 AS x, 2 AS d RETURN x > d, x = d, x < d", mapping=self.mapping)

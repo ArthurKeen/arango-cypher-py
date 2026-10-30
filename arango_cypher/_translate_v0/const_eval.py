@@ -58,6 +58,12 @@ def constant_folding(enabled: bool) -> Iterator[None]:
         _folding_enabled = previous
 
 
+def folding_enabled() -> bool:
+    """Whether translations fold constants (the translation cache keys on
+    it: the AQL differs)."""
+    return _folding_enabled
+
+
 def const_env() -> Mapping[str, Any]:
     return _const_env.get()
 

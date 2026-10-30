@@ -9,6 +9,7 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError, ExtensionPolicy, ExtensionRegistry, MappingBundle
 from arango_query_core.exec import AqlExecutor
 
+from ._translate_v0.const_eval import folding_enabled
 from .parser import parse_cypher
 from .profile import build_cypher_profile
 from .translate_v0 import TranslateOptions, translate_v0
@@ -37,6 +38,8 @@ def _cache_key(
     h.update(str(id(registry) if registry else 0).encode())
     h.update(str(case_insensitive_inline_strings).encode())
     h.update(str(cypher_column_names).encode())
+    # Folding on and off give different AQL for the same query.
+    h.update(str(folding_enabled()).encode())
     return h.hexdigest()
 
 
