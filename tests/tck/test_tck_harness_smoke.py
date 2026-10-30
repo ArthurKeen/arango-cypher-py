@@ -616,3 +616,24 @@ def test_tck_runner_smoke_integration():
     assert rep["feature"]
     assert rep["scenarios"] >= 1
     assert set(rep["counts"].keys()) == {"passed", "skipped", "failed"}
+
+
+class TestScenarioInputs:
+    def test_parameters_table_has_no_header(self):
+        """``Given parameters are:`` rows are ``| name | value |``, every one of them."""
+        assert runner._parse_params([["skipAmount", "2"], ["name", "'x'"]]) == {"skipAmount": 2, "name": "x"}
+
+    def test_labels_and_types_with_spaces_and_alternatives(self):
+        labels, types = runner._extract_labels_and_types(
+            "MATCH (me: Person)--(you :A :B)-[r: T|:U]->() MATCH ()-[:V|W]-()"
+        )
+        assert labels == {"Person", "A", "B"}
+        assert types == {"T", "U", "V", "W"}
+
+    def test_every_scenario_mapping_stores_multiple_labels(self):
+        """SET n:L writes a labels array even when no pattern in the scenario names a label."""
+        from tests.tck.gherkin import Scenario, Step
+
+        step = Step(keyword="When", text="executing query:", doc_string="MATCH (n) RETURN n")
+        mapping = runner._build_mapping_for_scenario(Scenario(name="x", steps=[step]), "lpg")
+        assert all(e.get("labelsField") == "labels" for e in mapping.physical_mapping["entities"].values())
