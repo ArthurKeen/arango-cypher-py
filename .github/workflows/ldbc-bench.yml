@@ -1,0 +1,83 @@
+# LDBC SNB performance runs (docs/ldbc_benchmark_plan.md WP-43; PRD §12.1
+# LDBC-6/7/8). Never blocks a pull request: it runs nightly and on demand, on
+# ArangoDB 3.12 (the performance target; correctness CI stays on 3.11).
+#
+# The numbers are internal (plan §10, decision 5): the JSON run and its
+# Markdown report are uploaded as an artifact, never committed. Each run is
+# compared with the last successful one, and plan changes and server p50 moves
+# are written to the job summary. Shared runners make p99 too noisy to flag.
+name: LDBC bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: Scale factor (needs tests/ldbc/params/<scale>.yml)
+        type: choice
+        default: sf0.003
+        options: [sf0.003]
+      repeats:
+        description: Timed runs per binding
+        default: "5"
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      arangodb:
+        image: arangodb:3.12.12
+        env:
+          ARANGO_ROOT_PASSWORD: openSesame
+        ports:
+          - 28529:8529
+        options: >-
+          --health-cmd "wget -qO- --header='Content-Type: application/json' --post-data '{\"username\":\"root\",\"password\":\"openSesame\"}' http://127.0.0.1:8529/_open/auth >/dev/null 2>&1"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 40
+    env:
+      ARANGO_URL: http://localhost:28529
+      ARANGO_USER: root
+      ARANGO_PASS: openSesame
+      LDBC_BENCH_IMAGE: arangodb:3.12.12
+      SCALE: ${{ inputs.scale || 'sf0.003' }}
+      REPEATS: ${{ inputs.repeats || '5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/arango-cypher/ldbc
+          key: ldbc-${{ hashFiles('tests/ldbc/datasets.py') }}
+      - name: Run
+        run: python -m tests.ldbc.bench --scale "$SCALE" --repeats "$REPEATS" --out results/bench.json
+      - name: Report
+        run: |
+          python -m tests.ldbc.report results/bench.json --out results/ldbc_results.md
+          python -m tests.ldbc.report results/bench.json --check results/ldbc_results.md
+      - name: Compare with the last successful run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(gh run list --workflow ldbc-bench.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$previous" ] && gh run download "$previous" -n "ldbc-bench-$SCALE" -D previous; then
+            { echo "### LDBC bench: changes since run $previous"; python -m tests.ldbc.report results/bench.json --compare previous/bench.json; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### LDBC bench: no earlier run to compare with" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ldbc-bench-${{ env.SCALE }}
+          path: results/
+          retention-days: 90

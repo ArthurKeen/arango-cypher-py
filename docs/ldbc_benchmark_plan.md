@@ -906,6 +906,25 @@ reach `matches_oracle`. **Achieved 2026-10-29.**
   - `workflow_dispatch` for SF0.1 and SF1;
   - an optional nightly at SF0.1, non-blocking.
 
+- **Status (2026-10-29): the runner is implemented** (`tests/ldbc/bench.py`,
+  `tests/ldbc/report.py`, `.github/workflows/ldbc-bench.yml`).
+  - It times translation (cold and warm) and execution (server-side from the
+    cursor statistics, and client) per read operation × layout × binding,
+    after warm-up, with `TIMEOUT` past `--timeout`. The query results cache is
+    off for the timed runs.
+  - Each binding's row count is checked against the oracle's; a cell that
+    differs is `rows_differ`, never timed numbers for a wrong answer.
+  - It records the plan shape and digest, and the environment (server
+    version and image, host, packages, data set digests, git SHA, mapping
+    hashes, settings).
+  - `report.py` renders Markdown with the disclaimer and attribution, checks
+    a document against its run (conformance), and compares two runs: plan
+    changes, server p50 moves beyond ×1.5 above 5 ms, and outcome changes.
+  - The workflow runs nightly and on demand on ArangoDB 3.12.12, uploads the
+    JSON and the report as an artifact, and writes the comparison with the
+    last successful run to the job summary. It runs SF0.003 until the SF0.1
+    data set and bindings are added (LDBC-8).
+
 #### WP-44: Optimisation loop and baselines (L, open-ended)
 - **Scope:**
   - Triage the slowest operations per layout from the plan digests: missing
