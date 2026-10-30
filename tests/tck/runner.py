@@ -94,15 +94,17 @@ def _parse_table(table: list[list[str]] | None) -> list[dict[str, Any]]:
 
 
 def _parse_params(table: list[list[str]] | None) -> dict[str, Any]:
-    """Parse a TCK 'parameters are:' data table into typed values."""
-    rows = _parse_table(table)
+    """Parse a TCK ``parameters are:`` table into typed values.
+
+    The table has no header: every row is ``| name | value |``.  (Reading the
+    first row as a header dropped the first parameter of every scenario.)
+    """
     params: dict[str, Any] = {}
-    for row in rows:
-        if not row:
-            continue
-        k = next(iter(row.keys()))
-        raw_val = next(iter(row.values()))
-        params[k] = parse_param_value(str(raw_val))
+    for row in table or []:
+        if len(row) != 2:
+            raise ValueError(f"parameter row must be | name | value |, got {row!r}")
+        name, raw_val = row
+        params[name] = parse_param_value(raw_val)
     return params
 
 

@@ -184,10 +184,10 @@ passed	clauses/match-where/MatchWhere1/[2] Filter node with node label predicate
 passed	clauses/match-where/MatchWhere1/[3] Filter node with property predicate on a single variable with multiple bindings
 passed	clauses/match-where/MatchWhere1/[4] Filter start node of relationship with property predicate on multi variables with multiple bindings
 passed	clauses/match-where/MatchWhere1/[5] Filter end node of relationship with property predicate on multi variables with multiple bindings
-execution_failure	clauses/match-where/MatchWhere1/[6] Filter node with a parameter in a property predicate on multi variables with one binding
+passed	clauses/match-where/MatchWhere1/[6] Filter node with a parameter in a property predicate on multi variables with one binding
 passed	clauses/match-where/MatchWhere1/[7] Filter relationship with relationship type predicate on multi variables with multiple bindings
 passed	clauses/match-where/MatchWhere1/[8] Filter relationship with property predicate on multi variables with multiple bindings
-execution_failure	clauses/match-where/MatchWhere1/[9] Filter relationship with a parameter in a property predicate on multi variables with one binding
+passed	clauses/match-where/MatchWhere1/[9] Filter relationship with a parameter in a property predicate on multi variables with one binding
 passed	clauses/match-where/MatchWhere2/[1] Filter nodes with conjunctive two-part property predicate on multi variables with multiple bindings
 translation_failure	clauses/match-where/MatchWhere2/[2] Filter node with conjunctive multi-part property predicates on multi variables with multiple bindings
 passed	clauses/match-where/MatchWhere3/[1] Join between node identities
@@ -734,20 +734,20 @@ correct_rejection	clauses/return-orderby/ReturnOrderBy6/[5] Fail if more complex
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[10] Fail when using non-constants in SKIP
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[11] Fail when using negative value in SKIP
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[1] Start the result from the second row
-execution_failure	clauses/return-skip-limit/ReturnSkipLimit1/[2] Start the result from the second row by param
+passed	clauses/return-skip-limit/ReturnSkipLimit1/[2] Start the result from the second row by param
 execution_failure	clauses/return-skip-limit/ReturnSkipLimit1/[3] SKIP with an expression that does not depend on variables
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[4] Accept skip zero
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[5] SKIP with an expression that depends on variables should fail
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[6] Negative parameter for SKIP should fail
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[7] Negative SKIP should fail
-passed	clauses/return-skip-limit/ReturnSkipLimit1/[8] Floating point parameter for SKIP should fail
+execution_failure	clauses/return-skip-limit/ReturnSkipLimit1/[8] Floating point parameter for SKIP should fail
 execution_failure	clauses/return-skip-limit/ReturnSkipLimit1/[9] Floating point SKIP should fail
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[10] Negative parameter for LIMIT should fail
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[11] Negative parameter for LIMIT with ORDER BY should fail
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[12] Fail when using negative value in LIMIT 1
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[13] Fail when using negative value in LIMIT 2
-passed	clauses/return-skip-limit/ReturnSkipLimit2/[14] Floating point parameter for LIMIT should fail
-passed	clauses/return-skip-limit/ReturnSkipLimit2/[15] Floating point parameter for LIMIT with ORDER BY should fail
+execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[14] Floating point parameter for LIMIT should fail
+execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[15] Floating point parameter for LIMIT with ORDER BY should fail
 execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[16] Fail when using floating point in LIMIT 1
 execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[17] Fail when using floating point in LIMIT 2
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[1] Limit to two hits
@@ -760,7 +760,7 @@ passed	clauses/return-skip-limit/ReturnSkipLimit2/[7] Limit to more rows than ac
 execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[8] Limit to more rows than actual results 2
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[9] Fail when using non-constants in LIMIT
 passed	clauses/return-skip-limit/ReturnSkipLimit3/[1] Get rows in the middle
-execution_failure	clauses/return-skip-limit/ReturnSkipLimit3/[2] Get rows in the middle by param
+passed	clauses/return-skip-limit/ReturnSkipLimit3/[2] Get rows in the middle by param
 passed	clauses/return-skip-limit/ReturnSkipLimit3/[3] Limiting amount of rows when there are fewer left than the LIMIT argument
 passed	clauses/return/Return1/[1] Returning a list property
 passed	clauses/return/Return1/[2] Fail when returning an undefined variable
@@ -1203,7 +1203,7 @@ passed	clauses/with-skip-limit/WithSkipLimit2/[2] Handle dependencies across WIT
 passed	clauses/with-skip-limit/WithSkipLimit2/[3] Connected components succeeding WITH with LIMIT
 passed	clauses/with-skip-limit/WithSkipLimit2/[4] Ordering and limiting on aggregate
 passed	clauses/with-skip-limit/WithSkipLimit3/[1] Get rows in the middle
-execution_failure	clauses/with-skip-limit/WithSkipLimit3/[2] Get rows in the middle by param
+passed	clauses/with-skip-limit/WithSkipLimit3/[2] Get rows in the middle by param
 passed	clauses/with-skip-limit/WithSkipLimit3/[3] Limiting amount of rows when there are fewer left than the LIMIT argument
 passed	clauses/with-where/WithWhere1/[1] Filter node with property predicate on a single variable with multiple bindings
 execution_failure	clauses/with-where/WithWhere1/[2] Filter node with property predicate on a single variable with multiple distinct bindings
@@ -1246,7 +1246,7 @@ passed	clauses/with/With6/[1] Implicit grouping with single expression as groupi
 passed	clauses/with/With6/[2] Implicit grouping with single relationship variable as grouping key and single aggregation
 passed	clauses/with/With6/[3] Implicit grouping with multiple node and relationship variables as grouping key and single aggregation
 execution_failure	clauses/with/With6/[4] Implicit grouping with single path variable as grouping key and single aggregation
-execution_failure	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
+passed	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
 translation_failure	clauses/with/With6/[6] Handle projected variables inside an expression which contains an aggregation expression
 translation_failure	clauses/with/With6/[7] Handle projected property accesses inside an expression which contains an aggregation expression
 correct_rejection	clauses/with/With6/[8] Fail if not projected variables are used inside an expression which contains an aggregation expression
@@ -1578,7 +1578,7 @@ execution_failure	expressions/graph/Graph6/[9] Fail when performing property acc
 execution_failure	expressions/graph/Graph6/[9] Fail when performing property access on a non-graph element [exp=true]
 passed	expressions/graph/Graph7/[1] Execute n['name'] in read queries
 passed	expressions/graph/Graph7/[2] Execute n['name'] in update queries
-execution_failure	expressions/graph/Graph7/[3] Use dynamic property lookup based on parameters when there is lhs type information
+passed	expressions/graph/Graph7/[3] Use dynamic property lookup based on parameters when there is lhs type information
 execution_failure	expressions/graph/Graph8/[1] Using `keys()` on a single node, non-empty result
 execution_failure	expressions/graph/Graph8/[2] Using `keys()` on multiple nodes, non-empty result
 execution_failure	expressions/graph/Graph8/[3] Using `keys()` on a single node, empty result
@@ -1596,27 +1596,27 @@ execution_failure	expressions/graph/Graph9/[6] `properties()` failing on a strin
 execution_failure	expressions/graph/Graph9/[7] `properties()` failing on a list of booleans
 passed	expressions/list/List1/[1] Indexing into literal list
 translation_failure	expressions/list/List1/[2] Indexing into nested literal lists
-execution_failure	expressions/list/List1/[3] Use list lookup based on parameters when there is no type information
-execution_failure	expressions/list/List1/[4] Use list lookup based on parameters when there is lhs type information
-execution_failure	expressions/list/List1/[5] Use list lookup based on parameters when there is rhs type information
+passed	expressions/list/List1/[3] Use list lookup based on parameters when there is no type information
+passed	expressions/list/List1/[4] Use list lookup based on parameters when there is lhs type information
+passed	expressions/list/List1/[5] Use list lookup based on parameters when there is rhs type information
 execution_failure	expressions/list/List1/[6] Fail when indexing a non-list #Example: <exampleName> [expr='1', exampleName=string]
 execution_failure	expressions/list/List1/[6] Fail when indexing a non-list #Example: <exampleName> [expr=123, exampleName=integer]
 execution_failure	expressions/list/List1/[6] Fail when indexing a non-list #Example: <exampleName> [expr=4.7, exampleName=float]
 execution_failure	expressions/list/List1/[6] Fail when indexing a non-list #Example: <exampleName> [expr=true, exampleName=boolean]
-passed	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr='1', exampleName=string]
-passed	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=123, exampleName=integer]
-passed	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=4.7, exampleName=float]
-passed	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=true, exampleName=boolean]
+execution_failure	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr='1', exampleName=string]
+execution_failure	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=123, exampleName=integer]
+execution_failure	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=4.7, exampleName=float]
+execution_failure	expressions/list/List1/[7] Fail when indexing a non-list given by a parameter #Example: <exampleName> [expr=true, exampleName=boolean]
 execution_failure	expressions/list/List1/[8] Fail when indexing with a non-integer #Example: <exampleName> [idx='1', exampleName=string]
 execution_failure	expressions/list/List1/[8] Fail when indexing with a non-integer #Example: <exampleName> [idx=4.7, exampleName=float]
 execution_failure	expressions/list/List1/[8] Fail when indexing with a non-integer #Example: <exampleName> [idx=[1], exampleName=list]
 execution_failure	expressions/list/List1/[8] Fail when indexing with a non-integer #Example: <exampleName> [idx=true, exampleName=boolean]
 execution_failure	expressions/list/List1/[8] Fail when indexing with a non-integer #Example: <exampleName> [idx={x: 3}, exampleName=map]
-passed	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx='1', exampleName=string]
-passed	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=4.7, exampleName=float]
-passed	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=[1], exampleName=list]
-passed	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=true, exampleName=boolean]
-passed	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx={x: 3}, exampleName=map]
+execution_failure	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx='1', exampleName=string]
+execution_failure	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=4.7, exampleName=float]
+execution_failure	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=[1], exampleName=list]
+execution_failure	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx=true, exampleName=boolean]
+execution_failure	expressions/list/List1/[9] Fail when indexing with a non-integer given by a parameter #Example: <exampleName> [idx={x: 3}, exampleName=map]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-1, end=0, list=[-1, 0]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-1, end=1, list=[-1, 0, 1]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-10, end=-3, list=[-10, -9, -8, -7, -6, -5, -4, -3]]
@@ -1691,8 +1691,8 @@ execution_failure	expressions/list/List12/[4] Returning a list comprehension
 execution_failure	expressions/list/List12/[5] Using a list comprehension in a WITH
 passed	expressions/list/List12/[6] Using a list comprehension in a WHERE
 correct_rejection	expressions/list/List12/[7] Fail when using aggregation in list comprehension
-execution_failure	expressions/list/List2/[10] List slice with parameterised range
-execution_failure	expressions/list/List2/[11] List slice with parameterised invalid range
+passed	expressions/list/List2/[10] List slice with parameterised range
+passed	expressions/list/List2/[11] List slice with parameterised invalid range
 passed	expressions/list/List2/[1] List slice
 passed	expressions/list/List2/[2] List slice with implicit end
 passed	expressions/list/List2/[3] List slice with implicit start
@@ -1929,8 +1929,8 @@ execution_failure	expressions/map/Map1/[6] Fail when performing property access 
 execution_failure	expressions/map/Map1/[6] Fail when performing property access on a non-map [exp=[123, true]]
 execution_failure	expressions/map/Map1/[6] Fail when performing property access on a non-map [exp=false]
 execution_failure	expressions/map/Map1/[6] Fail when performing property access on a non-map [exp=true]
-execution_failure	expressions/map/Map2/[1] Dynamically access a field based on parameters when there is no type information
-execution_failure	expressions/map/Map2/[2] Dynamically access a field based on parameters when there is rhs type information
+passed	expressions/map/Map2/[1] Dynamically access a field based on parameters when there is no type information
+passed	expressions/map/Map2/[2] Dynamically access a field based on parameters when there is rhs type information
 passed	expressions/map/Map2/[3] Dynamically access a field on null results in null
 passed	expressions/map/Map2/[4] Dynamically access a field with null results in null
 passed	expressions/map/Map2/[5] Dynamically access a field is case-sensitive [map={name: 'Mats', Name: 'Pontus'}, key='Name', result='Pontus']
@@ -1940,11 +1940,11 @@ passed	expressions/map/Map2/[5] Dynamically access a field is case-sensitive [ma
 passed	expressions/map/Map2/[5] Dynamically access a field is case-sensitive [map={name: 'Mats', nome: 'Pontus'}, key='null', result=null]
 passed	expressions/map/Map2/[5] Dynamically access a field is case-sensitive [map={null: 'Mats', NULL: 'Pontus'}, key='NULL', result='Pontus']
 passed	expressions/map/Map2/[5] Dynamically access a field is case-sensitive [map={null: 'Mats', NULL: 'Pontus'}, key='null', result='Mats']
-passed	expressions/map/Map2/[6] Fail at runtime when attempting to index with an Int into a Map
-passed	expressions/map/Map2/[7] Fail at runtime when trying to index into a map with a non-string
-passed	expressions/map/Map2/[8] Fail at runtime when trying to index something which is not a map
+execution_failure	expressions/map/Map2/[6] Fail at runtime when attempting to index with an Int into a Map
+execution_failure	expressions/map/Map2/[7] Fail at runtime when trying to index into a map with a non-string
+execution_failure	expressions/map/Map2/[8] Fail at runtime when trying to index something which is not a map
 passed	expressions/map/Map3/[1] Using `keys()` on a literal map
-execution_failure	expressions/map/Map3/[2] Using `keys()` on a parameter map
+passed	expressions/map/Map3/[2] Using `keys()` on a parameter map
 execution_failure	expressions/map/Map3/[3] Using `keys()` on null map
 passed	expressions/map/Map3/[4] Using `keys()` on map with null values [map={k: 1, l: null, m: 1}, result=['k', 'l', 'm']]
 passed	expressions/map/Map3/[4] Using `keys()` on map with null values [map={k: 1, l: null}, result=['k', 'l']]
@@ -1997,13 +1997,13 @@ passed	expressions/null/Null2/[6] IS NOT NULL is case insensitive
 passed	expressions/null/Null3/[1] The inverse of a null is a null
 passed	expressions/null/Null3/[2] It is unknown - i.e. null - if a null is equal to a null
 passed	expressions/null/Null3/[3] It is unknown - i.e. null - if a null is not equal to a null
-execution_failure	expressions/null/Null3/[4] Using null in IN [elt=1, coll=[1, 2, 3, null], result=true]
-execution_failure	expressions/null/Null3/[4] Using null in IN [elt=1, coll=[null, 1], result=true]
+passed	expressions/null/Null3/[4] Using null in IN [elt=1, coll=[1, 2, 3, null], result=true]
+passed	expressions/null/Null3/[4] Using null in IN [elt=1, coll=[null, 1], result=true]
 execution_failure	expressions/null/Null3/[4] Using null in IN [elt=5, coll=[1, 2, 3, null], result=null]
-execution_failure	expressions/null/Null3/[4] Using null in IN [elt=null, coll=[1, 2, 3, null], result=null]
-execution_failure	expressions/null/Null3/[4] Using null in IN [elt=null, coll=[1, 2, 3], result=null]
+passed	expressions/null/Null3/[4] Using null in IN [elt=null, coll=[1, 2, 3, null], result=null]
+passed	expressions/null/Null3/[4] Using null in IN [elt=null, coll=[1, 2, 3], result=null]
 execution_failure	expressions/null/Null3/[4] Using null in IN [elt=null, coll=[], result=false]
-execution_failure	expressions/null/Null3/[4] Using null in IN [elt=null, coll=null, result=null]
+passed	expressions/null/Null3/[4] Using null in IN [elt=null, coll=null, result=null]
 translation_failure	expressions/path/Path1/[1] `nodes()` on null path
 execution_failure	expressions/path/Path2/[1] Return relationships by fetching them from the path
 execution_failure	expressions/path/Path2/[2] Return relationships by fetching them from the path - starting from the end
@@ -3820,7 +3820,7 @@ passed	expressions/typeConversion/TypeConversion2/[2] `toInteger()` returning nu
 passed	expressions/typeConversion/TypeConversion2/[3] `toInteger()` handling mixed number types
 passed	expressions/typeConversion/TypeConversion2/[4] `toInteger()` handling Any type
 passed	expressions/typeConversion/TypeConversion2/[5] `toInteger()` on a list of strings
-execution_failure	expressions/typeConversion/TypeConversion2/[6] `toInteger()` on a complex-typed expression
+passed	expressions/typeConversion/TypeConversion2/[6] `toInteger()` on a complex-typed expression
 passed	expressions/typeConversion/TypeConversion2/[7] `toInteger()` on node property
 execution_failure	expressions/typeConversion/TypeConversion2/[8] Fail `toInteger()` on invalid types #Example: <exampleName> [invalid=[], exampleName=list]
 execution_failure	expressions/typeConversion/TypeConversion2/[8] Fail `toInteger()` on invalid types #Example: <exampleName> [invalid=n, exampleName=node]
