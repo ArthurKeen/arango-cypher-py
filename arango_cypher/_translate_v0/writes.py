@@ -1386,6 +1386,7 @@ def _translate_merge_query(
     bind_vars: dict[str, Any],
 ) -> AqlQuery:
     """Translate MERGE clause(s) into AQL UPSERT."""
+    _refuse_untranslated_merge_parts(spq, merge_clauses)
     if len(merge_clauses) != 1:
         return _translate_multi_merge_query(
             spq,
@@ -1433,6 +1434,55 @@ def _translate_merge_query(
         )
 
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _refuse_untranslated_merge_parts(
+    spq: CypherParser.OC_SinglePartQueryContext, merge_clauses: list[CypherParser.OC_MergeContext]
+) -> None:
+    """Refuse what the UPSERT translation would drop instead of compiling.
+
+    A CREATE beside the MERGE is left out of the AQL. When the MERGE or the
+    RETURN reads a variable that CREATE declares (``CREATE (a), (b) MERGE
+    (a)-[:X]->(b)``), the AQL read ``a`` as a collection (ERR 1203); that is
+    refused. A path variable on the MERGE pattern (``MERGE p = (a {num: 1})``)
+    was never bound; refused too.
+    """
+    # The names a CREATE introduces: a name an earlier MERGE bound (``MERGE
+    # (t) CREATE (t)-[:R]->(f)``) is the MERGE's, not the CREATE's.
+    created: set[str] = set()
+    seen: set[str] = set()
+    for clause in spq.oC_UpdatingClause() or []:
+        writer = clause.oC_Create() or clause.oC_Merge()
+        if writer is None:
+            continue
+        names = {_strip_label_backticks(n) for n in _declared_names(writer)}
+        if clause.oC_Create() is not None:
+            created |= names - seen
+        seen |= names
+    if created:
+        readers = [*merge_clauses, *([spq.oC_Return()] if spq.oC_Return() is not None else [])]
+        used: set[str] = set()
+        stack: list[Any] = list(readers)
+        while stack:
+            node = stack.pop()
+            if isinstance(node, CypherParser.OC_VariableContext):
+                used.add(_strip_label_backticks(node.getText().strip()))
+            stack.extend(
+                node.getChild(i) for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0)
+            )
+        if created & used:
+            raise CoreError(
+                "MERGE or RETURN reading a variable a CREATE in the same query part declares "
+                f"({', '.join(sorted(created & used))}) is not supported; run the CREATE as a separate "
+                "statement, or MATCH what it created",
+                code="UNSUPPORTED",
+            )
+    for merge in merge_clauses:
+        if merge.oC_PatternPart().oC_Variable() is not None:
+            raise CoreError(
+                f"MERGE of a named path ({merge.oC_PatternPart().oC_Variable().getText()} = …) is not supported",
+                code="UNSUPPORTED",
+            )
 
 
 def _compile_merge_reading_clauses(

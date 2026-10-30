@@ -806,7 +806,10 @@ stores several per node; an unlabeled node MERGEs within the one collection
 unlabeled nodes live in; a RETURN after MERGE may aggregate, sort and page.
 MERGE refuses to rebind a variable bound before it, a null property value, an
 action on an undefined variable, and a whole-map `SET r = …`/`+= …` action,
-which it used to drop); `FOREACH` (with `SET`, and — newly — `CREATE` /
+which it used to drop; it also refuses a MERGE or RETURN that reads a variable
+a CREATE in the same query part declares (`CREATE (a), (b) MERGE
+(a)-[:X]->(b)`), and a MERGE of a named path, both of which produced AQL
+reading a Cypher variable as a collection); `FOREACH` (with `SET`, and — newly — `CREATE` /
 `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
 (including identity aliases such as `WITH p AS x`, and relationship variables
 from traversals).
@@ -819,7 +822,10 @@ the ids of the deleted nodes and relationships are collected from it
 rows deleted once), and for `DETACH DELETE` so are the ids of every edge
 touching a deleted node; then each collection is written by one `REMOVE`
 over the ids that live in it: edges first, then nodes, including every
-member collection of a supertype. A `RETURN` reads the matched rows; a row
+member collection of a supertype. `DETACH DELETE p` of a named path removes
+its nodes and relationships (and, detaching, every edge touching its nodes);
+`DELETE p` without DETACH is refused, since the check that its nodes keep no
+other relationship is not made. A `RETURN` reads the matched rows; a row
 that reads a property or the labels (`labels()`, `properties()`, `keys()`)
 of a node or relationship the query deleted fails with Neo4j's
 `DeletedEntityAccess`, through a per-row `FILTER v == null OR FAIL(…)`, so a

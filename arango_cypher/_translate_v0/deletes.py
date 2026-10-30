@@ -87,6 +87,23 @@ def _pattern_variables(
     return nodes, rels, rel_types
 
 
+def _path_variables(reading_clauses: list[Any]) -> list[str]:
+    """The path variables (``p = (…)``) named in *reading_clauses*, in order."""
+    found: list[str] = []
+    stack = list(reversed(reading_clauses))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, CypherParser.OC_PatternPartContext) and node.oC_Variable() is not None:
+            name = node.oC_Variable().getText().strip()
+            if name not in found:
+                found.append(name)
+        children = [
+            node.getChild(i) for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0)
+        ]
+        stack.extend(reversed(children))
+    return found
+
+
 def _edge_collections(types: list[str], resolver: MappingResolver) -> list[str]:
     """Edge collections of relationships of *types*; every one when untyped."""
     if not types:
@@ -134,9 +151,11 @@ def translate_delete_query(
     if not reading_clauses:
         raise CoreError("DELETE needs a MATCH that binds what it deletes", code="UNSUPPORTED")
     nodes, rels, rel_types = _pattern_variables(reading_clauses)
+    paths = _path_variables(reading_clauses)
 
     deleted_nodes: list[str] = []
     deleted_rels: list[str] = []
+    deleted_paths: list[str] = []
     detach = False
     for dc in delete_clauses:
         detach = detach or dc.DETACH() is not None
@@ -148,13 +167,21 @@ def translate_delete_query(
                 deleted_rels.append(name)
             elif name in nodes:
                 deleted_nodes.append(name)
+            elif name in paths:
+                if dc.DETACH() is None:
+                    # Neo4j fails a path node that keeps other relationships;
+                    # without that check DELETE p could strand edges.
+                    raise CoreError(
+                        f"DELETE of a path ({name}) is only supported as DETACH DELETE", code="UNSUPPORTED"
+                    )
+                deleted_paths.append(name)
             else:
                 raise CoreError(f"DELETE targets {name!r}, which no MATCH binds", code="UNSUPPORTED")
 
     # 1. The matched rows, through the read translator.
     reads = " ".join(rc.getText() for rc in reading_clauses)
     # Every pattern variable, named; ``_row`` keeps a single column an object.
-    columns = ", ".join(f"{name} AS {name}" for name in [*nodes, *rels])
+    columns = ", ".join(f"{name} AS {name}" for name in [*nodes, *rels, *paths])
     read_tree = parse_cypher(f"{reads} RETURN {columns}, true AS _row").tree
     read_query = read_tree.oC_Statement().oC_Query().oC_RegularQuery().oC_SingleQuery()
     read_aql = _core("_translate_single_query")(read_query, resolver=resolver, bind_vars=bind_vars).text
@@ -164,22 +191,23 @@ def translate_delete_query(
         head.append(body.pop(0))  # a WITH declaration must open the whole query
     lines = [*head, "LET _matched = (", *(f"  {line}" for line in body), ")"]
 
-    # 2. The ids to remove.
-    def ids_of(names: list[str], *, flatten: bool) -> str:
-        parts = [
-            f"_matched[*].{n}[*]._id" if flatten and rels.get(n) else f"_matched[*].{n}._id" for n in names
-        ]
+    # 2. The ids to remove; a path contributes its nodes and its relationships.
+    def ids_of(parts: list[str]) -> str:
         joined = parts[0] if len(parts) == 1 else f"UNION({', '.join(parts)})"
         return f"UNIQUE(REMOVE_VALUE(FLATTEN({joined}), null))"
 
+    node_parts = [f"_matched[*].{n}._id" for n in deleted_nodes]
+    node_parts += [f"_matched[*].{p}.nodes[*]._id" for p in deleted_paths]
+    rel_parts = [f"_matched[*].{n}[*]._id" if rels.get(n) else f"_matched[*].{n}._id" for n in deleted_rels]
+    rel_parts += [f"_matched[*].{p}.edges[*]._id" for p in deleted_paths]
     edge_parts: list[str] = []
-    if deleted_nodes:
-        lines.append(f"LET _deleted_nodes = {ids_of(deleted_nodes, flatten=False)}")
-    if deleted_rels:
-        lines.append(f"LET _deleted_rels = {ids_of(deleted_rels, flatten=True)}")
+    if node_parts:
+        lines.append(f"LET _deleted_nodes = {ids_of(node_parts)}")
+    if rel_parts:
+        lines.append(f"LET _deleted_rels = {ids_of(rel_parts)}")
         edge_parts.append("_deleted_rels")
     edge_collections: list[str] = []
-    if detach and deleted_nodes:
+    if detach and node_parts:
         edge_collections = resolver.all_edge_collections()
     else:
         for name in deleted_rels:
@@ -191,7 +219,7 @@ def translate_delete_query(
         ec_key = _pick_bind_key("@deleteEdges", bind_vars)
         bind_vars[ec_key] = ec
         edge_keys.append((ec, ec_key))
-        if detach and deleted_nodes:
+        if detach and node_parts:
             lines.append(
                 f"LET _detach{i} = (FOR _n IN _deleted_nodes FOR _x, _e IN 1..1 ANY _n "
                 f"{_aql_collection_ref(ec_key)} RETURN _e._id)"
@@ -205,11 +233,12 @@ def translate_delete_query(
         lines.append(f"LET _deleted_edges = UNIQUE({joined})")
         for ec, ec_key in edge_keys:
             removals.append(_removal("_deleted_edges", ec, ec_key, bind_vars))
-    if deleted_nodes:
+    if node_parts:
         node_collections: list[str] = []
-        for name in deleted_nodes:
+        # A path's nodes may live in any node collection.
+        for labels in [*(nodes[name] for name in deleted_nodes), *([[]] if deleted_paths else [])]:
             node_collections.extend(
-                c for c in _node_collections(nodes[name], resolver) if c not in node_collections
+                c for c in _node_collections(labels, resolver) if c not in node_collections
             )
         for coll in node_collections:
             coll_key = _pick_bind_key("@deleteNodes", bind_vars)
@@ -226,7 +255,7 @@ def translate_delete_query(
     # 4. RETURN over the matched rows.
     lines += [f"LET _removed{i} = ({r})" for i, r in enumerate(removals)]
     lines.append("FOR _row IN _matched")
-    for name in [*nodes, *rels]:
+    for name in [*nodes, *rels, *paths]:
         lines.append(f"  LET {name} = _row.{name}")
     read = _deleted_entities_read(ret.oC_ProjectionBody(), {*deleted_nodes, *deleted_rels})
     for name in [*nodes, *rels]:

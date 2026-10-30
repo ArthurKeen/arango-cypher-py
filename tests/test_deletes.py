@@ -6,7 +6,12 @@ import pytest
 from arango_query_core import CoreError, MappingResolver
 
 from arango_cypher import translate
-from arango_cypher._translate_v0.deletes import _edge_collections, _node_collections, _pattern_variables
+from arango_cypher._translate_v0.deletes import (
+    _edge_collections,
+    _node_collections,
+    _path_variables,
+    _pattern_variables,
+)
 from arango_cypher.parser import parse_cypher
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
@@ -114,3 +119,29 @@ def test_reading_a_deleted_entity_fails_each_returned_row(cypher: str, variable:
 )
 def test_returning_without_reading_a_deleted_entity_is_not_guarded(cypher: str) -> None:
     assert _GUARD not in translate(cypher, mapping=mapping_bundle_for("pg")).aql
+
+
+def test_path_variables_are_found_in_order() -> None:
+    clauses = _reading_clauses("MATCH p = (a)-->(b), q = (b)-->(c) OPTIONAL MATCH r = (c)-->() RETURN p")
+    assert _path_variables(clauses) == ["p", "q", "r"]
+
+
+def test_detach_deleting_a_path_removes_its_nodes_and_relationships() -> None:
+    aql = translate(
+        "MATCH p = (:User)-[:FOLLOWS]->(:User) DETACH DELETE p", mapping=mapping_bundle_for("pg")
+    ).aql
+    assert "LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].p.nodes[*]._id), null))" in aql
+    assert "LET _deleted_rels = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].p.edges[*]._id), null))" in aql
+    assert "LET _detach0" in aql  # edges touching the path's nodes go too
+
+
+def test_deleting_a_path_without_detach_is_refused() -> None:
+    with pytest.raises(CoreError, match="only supported as DETACH DELETE") as err:
+        translate("MATCH p = (:User)-[:FOLLOWS]->(:User) DELETE p", mapping=mapping_bundle_for("pg"))
+    assert err.value.code == "UNSUPPORTED"
+
+
+def test_a_two_hop_named_path_reads_its_unnamed_edges_from_the_traversal() -> None:
+    aql = translate("MATCH p = (:User)-->()-->() RETURN p", mapping=mapping_bundle_for("lpg")).aql
+    path = next(line.strip() for line in aql.splitlines() if line.strip().startswith("LET p ="))
+    assert ".edges[0]" in path  # not an undeclared variable (ERR 1203)

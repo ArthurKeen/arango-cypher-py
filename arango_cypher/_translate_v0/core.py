@@ -685,7 +685,9 @@ def _emit_merged_hops(
             edge_filter_ref = h.rel_var
         else:
             edge_filter_ref = edge_ref
-        path_edge_vars.append(h.rel_var)
+        # A named path reads an unnamed edge from the traversal path: no
+        # variable holds it (``MATCH p = ()-->()-->()``, Delete3 [1]).
+        path_edge_vars.append(h.rel_var if needs_edge_let else edge_ref)
 
         _emit_vertex_filters_for_hop(h, lines=lines, bind_vars=bind_vars, resolver=resolver)
         _emit_edge_type_filters_for_hop(
