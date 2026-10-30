@@ -83,11 +83,11 @@ translatable	clauses/create/Create2/[15] Create a single relationship with two p
 translatable	clauses/create/Create2/[16] Create a single relationship with two properties and return them
 translatable	clauses/create/Create2/[17] Create a single relationship with null properties should not return those properties
 correct_rejection	clauses/create/Create2/[18] Fail when creating a relationship without a type
-translatable	clauses/create/Create2/[19] Fail when creating a relationship without a direction
+correct_rejection	clauses/create/Create2/[19] Fail when creating a relationship without a direction
 translatable	clauses/create/Create2/[1] Create two nodes and a single relationship in a single pattern
-translatable	clauses/create/Create2/[20] Fail when creating a relationship with two directions
+correct_rejection	clauses/create/Create2/[20] Fail when creating a relationship with two directions
 correct_rejection	clauses/create/Create2/[21] Fail when creating a relationship with more than one type
-translatable	clauses/create/Create2/[22] Fail when creating a variable-length relationship
+correct_rejection	clauses/create/Create2/[22] Fail when creating a variable-length relationship
 correct_rejection	clauses/create/Create2/[23] Fail when creating a relationship that is already bound
 translatable	clauses/create/Create2/[24] Fail when creating a relationship using undefined variable in pattern
 translatable	clauses/create/Create2/[2] Create two nodes and a single relationship in separate patterns
@@ -121,14 +121,14 @@ translatable	clauses/create/Create5/[5] Create a pattern with multiple hops and 
 translatable	clauses/create/Create6/[10] Skipping and limiting to a few results after creating relationships does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[11] Skipping zero result and limiting to all results after creating relationships does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[12] Filtering after creating relationships affects the result set but not the side effects
-translate_fail	clauses/create/Create6/[13] Aggregating in `RETURN` after creating relationships affects the result set but not the side effects
+translatable	clauses/create/Create6/[13] Aggregating in `RETURN` after creating relationships affects the result set but not the side effects
 translatable	clauses/create/Create6/[14] Aggregating in `WITH` after creating relationships affects the result set but not the side effects
 translatable	clauses/create/Create6/[1] Limiting to zero results after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[2] Skipping all results after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[3] Skipping and limiting to a few results after creating nodes does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[4] Skipping zero result and limiting to all results after creating nodes does not affect the result set nor the side effects
 translatable	clauses/create/Create6/[5] Filtering after creating nodes affects the result set but not the side effects
-translate_fail	clauses/create/Create6/[6] Aggregating in `RETURN` after creating nodes affects the result set but not the side effects
+translatable	clauses/create/Create6/[6] Aggregating in `RETURN` after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[7] Aggregating in `WITH` after creating nodes affects the result set but not the side effects
 translatable	clauses/create/Create6/[8] Limiting to zero results after creating relationships affects the result set but not the side effects
 translatable	clauses/create/Create6/[9] Skipping all results after creating relationships affects the result set but not the side effects
@@ -590,28 +590,28 @@ translatable	clauses/match/Match9/[8] Variable length relationship in OPTIONAL M
 translatable	clauses/match/Match9/[9] Optionally matching named paths with variable length patterns
 translatable	clauses/merge/Merge1/[10] Merge must properly handle multiple labels
 translatable	clauses/merge/Merge1/[11] Merge should be able to merge using property of bound node
-translate_fail	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
-translate_fail	clauses/merge/Merge1/[13] Merge should bind a path
+translatable	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
+translatable	clauses/merge/Merge1/[13] Merge should bind a path
 translatable	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
 correct_rejection	clauses/merge/Merge1/[15] Fail when merge a node that is already bound
 correct_rejection	clauses/merge/Merge1/[16] Fail when using parameter as node predicate in MERGE
 correct_rejection	clauses/merge/Merge1/[17] Fail on merging node with null property
-translate_fail	clauses/merge/Merge1/[1] Merge node when no nodes exist
+translatable	clauses/merge/Merge1/[1] Merge node when no nodes exist
 translatable	clauses/merge/Merge1/[2] Merge node with label
 translatable	clauses/merge/Merge1/[3] Merge node with label when it exists
-translate_fail	clauses/merge/Merge1/[4] Merge node should create when it doesn't match, properties
+translatable	clauses/merge/Merge1/[4] Merge node should create when it doesn't match, properties
 translatable	clauses/merge/Merge1/[5] Merge node should create when it doesn't match, properties and label
 translatable	clauses/merge/Merge1/[6] Merge node with prop and label
 translatable	clauses/merge/Merge1/[7] Merge should work when finding multiple elements
 translate_fail	clauses/merge/Merge1/[8] Merge should handle argument properly
 translate_fail	clauses/merge/Merge1/[9] Merge should support updates while merging
 translatable	clauses/merge/Merge2/[1] Merge node with label add label on create
-translate_fail	clauses/merge/Merge2/[2] ON CREATE on created nodes
+translatable	clauses/merge/Merge2/[2] ON CREATE on created nodes
 translatable	clauses/merge/Merge2/[3] Merge node with label add property on create
 translatable	clauses/merge/Merge2/[4] Merge node with label add property on update when it exists
 translatable	clauses/merge/Merge2/[5] Merge should be able to use properties of bound node in ON CREATE
 correct_rejection	clauses/merge/Merge2/[6] Fail when using undefined variable in ON CREATE
-translate_fail	clauses/merge/Merge3/[1] Merge should be able to set labels on match
+translatable	clauses/merge/Merge3/[1] Merge should be able to set labels on match
 translatable	clauses/merge/Merge3/[2] Merge node with label add label on match when it exists
 translatable	clauses/merge/Merge3/[3] Merge node and set property on match
 translatable	clauses/merge/Merge3/[4] Merge should be able to use properties of bound node in ON MATCH
@@ -623,12 +623,12 @@ translate_fail	clauses/merge/Merge5/[11] Use outgoing direction when unspecified
 translatable	clauses/merge/Merge5/[12] Match outgoing relationship when direction unspecified
 translatable	clauses/merge/Merge5/[13] Match both incoming and outgoing relationships when direction unspecified
 translate_fail	clauses/merge/Merge5/[14] Using list properties via variable
-translate_fail	clauses/merge/Merge5/[15] Matching using list property
+translatable	clauses/merge/Merge5/[15] Matching using list property
 translatable	clauses/merge/Merge5/[16] Aliasing of existing nodes 1
 translatable	clauses/merge/Merge5/[17] Aliasing of existing nodes 2
 translate_fail	clauses/merge/Merge5/[18] Double aliasing of existing nodes 1
 translate_fail	clauses/merge/Merge5/[19] Double aliasing of existing nodes 2
-translate_fail	clauses/merge/Merge5/[1] Creating a relationship
+translatable	clauses/merge/Merge5/[1] Creating a relationship
 translate_fail	clauses/merge/Merge5/[20] Do not match on deleted entities
 translatable	clauses/merge/Merge5/[21] Do not match on deleted relationships
 correct_rejection	clauses/merge/Merge5/[22] Fail when imposing new predicates on a variable that is already bound
@@ -639,29 +639,29 @@ correct_rejection	clauses/merge/Merge5/[26] Fail when merging relationship that 
 correct_rejection	clauses/merge/Merge5/[27] Fail when using parameter as relationship predicate in MERGE
 correct_rejection	clauses/merge/Merge5/[28] Fail when using variable length relationship in MERGE
 translatable	clauses/merge/Merge5/[29] Fail on merging relationship with null property
-translate_fail	clauses/merge/Merge5/[2] Matching a relationship
-translate_fail	clauses/merge/Merge5/[3] Matching two relationships
-translate_fail	clauses/merge/Merge5/[4] Using bound variables from other updating clause
-translate_fail	clauses/merge/Merge5/[5] Filtering relationships
-translate_fail	clauses/merge/Merge5/[6] Creating relationship when all matches filtered out
-translate_fail	clauses/merge/Merge5/[7] Matching incoming relationship
-translate_fail	clauses/merge/Merge5/[8] Creating relationship with property
+translatable	clauses/merge/Merge5/[2] Matching a relationship
+translatable	clauses/merge/Merge5/[3] Matching two relationships
+translatable	clauses/merge/Merge5/[4] Using bound variables from other updating clause
+translatable	clauses/merge/Merge5/[5] Filtering relationships
+translatable	clauses/merge/Merge5/[6] Creating relationship when all matches filtered out
+translatable	clauses/merge/Merge5/[7] Matching incoming relationship
+translatable	clauses/merge/Merge5/[8] Creating relationship with property
 translate_fail	clauses/merge/Merge5/[9] Creating relationship using merged nodes
 translatable	clauses/merge/Merge6/[1] Using ON CREATE on a node
-translate_fail	clauses/merge/Merge6/[2] Using ON CREATE on a relationship
+translatable	clauses/merge/Merge6/[2] Using ON CREATE on a relationship
 translatable	clauses/merge/Merge6/[3] Updating one property with ON CREATE
 translatable	clauses/merge/Merge6/[4] Null-setting one property with ON CREATE
-translatable	clauses/merge/Merge6/[6] Copying properties from node with ON CREATE
-translatable	clauses/merge/Merge6/[7] Copying properties from literal map with ON CREATE
+translate_fail	clauses/merge/Merge6/[6] Copying properties from node with ON CREATE
+translate_fail	clauses/merge/Merge6/[7] Copying properties from literal map with ON CREATE
 translatable	clauses/merge/Merge7/[1] Using ON MATCH on created node
 translatable	clauses/merge/Merge7/[2] Using ON MATCH on created relationship
-translate_fail	clauses/merge/Merge7/[3] Using ON MATCH on a relationship
-translatable	clauses/merge/Merge7/[4] Copying properties from node with ON MATCH
-translatable	clauses/merge/Merge7/[5] Copying properties from literal map with ON MATCH
-translate_fail	clauses/merge/Merge8/[1] Using ON CREATE and ON MATCH
-translate_fail	clauses/merge/Merge9/[1] UNWIND with one MERGE
+translatable	clauses/merge/Merge7/[3] Using ON MATCH on a relationship
+translate_fail	clauses/merge/Merge7/[4] Copying properties from node with ON MATCH
+translate_fail	clauses/merge/Merge7/[5] Copying properties from literal map with ON MATCH
+translatable	clauses/merge/Merge8/[1] Using ON CREATE and ON MATCH
+translatable	clauses/merge/Merge9/[1] UNWIND with one MERGE
 translate_fail	clauses/merge/Merge9/[2] UNWIND with multiple MERGE
-translate_fail	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
+translatable	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
 translate_fail	clauses/merge/Merge9/[4] MERGE after WITH with predicate and WITH with aggregation
 translatable	clauses/remove/Remove1/[1] Remove a single node property
 translatable	clauses/remove/Remove1/[2] Remove multiple node properties
@@ -809,8 +809,8 @@ correct_rejection	clauses/return/Return6/[14] Aggregates in aggregates
 correct_rejection	clauses/return/Return6/[15] Using `rand()` in aggregations
 translatable	clauses/return/Return6/[16] Aggregation on complex expressions
 translatable	clauses/return/Return6/[17] Handle constants and parameters inside an expression which contains an aggregation expression
-translate_fail	clauses/return/Return6/[18] Handle returned variables inside an expression which contains an aggregation expression
-translate_fail	clauses/return/Return6/[19] Handle returned property accesses inside an expression which contains an aggregation expression
+translatable	clauses/return/Return6/[18] Handle returned variables inside an expression which contains an aggregation expression
+translatable	clauses/return/Return6/[19] Handle returned property accesses inside an expression which contains an aggregation expression
 translatable	clauses/return/Return6/[1] Return count aggregation over nodes
 correct_rejection	clauses/return/Return6/[20] Fail if not returned variables are used inside an expression which contains an aggregation expression
 correct_rejection	clauses/return/Return6/[21] Fail if more complex expressions, even if returned, are used inside expression which contains an aggregation expression
@@ -839,14 +839,14 @@ translatable	clauses/set/Set1/[9] Failing when using undefined variable in SET
 translatable	clauses/set/Set2/[1] Setting a node property to null removes the existing property
 translatable	clauses/set/Set2/[2] Setting a node property to null removes the existing property, but not before SET
 translatable	clauses/set/Set2/[3] Setting a relationship property to null removes the existing property
-translate_fail	clauses/set/Set3/[1] Add a single label to a node with no label
-translate_fail	clauses/set/Set3/[2] Adding multiple labels to a node with no label
-translate_fail	clauses/set/Set3/[3] Add a single label to a node with an existing label
-translate_fail	clauses/set/Set3/[4] Adding multiple labels to a node with an existing label
-translate_fail	clauses/set/Set3/[5] Ignore whitespace before colon 1
-translate_fail	clauses/set/Set3/[6] Ignore whitespace before colon 2
-translate_fail	clauses/set/Set3/[7] Ignore whitespace before colon 3
-translate_fail	clauses/set/Set3/[8] Ignore null when setting label
+translatable	clauses/set/Set3/[1] Add a single label to a node with no label
+translatable	clauses/set/Set3/[2] Adding multiple labels to a node with no label
+translatable	clauses/set/Set3/[3] Add a single label to a node with an existing label
+translatable	clauses/set/Set3/[4] Adding multiple labels to a node with an existing label
+translatable	clauses/set/Set3/[5] Ignore whitespace before colon 1
+translatable	clauses/set/Set3/[6] Ignore whitespace before colon 2
+translatable	clauses/set/Set3/[7] Ignore whitespace before colon 3
+translatable	clauses/set/Set3/[8] Ignore null when setting label
 translatable	clauses/set/Set4/[1] Set multiple properties with a property map
 translatable	clauses/set/Set4/[2] Non-existent values in a property map are removed with SET
 translatable	clauses/set/Set4/[3] Null values in a property map are removed with SET
@@ -857,10 +857,10 @@ translatable	clauses/set/Set5/[2] Overwrite values when using +=
 translatable	clauses/set/Set5/[3] Retain old values when using +=
 translatable	clauses/set/Set5/[4] Explicit null values in a map remove old values
 translatable	clauses/set/Set5/[5] Set an empty map when using += has no effect
-translate_fail	clauses/set/Set6/[10] Skipping and limiting to a few results after adding a label on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[11] Skipping zero result and limiting to all results after adding a label on nodes does not affect the result set nor the side effects
+translatable	clauses/set/Set6/[10] Skipping and limiting to a few results after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[11] Skipping zero result and limiting to all results after adding a label on nodes does not affect the result set nor the side effects
 translate_fail	clauses/set/Set6/[12] Filtering after adding a label on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[13] Aggregating in `RETURN` after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[13] Aggregating in `RETURN` after adding a label on nodes affects the result set but not the side effects
 translate_fail	clauses/set/Set6/[14] Aggregating in `WITH` after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[15] Limiting to zero results after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[16] Skipping all results after setting a property on relationships affects the result set but not the side effects
@@ -876,8 +876,8 @@ translatable	clauses/set/Set6/[4] Skipping zero results and limiting to all resu
 translate_fail	clauses/set/Set6/[5] Filtering after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[6] Aggregating in `RETURN` after setting a property on nodes affects the result set but not the side effects
 translate_fail	clauses/set/Set6/[7] Aggregating in `WITH` after setting a property on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[8] Limiting to zero results after adding a label on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[9] Skipping all results after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[8] Limiting to zero results after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[9] Skipping all results after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/union/Union1/[1] Two elements, both unique, distinct
 translatable	clauses/union/Union1/[2] Three elements, two unique, distinct
 translatable	clauses/union/Union1/[3] Two single-column inputs, one with duplicates, distinct
@@ -1247,8 +1247,8 @@ translatable	clauses/with/With6/[2] Implicit grouping with single relationship v
 translatable	clauses/with/With6/[3] Implicit grouping with multiple node and relationship variables as grouping key and single aggregation
 translatable	clauses/with/With6/[4] Implicit grouping with single path variable as grouping key and single aggregation
 translatable	clauses/with/With6/[5] Handle constants and parameters inside an expression which contains an aggregation expression
-translate_fail	clauses/with/With6/[6] Handle projected variables inside an expression which contains an aggregation expression
-translate_fail	clauses/with/With6/[7] Handle projected property accesses inside an expression which contains an aggregation expression
+translatable	clauses/with/With6/[6] Handle projected variables inside an expression which contains an aggregation expression
+translatable	clauses/with/With6/[7] Handle projected property accesses inside an expression which contains an aggregation expression
 correct_rejection	clauses/with/With6/[8] Fail if not projected variables are used inside an expression which contains an aggregation expression
 correct_rejection	clauses/with/With6/[9] Fail if more complex expression, even if projected, are used inside expression which contains an aggregation expression
 translatable	clauses/with/With7/[1] A simple pattern with one bound endpoint
@@ -1531,7 +1531,7 @@ translatable	expressions/existentialSubqueries/ExistentialSubquery2/[1] Full exi
 translatable	expressions/existentialSubqueries/ExistentialSubquery2/[2] Full existential subquery with aggregation
 correct_rejection	expressions/existentialSubqueries/ExistentialSubquery2/[3] Full existential subquery with update clause should fail
 translatable	expressions/existentialSubqueries/ExistentialSubquery3/[1] Nested simple existential subquery
-translatable	expressions/existentialSubqueries/ExistentialSubquery3/[2] Nested full existential subquery
+translate_fail	expressions/existentialSubqueries/ExistentialSubquery3/[2] Nested full existential subquery
 translatable	expressions/existentialSubqueries/ExistentialSubquery3/[3] Nested full existential subquery with pattern predicate
 translatable	expressions/graph/Graph3/[1] Creating node without label
 translatable	expressions/graph/Graph3/[2] Creating node with two labels
@@ -2029,7 +2029,7 @@ correct_rejection	expressions/pattern/Pattern1/[10] Fail on introducing unbounde
 translatable	expressions/pattern/Pattern1/[10] Matching on a specific type of undirected connection with length 2
 correct_rejection	expressions/pattern/Pattern1/[11] Fail on checking self pattern
 translatable	expressions/pattern/Pattern1/[12] Matching two nodes on a single directed connection between them
-translate_fail	expressions/pattern/Pattern1/[13] Fail on matching two nodes on a single undirected connection between them
+translatable	expressions/pattern/Pattern1/[13] Fail on matching two nodes on a single undirected connection between them
 translatable	expressions/pattern/Pattern1/[14] Matching two nodes on a specific type of single outgoing directed connection
 translatable	expressions/pattern/Pattern1/[15] Matching two nodes on a specific type of single undirected connection
 translatable	expressions/pattern/Pattern1/[16] Matching two nodes on a specific type of a variable length outgoing directed connection
