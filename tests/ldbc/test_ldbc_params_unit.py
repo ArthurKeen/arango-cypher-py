@@ -5,14 +5,47 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+import yaml
 
 from tests.ldbc import params as P
 from tests.ldbc.corpus import load
+from tests.ldbc.datasets import DATASETS
+
+#: Scales with a committed params/<scale>.yml.
+COMMITTED_SCALES = sorted(p.stem for p in P.PARAMS_DIR.glob("*.yml"))
+
+
+@pytest.fixture(scope="module", params=COMMITTED_SCALES)
+def scale(request):
+    return request.param
 
 
 @pytest.fixture(scope="module")
-def committed():
-    return P.read("sf0.003")
+def committed(scale):
+    return P.read(scale)
+
+
+def test_every_scale_with_data_sets_has_committed_bindings():
+    assert COMMITTED_SCALES == sorted(P.SCALE_DATASETS)
+
+
+def test_scale_data_sets_are_in_the_catalog_with_their_workloads_encoding():
+    for scale, by_workload in P.SCALE_DATASETS.items():
+        assert set(by_workload) == {"interactive_v2", "bi"}, scale
+        assert DATASETS[by_workload["interactive_v2"]].encoding == "epoch_ms"
+        assert DATASETS[by_workload["bi"]].encoding == "iso"
+        assert {DATASETS[n].scale_factor for n in by_workload.values()} == {scale.removeprefix("sf")}
+
+
+def test_an_unknown_scale_names_the_known_ones():
+    with pytest.raises(ValueError, match=r"unknown LDBC scale 'sf7'.*sf0\.003"):
+        P.workload_datasets("sf7")
+
+
+def test_the_committed_file_records_its_data_sets(scale):
+    doc = yaml.safe_load(P.params_path(scale).read_text(encoding="utf-8"))
+    assert doc["scale"] == scale
+    assert doc["datasets"] == P.workload_datasets(scale)
 
 
 def test_every_oracle_runnable_read_has_bindings(committed):
@@ -25,9 +58,9 @@ def test_out_of_subset_and_writes_have_no_read_bindings(committed):
 
 
 @pytest.mark.parametrize("op", P.read_operations(), ids=lambda op: op.id)
-def test_each_read_has_enough_non_empty_bindings(committed, op):
+def test_each_read_has_enough_non_empty_bindings(scale, committed, op):
     non_empty = [b for b in committed[op.id] if b["rows"] > 0]
-    if op.id in P.EMPTY_AT_SCALE["sf0.003"]:
+    if op.id in P.EMPTY_AT_SCALE.get(scale, {}):
         assert not non_empty and committed[op.id], "an EMPTY_AT_SCALE entry must record its (empty) binding"
     else:
         assert len(non_empty) >= P.WANTED, f"{op.id}: {len(non_empty)} non-empty binding(s)"

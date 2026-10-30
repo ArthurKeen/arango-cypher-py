@@ -59,8 +59,8 @@ KNOWN_OUTCOMES = frozenset(
 MAX_RUNTIME_S = 30.0
 
 
-def dataset_for(op: Operation) -> str:
-    return P._WORKLOAD_DATASET[op.workload]
+def dataset_for(op: Operation, scale: str = "sf0.003") -> str:
+    return P.workload_datasets(scale)[op.workload]
 
 
 def run_cell(
@@ -119,7 +119,7 @@ def build_execution_ledger(dbs: dict[tuple[str, str], Any], scale: str = "sf0.00
     for op in load():
         snapshot = oracle.read(op.id, scale)
         for layout in LAYOUTS:
-            key = (dataset_for(op), layout)
+            key = (dataset_for(op, scale), layout)
             if snapshot is not None and snapshot.get("kind") == "write" and key not in befores:
                 befores[key] = dump_arango(dbs[key], layout)
             try:
@@ -146,13 +146,13 @@ def load_execution_ledger() -> dict[str, Cell]:
     return load_ledger(EXEC_LEDGER_PATH)
 
 
-def loaded_databases(url: str | None = None) -> dict[tuple[str, str], Any]:
+def loaded_databases(url: str | None = None, scale: str = "sf0.003") -> dict[tuple[str, str], Any]:
     """Load every data set × layout afresh on *url* (about ten seconds at SF0.003)."""
     from tests.ldbc.arango_dbs import load_fresh
 
     return {
         (dataset, layout): load_fresh(dataset, layout, url)[0]  # type: ignore[arg-type]
-        for dataset in sorted(set(P._WORKLOAD_DATASET.values()))
+        for dataset in sorted(set(P.workload_datasets(scale).values()))
         for layout in LAYOUTS
     }
 

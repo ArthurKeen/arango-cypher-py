@@ -48,6 +48,7 @@ from typing import Any
 
 import yaml
 from arango.exceptions import AQLQueryExecuteError
+from requests.exceptions import Timeout as HttpTimeout
 
 from arango_cypher import translate
 from arango_cypher.api import clear_translate_cache
@@ -61,6 +62,9 @@ from tests.ldbc.mappings import fixture_path, with_encoding
 SCHEMA_VERSION = 1
 #: ArangoDB kills a query past its ``max_runtime`` with this error number.
 _KILLED = 1500
+#: Seconds the client waits beyond a query's ``max_runtime``, so the server's
+#: kill (an ERR 1500 answer) arrives before the HTTP read times out.
+CLIENT_TIMEOUT_MARGIN_S = 30.0
 _REPO = Path(__file__).resolve().parents[2]
 
 
@@ -240,6 +244,9 @@ def time_execution(
             if e.error_code == _KILLED:
                 return {"outcome": "TIMEOUT", "timeout_s": timeout_s}
             return {"outcome": "error", "detail": f"ERR {e.error_code}: {e.error_message}"[:300]}
+        except HttpTimeout as e:
+            # The server did not answer even after max_runtime: one cell's outcome, not the run's end.
+            return {"outcome": "TIMEOUT", "timeout_s": timeout_s, "detail": f"client: {e}"[:300]}
         elapsed = (time.perf_counter() - start) * 1000
         if i >= warmup:
             client.append(elapsed)
@@ -332,7 +339,9 @@ def load_databases(url: str, settings: Settings) -> dict[tuple[str, str], Any]:
     from tests.ldbc.arango_dbs import load_fresh
 
     return {
-        (dataset, layout): load_fresh(dataset, layout, url)[0]  # type: ignore[arg-type]
+        (dataset, layout): load_fresh(  # type: ignore[arg-type]
+            dataset, layout, url, request_timeout=settings.timeout_s + CLIENT_TIMEOUT_MARGIN_S
+        )[0]
         for dataset in sorted(set(scale_datasets(settings.scale).values()))
         for layout in settings.layouts
     }

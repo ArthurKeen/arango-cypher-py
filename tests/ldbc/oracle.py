@@ -78,7 +78,7 @@ def record(driver: Any, scale: str = "sf0.003") -> dict[str, dict[str, Any]]:
     ops = {op.id: op for op in load()}
     version = driver.get_server_info().agent
     out: dict[str, dict[str, Any]] = {}
-    for workload, dataset in P._WORKLOAD_DATASET.items():
+    for workload, dataset in P.workload_datasets(scale).items():
         load_neo4j(driver, fetch(dataset), encoding=DATASETS[dataset].encoding)
         with driver.session() as session:
             for op_id in sorted(o for o in bindings if ops[o].workload == workload):
@@ -121,7 +121,7 @@ def record_writes(driver: Any, scale: str = "sf0.003") -> dict[str, dict[str, An
     from tests.ldbc.neo4j_loader import load_neo4j
     from tests.ldbc.writes import dump_neo4j, neo4j_write_delta
 
-    dataset = P._WORKLOAD_DATASET["interactive_v2"]
+    dataset = P.workload_datasets(scale)["interactive_v2"]
     load_neo4j(driver, fetch(dataset), encoding=DATASETS[dataset].encoding)
     with driver.session() as session:
         before = session.execute_read(dump_neo4j)
