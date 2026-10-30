@@ -7,6 +7,7 @@ split without a core <-> writes import cycle at module import time.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,9 +16,13 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
+from .label_tests import label_test, label_write, label_write_entries, shared_label_fields
+from .label_tests import labels_field as entity_labels_field
 from .literals import _aql_string_literal
-from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
+from .naming import _aql_collection_ref, _pick_bind_key, _pick_fresh_var, _strip_label_backticks
 from .property_writes import PropertyOp, PropertyWrites, StoredWrite, keep_fields_for
+from .scopes import outer_bound_names
+from .state import _active_resolver
 from .supertypes import union_scan_source
 
 
@@ -50,6 +55,8 @@ def _property_writes(
     ``REMOVE n:Label`` is skipped, as it always was.
     """
     writes = PropertyWrites()
+    resolver = _active_resolver.get()
+    label_fields = shared_label_fields(resolver.bundle.physical_mapping) if resolver is not None else None
 
     def value_of(expr: Any) -> str:
         value = _compile_expression(expr, bind_vars)
@@ -82,11 +89,22 @@ def _property_writes(
                 else:
                     writes.add(var, PropertyOp("remove", name=name, key=_aql_string_literal(name)))
                 continue
+            if item.oC_NodeLabels() is not None and item.oC_Variable() is not None and label_fields:
+                # SET n:L / REMOVE n:L where the mapping stores several labels
+                # per node (label_tests): a patch of the labels and type fields.
+                var = target_of(item.oC_Variable().getText().strip())
+                labels = [
+                    _strip_label_backticks(nl.oC_LabelName().getText().strip())
+                    for nl in item.oC_NodeLabels().oC_NodeLabel()
+                ]
+                aql_var = rewrite_value(var) if rewrite_value else var
+                patch = label_write(aql_var, labels, add=is_set, fields=label_fields)
+                writes.add(var, PropertyOp("merge", value=patch))
+                continue
             if not is_set and item.oC_NodeLabels() is not None:
-                # REMOVE n:Label is skipped, as before: labels are collections or a
-                # type field here, and removing one is not modelled. The openCypher
-                # scenarios that remove labels check the returned rows, which a
-                # skipped removal leaves right.
+                # REMOVE n:Label without a labels field is skipped, as before:
+                # labels are collections or a single type field there, and
+                # removing one is not modelled.
                 continue
             if item.oC_NodeLabels() is not None or item.oC_Variable() is None:
                 raise CoreError(f"{verb} of a label ({item.getText()}) is not supported", code="UNSUPPORTED")
@@ -682,7 +700,7 @@ def _translate_mutating_query(
         if style == "LABEL":
             bind_vars["typeField"] = entity_mapping["typeField"]
             bind_vars["typeValue"] = entity_mapping["typeValue"]
-            lines.append(f"  FILTER {var}[@typeField] == @typeValue")
+            lines.append("  FILTER " + label_test(var, "typeField", "typeValue", entity_mapping, bind_vars))
         elif style == "MULTI_LABEL":
             lines.append(f"  FILTER {_multi_label_filter(var, entity_mapping, bind_vars)}")
         elif style not in ("COLLECTION", "UNION"):
@@ -734,7 +752,7 @@ def _translate_mutating_query(
                 vtv = _pick_bind_key("vTypeValue", bind_vars)
                 bind_vars[vtf] = v_map.get("typeField")
                 bind_vars[vtv] = v_map.get("typeValue")
-                lines.append(f"    FILTER {v_var}[@{vtf}] == @{vtv}")
+                lines.append("    FILTER " + label_test(v_var, vtf, vtv, v_map, bind_vars))
             elif v_style == "MULTI_LABEL":
                 lines.append(f"    FILTER {_multi_label_filter(v_var, v_map, bind_vars)}")
             elif v_style not in ("COLLECTION", "UNION"):
@@ -776,6 +794,24 @@ def _translate_mutating_query(
         wf = _compile_where(where_ctx.oC_Expression(), bind_vars)
         lines.append(f"  FILTER {wf}")
 
+    # ``OPTIONAL MATCH … SET/REMOVE/DELETE``: with no match there is one row
+    # whose variables are null, and a write to null does nothing.
+    optional = mc.OPTIONAL() is not None
+    if optional:
+        row_vars = list(write_keys)
+        lines = [
+            "LET _opt_rows = (",
+            *(f"  {ln}" for ln in lines),
+            f"    RETURN {{{', '.join(f'{v}: {v}' for v in row_vars)}}}",
+            ")",
+            "FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])",
+            *(f"  LET {v} = _opt_row.{v}" for v in row_vars),
+        ]
+
+    def guarded(var: str, statement: str) -> str:
+        """*statement* (a write of ``_w``) applied to *var* unless it is null."""
+        return f"FOR _w IN ({var} == null ? [] : [{var}]) {statement}"
+
     def write_key_for(target_var: str, verb: str) -> str:
         if target_var not in write_keys:
             raise CoreError(
@@ -806,11 +842,28 @@ def _translate_mutating_query(
     writes = _property_writes(set_clauses, remove_clauses, bind_vars=bind_vars)
     physical = resolver.bundle.physical_mapping
     written: list[tuple[str, str]] = []
+    ret = spq.oC_Return()
+    # What RETURN reads a written variable as: the document after the write.
+    return_env: dict[str, str] = {}
     for target_var in writes.ops:
         key = write_key_for(target_var, "SET/REMOVE")
         write = writes.stored_write(target_var, keep_fields_for(bind_vars[key], physical))
-        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
         written.append((f"SET/REMOVE on {target_var}", bind_vars[key]))
+        if optional:
+            statement = _stored_write_line("_w", _aql_collection_ref(key), write, indent="")
+            updated = _pick_fresh_var(
+                f"{target_var}_new", forbidden_vars=set(write_keys) | set(return_env.values())
+            )
+            lines.append(f"  LET {updated} = FIRST({guarded(target_var, statement)} RETURN NEW)")
+            return_env[target_var] = updated
+            continue
+        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
+        if ret is not None:
+            updated = _pick_fresh_var(
+                f"{target_var}_new", forbidden_vars=set(write_keys) | set(return_env.values())
+            )
+            lines.append(f"  LET {updated} = NEW")
+            return_env[target_var] = updated
 
     # Compile DELETE
     for dc in delete_clauses:
@@ -826,19 +879,28 @@ def _translate_mutating_query(
                     bind_vars[ec_key] = ec
                     ec_ref = _aql_collection_ref(ec_key)
                     de_var = f"_de{idx}"
-                    lines.append(
-                        f"  LET _edgeRm{idx} = (FOR {de_var} IN 1..1 ANY {del_var} {ec_ref} REMOVE {de_var} IN {ec_ref})"
+                    start = f"{del_var} == null ? [] : [{del_var}]" if optional else ""
+                    edges = (
+                        f"FOR _ds IN ({start}) FOR {de_var} IN 1..1 ANY _ds {ec_ref}"
+                        if optional
+                        else f"FOR {de_var} IN 1..1 ANY {del_var} {ec_ref}"
                     )
+                    lines.append(f"  LET _edgeRm{idx} = ({edges} REMOVE {de_var} IN {ec_ref})")
                     written.append((f"DETACH DELETE {del_var} (its {ec} edges)", ec))
-            lines.append(f"  REMOVE {del_var} IN {_aql_collection_ref(key)}")
+            if optional:
+                lines.append(
+                    f"  LET _rm_{del_var} = ({guarded(del_var, f'REMOVE _w IN {_aql_collection_ref(key)}')})"
+                )
+            else:
+                lines.append(f"  REMOVE {del_var} IN {_aql_collection_ref(key)}")
             written.append((f"DELETE {del_var}", bind_vars[key]))
 
     _refuse_repeated_collections(written)
 
     # Optional RETURN
-    ret = spq.oC_Return()
     if ret is not None:
-        _append_return(ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars)
+        var_env = {v: return_env.get(v, v) for v in write_keys} if return_env else None
+        _append_return(ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars, var_env=var_env)
 
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
 
@@ -934,6 +996,15 @@ def create_ops(create_ctx: CypherParser.OC_CreateContext, var_env: dict[str, str
         anon_counter += 1
         return result
 
+    def _refuse_rebinding(var: str, node_ctx: Any) -> None:
+        # openCypher VariableAlreadyBound: CREATE may reference a bound node
+        # but not give it labels or properties.
+        if var in var_env and (node_ctx.oC_NodeLabels() is not None or node_ctx.oC_Properties() is not None):
+            raise CoreError(
+                f"CREATE cannot add labels or properties to the already bound variable {var!r}",
+                code="UNSUPPORTED",
+            )
+
     for part in parts:
         anon = part.oC_AnonymousPatternPart()
         elem = anon.oC_PatternElement()
@@ -942,6 +1013,7 @@ def create_ops(create_ctx: CypherParser.OC_CreateContext, var_env: dict[str, str
 
         start_var, start_labels = _extract_node_var_and_labels(node, default_var="_anon")
         start_var = _unique_anon(start_var)
+        _refuse_rebinding(start_var, node)
 
         if start_var not in var_env:
             ops.append(CreateOp(kind="node", var=start_var, labels=start_labels, node_ctx=node))
@@ -956,6 +1028,7 @@ def create_ops(create_ctx: CypherParser.OC_CreateContext, var_env: dict[str, str
 
             end_var, end_labels = _extract_node_var_and_labels(end_node, default_var="_anon")
             end_var = _unique_anon(end_var)
+            _refuse_rebinding(end_var, end_node)
 
             if end_var not in var_env:
                 ops.append(CreateOp(kind="node", var=end_var, labels=end_labels, node_ctx=end_node))
@@ -970,6 +1043,9 @@ def create_ops(create_ctx: CypherParser.OC_CreateContext, var_env: dict[str, str
                 create_counter += 1
 
             direction = _relationship_direction(rel_pat)
+            if direction == "ANY":
+                # openCypher RequiresDirectedRelationship.
+                raise CoreError("CREATE requires a directed relationship", code="UNSUPPORTED")
             if direction == "INBOUND":
                 from_v, to_v = end_var, current_var
             else:
@@ -1124,6 +1200,13 @@ def create_node_doc(
             tv_key = _pick_bind_key("typeValue", bind_vars)
             bind_vars[tv_key] = entity_mapping.get("typeValue")
             extra_fields.append(f"{type_field}: @{tv_key}")
+            lf = entity_labels_field(entity_mapping)
+            all_labels = list(dict.fromkeys(_strip_label_backticks(lab) for lab in labels))
+            if lf is not None and len(all_labels) > 1:
+                # Every label of a multi-label node (label_tests docstring).
+                lv_key = _pick_bind_key("nodeLabels", bind_vars)
+                bind_vars[lv_key] = all_labels
+                extra_fields.append(f"{lf}: @{lv_key}")
         elif style != "COLLECTION":
             raise CoreError(f"Unsupported entity mapping style: {style}", code="INVALID_MAPPING")
         concrete = _strip_label_backticks(primary)
@@ -1181,6 +1264,9 @@ def create_rel_doc(
     detail = rel_pat.oC_RelationshipDetail()
     if detail is None:
         raise CoreError("Relationship type is required for CREATE", code="UNSUPPORTED")
+    if detail.oC_RangeLiteral() is not None:
+        # openCypher: CreatingVarLength, a compile-time SyntaxError.
+        raise CoreError("CREATE cannot create a variable-length relationship", code="UNSUPPORTED")
     types_ctx = detail.oC_RelationshipTypes()
     if types_ctx is None:
         raise CoreError("Relationship type is required for CREATE", code="UNSUPPORTED")
@@ -1302,6 +1388,26 @@ def _build_insert_doc(
     return inner
 
 
+def projection_reshapes_rows(proj: CypherParser.OC_ProjectionBodyContext) -> bool:
+    """Whether a projection aggregates, sorts, pages or de-duplicates its rows."""
+    if (
+        proj.DISTINCT() is not None
+        or proj.oC_Order() is not None
+        or proj.oC_Skip() is not None
+        or proj.oC_Limit() is not None
+    ):
+        return True
+    aggregate_call = _core_helper("_aggregate_call")
+    parse_collect = _core_helper("_parse_collect")
+    nested = _core_helper("nested_aggregates")
+    return any(
+        aggregate_call(it.oC_Expression().getText().strip()) is not None
+        or parse_collect(it.oC_Expression().getText().strip()) is not None
+        or bool(nested(it.oC_Expression()))
+        for it in proj.oC_ProjectionItems().oC_ProjectionItem()
+    )
+
+
 def _compile_return_for_create(
     proj: CypherParser.OC_ProjectionBodyContext,
     *,
@@ -1309,7 +1415,14 @@ def _compile_return_for_create(
     bind_vars: dict[str, Any],
     indent: str = "",
 ) -> None:
-    """Compile a RETURN clause for a CREATE query (respects indent level)."""
+    """Compile a RETURN clause for a CREATE/MERGE query (respects indent level).
+
+    A RETURN that aggregates, sorts, pages or de-duplicates is the general
+    RETURN (``_append_return``); the plain one stays a bare ``RETURN``.
+    """
+    if projection_reshapes_rows(proj):
+        _append_return(proj, lines=lines, bind_vars=bind_vars)
+        return
     items_ctx = proj.oC_ProjectionItems()
     items = items_ctx.oC_ProjectionItem()
     if not items:
@@ -1402,6 +1515,30 @@ def _compile_merge_reading_clauses(
     lines.extend(read_lines)
 
 
+def _declared_names(ctx: Any) -> set[str]:
+    """Variables a pattern declares (nodes, relationships, the path)."""
+    names: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if (
+            isinstance(
+                node,
+                (
+                    CypherParser.OC_NodePatternContext,
+                    CypherParser.OC_RelationshipDetailContext,
+                    CypherParser.OC_PatternPartContext,
+                ),
+            )
+            and node.oC_Variable() is not None
+        ):
+            names.add(node.oC_Variable().getText().strip())
+        for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0):
+            walk(node.getChild(i))
+
+    walk(ctx)
+    return names
+
+
 def _extract_merge_actions(
     merge_ctx: CypherParser.OC_MergeContext,
     bind_vars: dict[str, Any],
@@ -1409,6 +1546,19 @@ def _extract_merge_actions(
     """Extract ON CREATE SET / ON MATCH SET fields from a MERGE clause."""
     on_create_fields: list[str] = []
     on_match_fields: list[str] = []
+
+    # The node a node-only MERGE binds, and its pattern labels.
+    elem = merge_ctx.oC_PatternPart().oC_AnonymousPatternPart().oC_PatternElement()
+    merged_var, merged_labels = (
+        _extract_node_var_and_labels(elem.oC_NodePattern(), default_var="n")
+        if not elem.oC_PatternElementChain()
+        else ("", [])
+    )
+    resolver = _active_resolver.get()
+    label_fields = shared_label_fields(resolver.bundle.physical_mapping) if resolver is not None else None
+    # What an ON CREATE / ON MATCH item may write: the pattern's variables
+    # and the query's.
+    visible = outer_bound_names(merge_ctx) | _declared_names(merge_ctx.oC_PatternPart())
 
     merge_actions = merge_ctx.oC_MergeAction() or []
     for action in merge_actions:
@@ -1418,6 +1568,45 @@ def _extract_merge_actions(
             continue
         set_items = set_ctx.oC_SetItem() or []
         for si in set_items:
+            if si.oC_NodeLabels() is not None:
+                target = si.oC_Variable().getText().strip() if si.oC_Variable() is not None else ""
+                if target != merged_var or label_fields is None:
+                    raise CoreError(
+                        f"MERGE ... SET of a label ({si.getText()}) is not supported here",
+                        code="UNSUPPORTED",
+                    )
+                added = [
+                    _strip_label_backticks(nl.oC_LabelName().getText().strip())
+                    for nl in si.oC_NodeLabels().oC_NodeLabel()
+                ]
+                if is_on_create:
+                    # The created node's labels are known: the pattern's and these.
+                    known = list(
+                        dict.fromkeys([*(_strip_label_backticks(lb) for lb in merged_labels), *added])
+                    )
+                    on_create_fields.append(f"{_aql_string_literal(label_fields[1])}: {json.dumps(known)}")
+                    if not merged_labels:
+                        on_create_fields.append(
+                            f"{_aql_string_literal(label_fields[0])}: {json.dumps(known[0])}"
+                        )
+                else:
+                    on_match_fields.extend(label_write_entries("OLD", added, add=True, fields=label_fields))
+                continue
+            prop_target = (
+                _atom_variable(si.oC_PropertyExpression().oC_Atom())
+                if si.oC_PropertyExpression() is not None
+                else None
+            )
+            if prop_target is not None and prop_target not in visible:
+                # openCypher UndefinedVariable.
+                raise CoreError(
+                    f"MERGE ... SET refers to undefined variable {prop_target!r}", code="UNSUPPORTED"
+                )
+            if si.oC_PropertyExpression() is None:
+                # ``SET r = map`` / ``SET r += map`` would otherwise be dropped.
+                raise CoreError(
+                    f"MERGE ... SET of a whole map ({si.getText()}) is not supported", code="NOT_IMPLEMENTED"
+                )
             prop_expr = si.oC_PropertyExpression()
             if prop_expr is not None:
                 lookups = prop_expr.oC_PropertyLookup() or []
@@ -1662,8 +1851,25 @@ def _build_merge_node_docs(
     document literals (only the surrounding statement form differs).
     """
     var, labels = _extract_node_var_and_labels(node, default_var="n")
+    if node.oC_Variable() is not None and var in outer_bound_names(merge_ctx):
+        # openCypher VariableAlreadyBound: MERGE (a) after MATCH (a).
+        raise CoreError(f"MERGE cannot rebind the bound variable {var!r}", code="UNSUPPORTED")
+    if any(v.strip() == "null" for _, v in _compile_create_props(node.oC_Properties(), dict(bind_vars))):
+        # openCypher MergeReadOwnWrites: a null property can never be matched.
+        raise CoreError("MERGE cannot match a null property value", code="UNSUPPORTED")
     if not labels:
-        raise CoreError("MERGE requires a labeled node", code="UNSUPPORTED")
+        # ``MERGE (a {…})``: any node of the one collection unlabeled nodes
+        # live in (failing closed when that is ambiguous), by its properties.
+        coll_key = _find_or_create_collection_bind_key(
+            "@collection", _infer_unlabeled_collection(resolver), bind_vars
+        )
+        props = _compile_create_props(node.oC_Properties(), bind_vars)
+        search_doc = _build_insert_doc(props, [])
+        on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+        insert_fields = [*(f"{k}: {v}" for k, v in props), *on_create_fields]
+        insert_doc = "{" + ", ".join(insert_fields) + "}" if on_create_fields else search_doc
+        update_doc = "{" + ", ".join(on_match_fields) + "}" if on_match_fields else "{}"
+        return var, coll_key, _aql_collection_ref(coll_key), search_doc, insert_doc, update_doc
 
     primary = _pick_primary_entity_label(labels, resolver)
     entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))

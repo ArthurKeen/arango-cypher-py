@@ -112,11 +112,14 @@ def _extract_labels_and_types(cypher: str) -> tuple[set[str], set[str]]:
     """Extract node labels and relationship types from Cypher text."""
     labels: set[str] = set()
     rel_types: set[str] = set()
-    for m in re.finditer(r"\(\s*\w*\s*((?::[A-Za-z_]\w*)+)", cypher):
-        for lab in re.findall(r":([A-Za-z_]\w*)", m.group(1)):
+    # ``(n:A:B)``, ``(me: Person)``, ``(n :A :B)``.
+    for m in re.finditer(r"\(\s*\w*\s*((?:\s*:\s*[A-Za-z_]\w*)+)", cypher):
+        for lab in re.findall(r":\s*([A-Za-z_]\w*)", m.group(1)):
             labels.add(lab)
-    for m in re.finditer(r"\[\s*\w*\s*:([A-Za-z_]\w*)", cypher):
-        rel_types.add(m.group(1))
+    # ``[:T]``, ``[r: T]``, ``[:T|U]``, ``[:T|:U]``.
+    for m in re.finditer(r"\[\s*\w*\s*:\s*([A-Za-z_]\w*(?:\s*\|\s*:?\s*[A-Za-z_]\w*)*)", cypher):
+        for rel_type in re.findall(r"[A-Za-z_]\w*", m.group(1)):
+            rel_types.add(rel_type)
     return labels, rel_types
 
 
@@ -149,6 +152,16 @@ def _build_dynamic_lpg_mapping(
                 "typeField": "type",
                 "typeValue": lab,
             }
+    # A node with several labels stores them all in ``labels`` (the direct
+    # loader does, and so does the translator given ``labelsField``), its
+    # type field holding one of them.
+    for lab, spec in list(entities.items()):
+        if (
+            isinstance(spec, dict)
+            and spec.get("style") == "LABEL"
+            and spec.get("collectionName") == coll_name
+        ):
+            entities[lab] = {**spec, "labelsField": "labels"}
     for rt in extra_rel_types:
         if rt not in rels:
             rels[rt] = {
@@ -201,9 +214,10 @@ def _build_mapping_for_scenario(scenario: Scenario, mapping_fixture: str) -> Map
         labels, rel_types = _extract_labels_and_types(text)
         all_labels |= labels
         all_rel_types |= rel_types
-    if all_labels or all_rel_types:
-        return _build_dynamic_lpg_mapping(base, all_labels, all_rel_types)
-    return base
+    # Always extended: the extension also marks every label as storable in a
+    # ``labels`` array, which a scenario naming no label still writes into
+    # (``MATCH (n) SET n:Foo``).
+    return _build_dynamic_lpg_mapping(base, all_labels, all_rel_types)
 
 
 _CREATE_NODE_PAT = re.compile(

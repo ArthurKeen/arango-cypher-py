@@ -25,6 +25,7 @@ from typing import Any
 
 from arango_query_core import CoreError, MappingResolver
 
+from .label_tests import label_test
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
 
 
@@ -61,7 +62,7 @@ def _member_type_filter(var: str, member: str, emap: dict[str, Any], bind_vars: 
     tv_key = _pick_bind_key(f"{var}MemberTypeValue", bind_vars)
     bind_vars[tf_key] = emap["typeField"]
     bind_vars[tv_key] = emap["typeValue"]
-    return f"{var}[@{tf_key}] == @{tv_key}"
+    return label_test(var, tf_key, tv_key, emap, bind_vars)
 
 
 def union_membership_filter(

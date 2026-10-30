@@ -15,17 +15,23 @@ _ARANGO_EDGE_META_KEYS = frozenset({"_id", "_key", "_rev", "_old_rev", "_from", 
 
 _NODE_RE = re.compile(
     r"^\(?"
-    r"(?::(?P<labels>[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*))?"
-    r"\s*(?:\{(?P<props>[^}]*)\})?"
-    r"\)?$"
+    r"(?P<labels>(?:\s*:\s*[A-Za-z_]\w*)*)"
+    r"\s*(?:\{(?P<props>.*)\})?"
+    r"\s*\)?$",
+    re.DOTALL,
 )
 
 _REL_RE = re.compile(
     r"^\[?"
     r"(?::(?P<type>[A-Za-z_]\w*))?"
-    r"\s*(?:\{(?P<props>[^}]*)\})?"
-    r"\]?$"
+    r"\s*(?:\{(?P<props>.*)\})?"
+    r"\s*\]?$",
+    re.DOTALL,
 )
+
+#: Key of a normalized path: ``{"_path": [node, rel, node, ...]}``, each
+#: relationship carrying ``_dir`` (``"->"`` or ``"<-"``) as the TCK writes it.
+PATH_KEY = "_path"
 
 
 def normalize_expected_value(text: str) -> Any:
@@ -33,7 +39,8 @@ def normalize_expected_value(text: str) -> Any:
 
     Handles: integers, floats, strings ('foo' or "foo"), booleans (true/false),
     null, lists ([1, 2]), maps ({key: value}),
-    node literals (:Label {prop: value}), relationship literals [:TYPE {prop: value}].
+    node literals (:Label {prop: value}), relationship literals [:TYPE {prop: value}],
+    path literals <(:A)-[:T]->(:B)>.
     """
     s = text.strip()
     if not s:
@@ -63,6 +70,9 @@ def normalize_expected_value(text: str) -> Any:
     if s.startswith("{") and s.endswith("}"):
         return _parse_map(s)
 
+    if s.startswith("<(") and s.endswith(")>"):
+        return _parse_path_literal(s)
+
     if s.startswith("(") or (s.startswith(":") and not s.startswith(":[")):
         return _parse_node_literal(s)
 
@@ -77,6 +87,14 @@ def normalize_actual_value(value: Any, *, as_node: bool = False, as_rel: bool = 
     When *as_rel* is True, strips ``_from``/``_to`` and converts ``type`` to ``_type``.
     """
     if isinstance(value, dict):
+        if _is_actual_path(value):
+            return _normalize_actual_path(value)
+        if "_id" in value and not (as_node or as_rel):
+            # A stored document is a node or a relationship whatever the
+            # column's expected cell looks like (a list element, a map
+            # value): an edge document carries ``_from``/``_to``.
+            as_rel = "_from" in value and "_to" in value
+            as_node = not as_rel
         strip_keys = _ARANGO_EDGE_META_KEYS if as_rel else _ARANGO_META_KEYS
         cleaned = {k: normalize_actual_value(v) for k, v in value.items() if k not in strip_keys}
         if as_node:
@@ -97,6 +115,36 @@ def normalize_actual_value(value: Any, *, as_node: bool = False, as_rel: bool = 
     if isinstance(value, float) and value == int(value) and not (value != value):
         return int(value)
     return value
+
+
+def _is_actual_path(value: dict[str, Any]) -> bool:
+    """An ArangoDB path value: ``{"nodes"|"vertices": [...], "edges": [...]}``."""
+    nodes = value.get("nodes", value.get("vertices"))
+    return (
+        set(value) in ({"nodes", "edges"}, {"vertices", "edges"})
+        and isinstance(nodes, list)
+        and isinstance(value["edges"], list)
+        and len(nodes) == len(value["edges"]) + 1
+    )
+
+
+def _normalize_actual_path(value: dict[str, Any]) -> dict[str, Any]:
+    """``{"nodes", "edges"}`` -> ``{"_path": [node, rel, node, ...]}``.
+
+    A relationship's ``_dir`` is ``"->"`` when it leaves the node before it
+    in the path (its ``_from`` is that node's ``_id``), else ``"<-"`` — how a
+    TCK path literal writes direction.
+    """
+    nodes = value.get("nodes", value.get("vertices")) or []
+    edges = value["edges"]
+    out: list[Any] = [normalize_actual_value(nodes[0], as_node=True)]
+    for i, edge in enumerate(edges):
+        rel = normalize_actual_value(edge, as_rel=True)
+        if isinstance(rel, dict) and isinstance(edge, dict) and isinstance(nodes[i], dict):
+            rel = {**rel, "_dir": "->" if edge.get("_from") == nodes[i].get("_id") else "<-"}
+        out.append(rel)
+        out.append(normalize_actual_value(nodes[i + 1], as_node=True))
+    return {PATH_KEY: out}
 
 
 def values_equal(actual: Any, expected: Any, *, ignore_list_order: bool = False) -> bool:
@@ -272,8 +320,8 @@ def _parse_node_literal(s: str) -> dict[str, Any]:
     m = _NODE_RE.match(s)
     if not m:
         return {"_raw": s}
-    labels_str = m.group("labels")
-    labels = labels_str.split("::") if labels_str else []
+    labels_str = m.group("labels") or ""
+    labels = list(dict.fromkeys(lab.strip() for lab in labels_str.split(":") if lab.strip()))
     props = _parse_props(m.group("props") or "")
     return {"_labels": sorted(labels), **props}
 
@@ -292,6 +340,70 @@ def _parse_rel_literal(s: str) -> dict[str, Any]:
         result["_type"] = rel_type
     result.update(props)
     return result
+
+
+def _scan_balanced(s: str, start: int, open_ch: str, close_ch: str) -> int:
+    """Index just past the *close_ch* matching ``s[start] == open_ch`` (quote-aware)."""
+    depth = 0
+    quote = ""
+    i = start
+    while i < len(s):
+        ch = s[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    raise ValueError(f"unbalanced {open_ch}{close_ch} in {s!r}")
+
+
+def _parse_path_literal(s: str) -> Any:
+    """Parse ``<(:A)-[:T {k: 1}]->(:B)<-[:U]-()>`` into ``{"_path": [...]}``.
+
+    Text that is not a well-formed path literal is returned unchanged, so it
+    can only compare equal to an identical string.
+    """
+    body = s[1:-1].strip()
+    out: list[Any] = []
+    i = 0
+    try:
+        while i < len(body):
+            if body[i] != "(":
+                return s
+            end = _scan_balanced(body, i, "(", ")")
+            out.append(_parse_node_literal(body[i:end]))
+            i = end
+            if i >= len(body):
+                break
+            if body.startswith("<-[", i):
+                direction, i = "<-", i + 2
+            elif body.startswith("-[", i):
+                direction, i = "->", i + 1
+            else:
+                return s
+            end = _scan_balanced(body, i, "[", "]")
+            rel = _parse_rel_literal(body[i:end])
+            i = end
+            if direction == "<-" and body.startswith("-", i) and not body.startswith("->", i):
+                i += 1
+            elif direction == "->" and body.startswith("->", i):
+                i += 2
+            else:
+                return s
+            out.append({**rel, "_dir": direction})
+    except ValueError:
+        return s
+    return {PATH_KEY: out}
 
 
 def _is_node_expected(expected_val: str) -> bool:

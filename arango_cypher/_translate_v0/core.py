@@ -39,13 +39,20 @@ from .conversions import compile_to_boolean, compile_to_float, compile_to_intege
 from .deletes import translate_delete_query
 from .distinct_order import append_distinct_return, live_sort_terms, order_keeping_collect
 from .formatting import _guard_varlength_edge_types, _prepend_with_collections, _reindent_aql
+from .graph_functions import compile_keys, compile_labels, compile_properties
 from .hints import (
     _build_collection_index_hint,
     _build_vci_options,
     _warn_missing_vci,
     _warn_multi_label_collection,
 )
-from .inserts import is_create_pipeline, translate_create_pipeline
+from .inserts import (
+    is_create_pipeline,
+    single_part_create_needs_pipeline,
+    translate_create_pipeline,
+    translate_single_part_create,
+)
+from .label_tests import label_test
 from .literals import _aql_string_from_cypher, _aql_string_literal
 from .multi_type import (
     MULTI_TYPE_SEPARATOR,
@@ -67,6 +74,7 @@ from .naming import (
     _strip_label_backticks,
 )
 from .pattern_reversal import from_bound_end
+from .scopes import outer_bound_names
 from .semantic_check import check_semantics
 from .shortest_path import (
     compile_shortest_path,
@@ -301,6 +309,14 @@ def _translate_single_query(
                 "CREATE combined with DELETE is not supported",
                 code="NOT_IMPLEMENTED",
             )
+
+        if (
+            create_clauses
+            and not set_clauses
+            and not remove_clauses
+            and single_part_create_needs_pipeline(spq, create_clauses, resolver=resolver, bind_vars=bind_vars)
+        ):
+            return translate_single_part_create(spq, resolver=resolver, bind_vars=bind_vars)
 
         if create_clauses:
             # Handles CREATE alone and CREATE followed by SET/REMOVE on the
@@ -540,7 +556,7 @@ def _emit_single_hop(
             vtv_key = _pick_bind_key("vTypeValue", bind_vars)
             bind_vars[vtf_key] = h.v_map.get("typeField")
             bind_vars[vtv_key] = h.v_map.get("typeValue")
-            v_filters.append(f"{h.v_trav}[@{vtf_key}] == @{vtv_key}")
+            v_filters.append(label_test(h.v_trav, vtf_key, vtv_key, h.v_map, bind_vars))
             v_filters.extend(_extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars))
         elif v_style == "MULTI_LABEL":
             v_filters.append(_multi_label_filter(h.v_trav, h.v_map, bind_vars))
@@ -700,7 +716,7 @@ def _emit_vertex_filters_for_hop(
             vtv_key = _pick_bind_key("vTypeValue", bind_vars)
             bind_vars[vtf_key] = h.v_map.get("typeField")
             bind_vars[vtv_key] = h.v_map.get("typeValue")
-            lines.append(f"    FILTER {h.v_trav}[@{vtf_key}] == @{vtv_key}")
+            lines.append("    FILTER " + label_test(h.v_trav, vtf_key, vtv_key, h.v_map, bind_vars))
             for f in _extra_label_filters(h.v_trav, h.v_labels, h.v_primary, bind_vars):
                 lines.append(f"    FILTER {f}")
         elif v_style == "MULTI_LABEL":
@@ -1035,7 +1051,7 @@ def _translate_match_body(
                 bind_vars["typeField"] = entity_mapping["typeField"]
                 bind_vars["typeValue"] = entity_mapping["typeValue"]
                 for_line = f"FOR {var} IN @@collection"
-                base_filters.append(f"{var}[@typeField] == @typeValue")
+                base_filters.append(label_test(var, "typeField", "typeValue", entity_mapping, bind_vars))
                 base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
             elif entity_style == "MULTI_LABEL":
                 bind_vars["@collection"] = entity_mapping["collectionName"]
@@ -1073,6 +1089,12 @@ def _translate_match_body(
                 lines.append(f"  {idx_hint}")
         for f in filters:
             lines.append(f"  FILTER {f}")
+        # ``MATCH p = (n)``: a zero-length path of the one node.
+        single_path_ctx = all_parts[0].oC_Variable()
+        if single_path_ctx is not None:
+            single_path = single_path_ctx.getText().strip()
+            lines.append(f"  LET {single_path} = {{nodes: [{var}], edges: []}}")
+            _active_path_vars.get()[single_path] = ([var], [])
 
         opt_var_env: dict[str, str] = {}
         node_rel_type_exprs: dict[str, str] = {}
@@ -1162,7 +1184,7 @@ def _translate_match_body(
         if u_style == "LABEL":
             bind_vars["uTypeField"] = u_map.get("typeField")
             bind_vars["uTypeValue"] = u_map.get("typeValue")
-            u_filters.append(f"{u_var}[@uTypeField] == @uTypeValue")
+            u_filters.append(label_test(u_var, "uTypeField", "uTypeValue", u_map, bind_vars))
             u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
         elif u_style == "MULTI_LABEL":
             u_filters.append(_multi_label_filter(u_var, u_map, bind_vars))
@@ -1589,9 +1611,10 @@ def _compile_leading_match(
         )
         return lines, forbidden_vars, env
     parts = match_ctx.oC_Pattern().oC_PatternPart() or []
-    if len(parts) > 1:
+    if len(parts) > 1 or any(part.oC_Variable() is not None for part in parts):
         # ``MATCH (a {…}), (b {…}), … WITH …`` — the disconnected-parts compiler
-        # the single-query path already uses (LDBC IC3, IC4, BI11, BI14).
+        # the single-query path already uses (LDBC IC3, IC4, BI11, BI14); it
+        # also binds a named path (``MATCH p = (a)-->(b) WITH p …``).
         where = match_ctx.oC_Where()
         lines, forbidden_vars = _compile_match_multi_parts_from_parts(
             list(parts),
@@ -2185,7 +2208,7 @@ def _compile_match_multi_parts_from_parts(
             tv_key = _pick_bind_key(f"{var}TypeValue", bind_vars)
             bind_vars[tf_key] = entity_mapping.get("typeField")
             bind_vars[tv_key] = entity_mapping.get("typeValue")
-            add_filter(f"{var}[@{tf_key}] == @{tv_key}")
+            add_filter(label_test(var, tf_key, tv_key, entity_mapping, bind_vars))
             for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
                 add_filter(extra)
         elif entity_style == "MULTI_LABEL":
@@ -2232,6 +2255,22 @@ def _compile_match_multi_parts_from_parts(
                 raise CoreError("Invalid label in MATCH", code="UNSUPPORTED")
             labels.append(label)
         return var, labels
+
+    def bind_named_path(part: Any, node_pieces: list[str], edge_pieces: list[str]) -> None:
+        """``p = (…)``: ``LET p = {nodes, edges}`` from the part's hops, in pattern order."""
+        if part.oC_Variable() is None:
+            return
+        name = part.oC_Variable().getText().strip()
+        nodes = node_pieces[0] if len(node_pieces) == 1 else f"UNION({', '.join(node_pieces)})"
+        if not edge_pieces:
+            edges = "[]"
+        elif len(edge_pieces) == 1:
+            edges = edge_pieces[0]
+        else:
+            edges = f"UNION({', '.join(edge_pieces)})"
+        lines.append(f"{indent_filter_line()}LET {name} = {{nodes: {nodes}, edges: {edges}}}")
+        forbidden.add(name)
+        _active_path_vars.get()[name] = ([], [])
 
     rel_part_i = 0
     all_named_rel_vars: list[str] = []
@@ -2288,7 +2327,7 @@ def _compile_match_multi_parts_from_parts(
                     tv_key = _pick_bind_key(f"{var}TypeValue", bind_vars)
                     bind_vars[tf_key] = entity_mapping.get("typeField")
                     bind_vars[tv_key] = entity_mapping.get("typeValue")
-                    add_filter(f"{var}[@{tf_key}] == @{tv_key}")
+                    add_filter(label_test(var, tf_key, tv_key, entity_mapping, bind_vars))
                     for extra in _extra_label_filters(var, labels, primary, bind_vars, bare=True):
                         add_filter(extra)
                 elif entity_style == "MULTI_LABEL":
@@ -2312,6 +2351,7 @@ def _compile_match_multi_parts_from_parts(
             forbidden.add(var)
             if labels:
                 bound_labels[var] = primary
+            bind_named_path(part, [f"[{var}]"], [])
             continue
 
         # Case 2: relationship pattern part: (u)-[:T]->(v) ... (1+ hops)
@@ -2351,7 +2391,7 @@ def _compile_match_multi_parts_from_parts(
                     tv_key = _pick_bind_key(f"{u_var}TypeValue", bind_vars)
                     bind_vars[tf_key] = u_map.get("typeField")
                     bind_vars[tv_key] = u_map.get("typeValue")
-                    add_filter(f"{u_var}[@{tf_key}] == @{tv_key}")
+                    add_filter(label_test(u_var, tf_key, tv_key, u_map, bind_vars))
                     for extra in _extra_label_filters(u_var, u_labels, u_primary, bind_vars, bare=True):
                         add_filter(extra)
                 elif u_style == "MULTI_LABEL":
@@ -2373,6 +2413,8 @@ def _compile_match_multi_parts_from_parts(
                 bound_labels[u_var] = u_primary
 
         current_u = u_var
+        path_nodes: list[str] = [f"[{u_var}]"]
+        path_edges: list[str] = []
         for hop_i, chain in enumerate(chains):
             rel_pat = chain.oC_RelationshipPattern()
             v_node = chain.oC_NodePattern()
@@ -2428,8 +2470,15 @@ def _compile_match_multi_parts_from_parts(
                 )
 
             rmin, rmax = rel_range
+            hop_path = ""
+            if part.oC_Variable() is not None:
+                # A named path collects every hop's vertices and edges.
+                hop_path = _pick_fresh_var(f"_pp{idx + 1}_{hop_i + 1}", forbidden_vars=forbidden)
+                path_nodes.append(f"SLICE({hop_path}.vertices, 1)")
+                path_edges.append(f"{hop_path}.edges")
+            trav_vars = f"{v_trav}, {rel_var}, {hop_path}" if hop_path else f"{v_trav}, {rel_var}"
             add_for(
-                f"FOR {v_trav}, {rel_var} IN {rmin}..{rmax} {direction} {current_u} {_aql_collection_ref(edge_key)}"
+                f"FOR {trav_vars} IN {rmin}..{rmax} {direction} {current_u} {_aql_collection_ref(edge_key)}"
             )
 
             if v_bound:
@@ -2459,6 +2508,7 @@ def _compile_match_multi_parts_from_parts(
                     bound_labels[v_var] = _pick_primary_entity_label(v_labels, resolver)
 
             current_u = v_trav
+        bind_named_path(part, path_nodes, path_edges)
 
     _emit_relationship_uniqueness(all_named_rel_vars, lines, indent=indent_filter_line())
 
@@ -2613,7 +2663,7 @@ def _compile_bound_part(
                 tv_key = _pick_bind_key("tailTypeValue", bind_vars)
                 bind_vars[tf_key] = entity_mapping.get("typeField")
                 bind_vars[tv_key] = entity_mapping.get("typeValue")
-                tail_filters.append(f"{u_aql}[@{tf_key}] == @{tv_key}")
+                tail_filters.append(label_test(u_aql, tf_key, tv_key, entity_mapping, bind_vars))
             elif entity_style == "MULTI_LABEL":
                 tail_filters.append(_multi_label_filter(u_aql, entity_mapping, bind_vars))
             elif entity_style not in ("COLLECTION", "UNION"):
@@ -2732,7 +2782,7 @@ def _compile_bound_part(
                 vtv_key = _pick_bind_key("vTypeValue", bind_vars)
                 bind_vars[vtf_key] = v_map.get("typeField")
                 bind_vars[vtv_key] = v_map.get("typeValue")
-                v_filters.append(f"{v_aql}[@{vtf_key}] == @{vtv_key}")
+                v_filters.append(label_test(v_aql, vtf_key, vtv_key, v_map, bind_vars))
                 v_filters.extend(_extra_label_filters(v_aql, v_labels, v_primary, bind_vars))
             elif v_style == "MULTI_LABEL":
                 v_filters.append(_multi_label_filter(v_aql, v_map, bind_vars))
@@ -2824,7 +2874,7 @@ def _compile_match_pipeline(
                 bind_vars["typeField"] = entity_mapping["typeField"]
                 bind_vars["typeValue"] = entity_mapping["typeValue"]
                 lines = [f"FOR {var} IN @@collection"]
-                base_filters.append(f"{var}[@typeField] == @typeValue")
+                base_filters.append(label_test(var, "typeField", "typeValue", entity_mapping, bind_vars))
                 base_filters.extend(_extra_label_filters(var, labels, primary, bind_vars))
             elif entity_style == "MULTI_LABEL":
                 bind_vars["@collection"] = entity_mapping["collectionName"]
@@ -2885,7 +2935,7 @@ def _compile_match_pipeline(
         if u_style == "LABEL":
             bind_vars["uTypeField"] = u_map.get("typeField")
             bind_vars["uTypeValue"] = u_map.get("typeValue")
-            u_filters.append(f"{u_var}[@uTypeField] == @uTypeValue")
+            u_filters.append(label_test(u_var, "uTypeField", "uTypeValue", u_map, bind_vars))
             u_filters.extend(_extra_label_filters(u_var, u_labels, u_primary, bind_vars))
         elif u_style == "MULTI_LABEL":
             u_filters.append(_multi_label_filter(u_var, u_map, bind_vars))
@@ -3001,7 +3051,7 @@ def _compile_match_pipeline(
                 vtv_key = _pick_bind_key("vTypeValue", bind_vars)
                 bind_vars[vtf_key] = v_map.get("typeField")
                 bind_vars[vtv_key] = v_map.get("typeValue")
-                v_filters.append(f"{v_trav}[@{vtf_key}] == @{vtv_key}")
+                v_filters.append(label_test(v_trav, vtf_key, vtv_key, v_map, bind_vars))
                 v_filters.extend(_extra_label_filters(v_trav, v_labels, v_primary, bind_vars))
             elif v_style == "MULTI_LABEL":
                 v_filters.append(_multi_label_filter(v_trav, v_map, bind_vars))
@@ -4179,9 +4229,10 @@ def _append_return_aggregation(
 
 
 def _infer_key(expr: str) -> str | None:
-    # Best-effort key inference for `n.prop.subprop` → `subprop`
-    if "." in expr and all(part.strip() for part in expr.split(".")):
-        return expr.split(".")[-1]
+    # Best-effort key inference for `n.prop.subprop` → `subprop`; only a plain
+    # property path (a dotted AQL expression such as a ternary is not one).
+    if re.fullmatch(r"[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)+", expr):
+        return expr.split(".")[-1].strip()
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr):
         return expr
     m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr)
@@ -4233,6 +4284,18 @@ def _parse_skip_limit(
     limit_value: str | None = None
     if limit_expr_ctx is not None:
         limit_value = _compile_expression(limit_expr_ctx, bind_vars)
+
+    for clause, value in (("SKIP", skip_value), ("LIMIT", limit_value)):
+        # A parameter's value is known now: SKIP/LIMIT take a non-negative
+        # integer (openCypher InvalidArgumentType / NegativeIntegerArgument).
+        m = re.fullmatch(r"@(\w+)", value or "")
+        if m and m.group(1) in bind_vars:
+            given = bind_vars[m.group(1)]
+            if isinstance(given, bool) or not isinstance(given, int) or given < 0:
+                raise CoreError(
+                    f"{clause} expects a non-negative integer, got parameter ${m.group(1)} = {given!r}",
+                    code="UNSUPPORTED",
+                )
 
     return skip_value, limit_value
 
@@ -4491,7 +4554,7 @@ def _compile_label_predicate(
             tv_key = _pick_bind_key(f"{var}LabelValue", bind_vars)
             bind_vars[tf_key] = tf
             bind_vars[tv_key] = tv
-            parts.append(f"{var}[@{tf_key}] == @{tv_key}")
+            parts.append(label_test(var, tf_key, tv_key, mapping, bind_vars))
         elif style == "COLLECTION":
             coll = mapping.get("collectionName")
             if not (isinstance(coll, str) and coll):
@@ -5037,17 +5100,23 @@ def _compile_single_node_subquery_body(
     where_ctx = match_ctx.oC_Where()
 
     # Correlated single outer node: existence == the WHERE predicate on it.
-    if named and not labels and not has_props:
-        sub = f"FOR _sq_probe IN [{var}]"
+    if named and not labels and not has_props and var in outer_bound_names(match_ctx):
+        sub = f"FOR _sq_probe_{var} IN [{var}]"
         if where_ctx is not None:
             sub += f" FILTER {_compile_where(where_ctx.oC_Expression(), bind_vars)}"
         return sub + " RETURN 1"
 
     if not labels:
-        raise CoreError(
-            "EXISTS/COUNT subquery over an unlabeled, uncorrelated node is not supported",
-            code="UNSUPPORTED",
-        )
+        # A node of the subquery's own: scan the one collection unlabeled
+        # nodes live in (failing closed when that is ambiguous).
+        coll_key = _pick_bind_key("@sqNodes", bind_vars)
+        bind_vars[coll_key] = _infer_unlabeled_collection(resolver)
+        sub = f"FOR {var} IN {_aql_collection_ref(coll_key)}"
+        for f in _compile_node_pattern_properties(start_node, var=var, bind_vars=bind_vars):
+            sub += f" FILTER {f}"
+        if where_ctx is not None:
+            sub += f" FILTER {_compile_where(where_ctx.oC_Expression(), bind_vars)}"
+        return sub + " RETURN 1"
 
     primary = _pick_primary_entity_label(labels, resolver)
     emap = resolver.resolve_entity(_strip_label_backticks(primary))
@@ -5065,7 +5134,7 @@ def _compile_single_node_subquery_body(
         tv = _pick_bind_key("sqNodeTV", bind_vars)
         bind_vars[tf] = emap.get("typeField")
         bind_vars[tv] = emap.get("typeValue")
-        filters.append(f"{var}[@{tf}] == @{tv}")
+        filters.append(label_test(var, tf, tv, emap, bind_vars))
         filters.extend(_extra_label_filters(var, labels, primary, bind_vars, bare=True))
     elif style == "MULTI_LABEL":
         filters.append(_multi_label_filter(var, emap, bind_vars))
@@ -5226,20 +5295,27 @@ def _compile_subquery_body(
         )
 
     start_var, start_labels = _extract_node_var_and_labels(start_node, default_var="_sq_start")
+    if len(chains) > 1:
+        # Only one hop is compiled; dropping the others would test a weaker
+        # pattern than the query's.
+        raise CoreError(
+            "EXISTS/COUNT subquery over a multi-hop pattern is not supported", code="NOT_IMPLEMENTED"
+        )
     chain = chains[0]
     rel_pat = chain.oC_RelationshipPattern()
     target_node = chain.oC_NodePattern()
     if rel_pat is None:
         raise CoreError("Invalid subquery pattern", code="UNSUPPORTED")
 
-    rel_type, _, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_sq_r")
+    rel_type, rel_name, rel_range = _extract_relationship_type_and_var(rel_pat, default_var="_sq_r")
     direction = _relationship_direction(rel_pat)
 
     r_map = _resolve_relationship_for_pattern(resolver, rel_type)
     edge_key = _pick_bind_key("@sqEdge", bind_vars)
     bind_vars[edge_key] = r_map.get("edgeCollectionName") or r_map.get("collectionName")
 
-    sq_e = "_sq_e"
+    # A relationship the subquery names is its own edge variable.
+    sq_e = rel_name if rel_name != "_sq_r" and rel_name not in outer_bound_names(sq_ctx) else "_sq_e"
     target_var, t_labels = _extract_node_var_and_labels(target_node, default_var="_sq_t")
     target_named = target_var != "_sq_t"
     target_has_props = target_node.oC_Properties() is not None
@@ -5254,7 +5330,13 @@ def _compile_subquery_body(
     # In an *aggregation* subquery (``… WITH count(*) …``) the target is being
     # enumerated/counted, not correlated — so it is always a fresh loop
     # variable regardless of naming.
-    correlate_target = (not has_with) and target_named and not t_labels and not target_has_props
+    correlate_target = (
+        (not has_with)
+        and target_named
+        and not t_labels
+        and not target_has_props
+        and target_var in outer_bound_names(sq_ctx)
+    )
     sq_v = target_var if (target_named and not correlate_target) else "_sq_v"
 
     filters: list[str] = []
@@ -5278,7 +5360,7 @@ def _compile_subquery_body(
                 ttv = _pick_bind_key("sqTTV", bind_vars)
                 bind_vars[ttf] = t_map.get("typeField")
                 bind_vars[ttv] = t_map.get("typeValue")
-                filters.append(f"{sq_v}[@{ttf}] == @{ttv}")
+                filters.append(label_test(sq_v, ttf, ttv, t_map, bind_vars))
         except CoreError:
             pass
 
@@ -6145,11 +6227,11 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
         if fn_norm == "keys":
             if len(compiled_args) != 1:
                 raise CoreError("keys expects 1 arg", code="UNSUPPORTED")
-            return f"ATTRIBUTES({compiled_args[0]})"
+            return compile_keys(compiled_args[0], _active_resolver.get())
         if fn_norm == "properties":
             if len(compiled_args) != 1:
                 raise CoreError("properties expects 1 arg", code="UNSUPPORTED")
-            return f'UNSET({compiled_args[0]}, "_id", "_key", "_rev")'
+            return compile_properties(compiled_args[0], _active_resolver.get())
         if fn_norm == "tostring":
             if len(compiled_args) != 1:
                 raise CoreError("toString expects 1 arg", code="UNSUPPORTED")
@@ -6281,6 +6363,8 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             if len(compiled_args) != 1:
                 raise CoreError("type expects 1 arg", code="UNSUPPORTED")
             r_var = compiled_args[0]
+            if r_var.strip() == "null":
+                return "null"
             resolver = _active_resolver.get()
             type_field = _shared_type_field(resolver, "relationships") if resolver else None
             if type_field:
@@ -6300,8 +6384,16 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             if len(compiled_args) != 1:
                 raise CoreError("labels expects 1 arg", code="UNSUPPORTED")
             n_var = compiled_args[0]
+            if n_var.strip() == "null":
+                return "null"
+            if args and args[0].getText().strip() in _active_path_vars.get():
+                # openCypher InvalidArgumentType: labels() takes a node.
+                raise CoreError("labels() expects a node, not a path", code="UNSUPPORTED")
             resolver = _active_resolver.get()
             type_field = _shared_type_field(resolver, "entities") if resolver else None
+            multi = compile_labels(n_var, resolver, type_field) if type_field else None
+            if multi is not None:
+                return multi
             if type_field:
                 # Type-discriminated nodes (LABEL / GENERIC_WITH_TYPE) carry
                 # their label in the discriminator field; dedicated /

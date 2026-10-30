@@ -98,7 +98,7 @@ class TestSingleNodeSubquery:
             "MATCH (p:Person) WHERE exists { (p) WHERE p.born > 1970 } RETURN p.name",
             mapping=pg,
         )
-        assert "FOR _sq_probe IN [p]" in out.aql
+        assert "FOR _sq_probe_p IN [p]" in out.aql
         assert "p.born" in out.aql
 
     def test_inline_properties(self, pg):

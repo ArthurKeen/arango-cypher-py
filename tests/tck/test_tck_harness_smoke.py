@@ -222,6 +222,47 @@ class TestScenarioOutlineExpansion:
         assert len(feat.scenarios) == 0
 
 
+class TestBackground:
+    def test_background_steps_prefix_every_scenario(self, tmp_path: Path):
+        p = _write_feature(
+            tmp_path,
+            """\
+        Feature: Background test
+
+          Background:
+            Given an empty graph
+            And having executed:
+              \"\"\"
+              CREATE (:A {name: 'n0'})
+              \"\"\"
+
+          Scenario: [1] First
+            When executing query:
+              \"\"\"
+              MATCH (a:A) RETURN a.name
+              \"\"\"
+            Then the result should be empty
+
+          Scenario Outline: [2] Second
+            When executing query:
+              \"\"\"
+              RETURN <v>
+              \"\"\"
+            Then the result should be empty
+
+          Examples:
+            | v |
+            | 1 |
+        """,
+        )
+        feat = parse_feature(p)
+        assert [s.name for s in feat.scenarios] == ["[1] First", "[2] Second [v=1]"]
+        for sc in feat.scenarios:
+            assert [st.text for st in sc.steps[:2]] == ["an empty graph", "having executed:"]
+            assert (sc.steps[1].doc_string or "").strip() == "CREATE (:A {name: 'n0'})"
+            assert sc.steps[2].keyword == "When"
+
+
 # ---------------------------------------------------------------------------
 # normalize.py — normalize_expected_value
 # ---------------------------------------------------------------------------
@@ -301,21 +342,77 @@ class TestNormalizeExpectedValue:
 class TestNormalizeActualValue:
     def test_strips_meta_keys(self):
         doc = {"_id": "x/1", "_key": "1", "_rev": "abc", "name": "Alice"}
-        assert normalize_actual_value(doc) == {"name": "Alice"}
+        # A stored document (it has an ``_id``) is a node: unlabeled here.
+        assert normalize_actual_value(doc) == {"name": "Alice", "_labels": []}
 
     def test_float_to_int(self):
         assert normalize_actual_value(3.0) == 3
         assert isinstance(normalize_actual_value(3.0), int)
 
     def test_nested_dict(self):
-        doc = {"_id": "x/1", "addr": {"_rev": "z", "city": "NYC"}}
+        doc = {"addr": {"_rev": "z", "city": "NYC"}}
         result = normalize_actual_value(doc)
         assert result == {"addr": {"city": "NYC"}}
 
     def test_list_of_dicts(self):
-        rows = [{"_id": "a", "v": 1}, {"_id": "b", "v": 2}]
+        rows = [{"v": 1, "_key": "a"}, {"v": 2, "_key": "b"}]
         result = normalize_actual_value(rows)
         assert result == [{"v": 1}, {"v": 2}]
+
+    def test_stored_documents_normalize_by_shape(self):
+        """Nodes and edges inside lists/maps are recognized by their document shape."""
+        node = {"_id": "v/1", "_key": "1", "_rev": "r", "type": "A", "name": "a"}
+        edge = {"_id": "e/1", "_key": "1", "_rev": "r", "_from": "v/1", "_to": "v/2", "type": "T"}
+        assert normalize_actual_value([node, edge]) == [
+            {"_labels": ["A"], "name": "a"},
+            {"_type": "T"},
+        ]
+        assert normalize_actual_value({"n": node}) == {"n": {"_labels": ["A"], "name": "a"}}
+
+    def test_multi_label_node_uses_labels_array(self):
+        node = {"_id": "v/1", "type": "A", "labels": ["B", "A"]}
+        assert normalize_actual_value(node, as_node=True) == {"_labels": ["A", "B"]}
+
+    def test_path_records_relationship_direction(self):
+        path = {
+            "nodes": [{"_id": "v/1", "type": "A"}, {"_id": "v/2"}, {"_id": "v/3", "type": "C"}],
+            "edges": [
+                {"_id": "e/1", "_from": "v/1", "_to": "v/2", "type": "T", "num": 1},
+                {"_id": "e/2", "_from": "v/3", "_to": "v/2", "type": "U"},
+            ],
+        }
+        assert normalize_actual_value(path) == normalize_expected_value("<(:A)-[:T {num: 1}]->()<-[:U]-(:C)>")
+
+
+class TestNormalizeExpectedGraphLiterals:
+    def test_multi_label_node(self):
+        assert normalize_expected_value("(:A:B:C)") == {"_labels": ["A", "B", "C"]}
+        assert normalize_expected_value("(:B :A {name: 'x'})") == {"_labels": ["A", "B"], "name": "x"}
+
+    def test_node_with_nested_map_property(self):
+        assert normalize_expected_value("({m: {a: 1}})") == {"_labels": [], "m": {"a": 1}}
+
+    def test_zero_length_path(self):
+        assert normalize_expected_value("<({num: 1})>") == {"_path": [{"_labels": [], "num": 1}]}
+
+    def test_path_with_both_directions(self):
+        assert normalize_expected_value("<(:A)<-[:T1]-(:B)-[:T2 {k: 'v'}]->()>") == {
+            "_path": [
+                {"_labels": ["A"]},
+                {"_type": "T1", "_dir": "<-"},
+                {"_labels": ["B"]},
+                {"_type": "T2", "k": "v", "_dir": "->"},
+                {"_labels": []},
+            ]
+        }
+
+    def test_list_of_paths(self):
+        assert normalize_expected_value("[<(:A)-[:T]->(:B)>]") == [
+            {"_path": [{"_labels": ["A"]}, {"_type": "T", "_dir": "->"}, {"_labels": ["B"]}]}
+        ]
+
+    def test_malformed_path_stays_a_string(self):
+        assert normalize_expected_value("<(:A)-[:T]-(:B)>") == "<(:A)-[:T]-(:B)>"
 
     def test_preserves_real_float(self):
         assert normalize_actual_value(3.5) == 3.5
@@ -519,3 +616,24 @@ def test_tck_runner_smoke_integration():
     assert rep["feature"]
     assert rep["scenarios"] >= 1
     assert set(rep["counts"].keys()) == {"passed", "skipped", "failed"}
+
+
+class TestScenarioInputs:
+    def test_parameters_table_has_no_header(self):
+        """``Given parameters are:`` rows are ``| name | value |``, every one of them."""
+        assert runner._parse_params([["skipAmount", "2"], ["name", "'x'"]]) == {"skipAmount": 2, "name": "x"}
+
+    def test_labels_and_types_with_spaces_and_alternatives(self):
+        labels, types = runner._extract_labels_and_types(
+            "MATCH (me: Person)--(you :A :B)-[r: T|:U]->() MATCH ()-[:V|W]-()"
+        )
+        assert labels == {"Person", "A", "B"}
+        assert types == {"T", "U", "V", "W"}
+
+    def test_every_scenario_mapping_stores_multiple_labels(self):
+        """SET n:L writes a labels array even when no pattern in the scenario names a label."""
+        from tests.tck.gherkin import Scenario, Step
+
+        step = Step(keyword="When", text="executing query:", doc_string="MATCH (n) RETURN n")
+        mapping = runner._build_mapping_for_scenario(Scenario(name="x", steps=[step]), "lpg")
+        assert all(e.get("labelsField") == "labels" for e in mapping.physical_mapping["entities"].values())
