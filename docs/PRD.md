@@ -1248,6 +1248,11 @@ corpora). The plan, research and baseline are in
     factor, data checksum, git SHA).
   - **Where results go:** they are emitted as JSON. Published prose is
     generated from them and conformance-checked, never hand-copied.
+  - **Implementation:** `tests/ldbc/bench.py` (the runner; a cell whose row
+    counts differ from the oracle's is `rows_differ`, not timed),
+    `tests/ldbc/report.py` (rendering, conformance check, run comparison) and
+    `.github/workflows/ldbc-bench.yml` (nightly and on demand, ArangoDB 3.12,
+    non-blocking; results are an artifact).
 - **LDBC-7 Fair use.** Every published number carries "These are not LDBC
   Benchmark Results" and attribution. The harness is never described as an
   implementation of an LDBC Benchmark. Until product signs off, benchmark
