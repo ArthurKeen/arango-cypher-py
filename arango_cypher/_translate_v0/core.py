@@ -35,6 +35,7 @@ from .calls import (
     _translate_standalone_call,
     _translate_standalone_in_query_call,
 )
+from .columns import _active_cypher_column_names, object_key, written_column
 from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
 from .deletes import translate_delete_query
 from .distinct_order import append_distinct_return, live_sort_terms, order_keeping_collect
@@ -156,6 +157,7 @@ def translate_v0(
     registry = opts.registry
     reg_token = _active_registry.set(registry)
     ci_token = _active_case_insensitive_inline.set(opts.case_insensitive_inline_strings)
+    columns_token = _active_cypher_column_names.set(opts.cypher_column_names)
     resolver = MappingResolver(mapping)
     res_token = _active_resolver.set(resolver)
     warnings: list[str] = []
@@ -198,6 +200,7 @@ def translate_v0(
         _active_resolver.reset(res_token)
         _active_registry.reset(reg_token)
         _active_case_insensitive_inline.reset(ci_token)
+        _active_cypher_column_names.reset(columns_token)
 
 
 def _translate_v0_inner(
@@ -477,8 +480,11 @@ def _wrap_optional_match(
         keys = []
         for it in items:
             alias = it.oC_Variable()
+            written = written_column(it)
             if alias is not None:
                 keys.append(alias.getText().strip())
+            elif written is not None:
+                keys.append(object_key(written))
             else:
                 keys.append(_infer_key(_compile_expression(it.oC_Expression(), {})))
         null_row = "{" + ", ".join(f"{k}: null" for k in keys) + "}"
@@ -3932,9 +3938,14 @@ def _append_return(
     implicit_names: set[int] = set()
     # The static type of each aliased projection, for ORDER BY of the alias.
     item_types: dict[str, str | None] = {}
+    # Position -> Cypher's column name, under ``cypher_column_names``.
+    written_names: dict[int, str] = {}
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        written = written_column(it)
+        if written is not None:
+            written_names[len(compiled_items)] = written
         if alias is not None:
             item_types[alias] = _string_kind(expr_ctx)
         expr_txt = expr_ctx.getText().strip()
@@ -4004,7 +4015,7 @@ def _append_return(
                 )
             append_distinct_return(
                 lines,
-                _compile_return_object(compiled_items),
+                _compile_return_object(compiled_items, written_names),
                 skip_value=skip_value,
                 limit_value=limit_value,
                 append_skip_limit=_append_skip_limit,
@@ -4032,7 +4043,7 @@ def _append_return(
         lines.append(f"  RETURN {compiled_items[0][1]}")
         return
 
-    lines.append("  RETURN " + _compile_return_object(compiled_items))
+    lines.append("  RETURN " + _compile_return_object(compiled_items, written_names))
 
 
 # Identifiers referenced as variables in a projection expression: a bare name or
@@ -4088,10 +4099,16 @@ def _append_return_aggregation(
     # Column keys in projection order: the RETURN object keeps it, as Cypher's
     # columns do (collect() columns were emitted after the other aggregates).
     column_order: list[str] = []
+    # Projection key -> Cypher's column name, under ``cypher_column_names``;
+    # the key itself still names the AQL variable.
+    written_names: dict[str, str] = {}
+    current_written: list[str | None] = [None]
 
     def claim_key(key: str, expr_text: str, used: set[str]) -> str:
         claimed = _unique_projection_key(key, expr_text, used)
         column_order.append(claimed)
+        if current_written[0] is not None:
+            written_names[claimed] = current_written[0]
         return claimed
 
     def _alloc(preferred: str) -> str:
@@ -4106,6 +4123,7 @@ def _append_return_aggregation(
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        current_written[0] = written_column(it)
         expr_txt = expr_ctx.getText().strip()
         # The column of an unaliased item is named in Cypher: ``person``, not
         # the ``person_1`` it is bound to after a rename.
@@ -4224,7 +4242,9 @@ def _append_return_aggregation(
     if len(all_items) == 1 and not _object_rows.get():
         lines.append(f"  RETURN {all_items[0][1]}")
     else:
-        parts = ", ".join(f"{k}: {aql}" for k, aql in all_items)
+        parts = ", ".join(
+            f"{object_key(written_names[k]) if k in written_names else k}: {aql}" for k, aql in all_items
+        )
         lines.append(f"  RETURN {{{parts}}}")
 
 
@@ -4261,10 +4281,19 @@ def _unique_projection_key(key: str, expr: str, used: set[str]) -> str:
     return key
 
 
-def _compile_return_object(compiled_items: list[tuple[str | None, str]]) -> str:
+def _compile_return_object(
+    compiled_items: list[tuple[str | None, str]], written_names: dict[int, str] | None = None
+) -> str:
+    """``{key: expr, …}``; *written_names* (position -> Cypher's column name,
+    under ``cypher_column_names``) overrides the inferred key."""
     obj_parts: list[str] = []
     used: set[str] = set()
-    for alias, expr in compiled_items:
+    for i, (alias, expr) in enumerate(compiled_items):
+        if written_names and i in written_names:
+            name = written_names[i]
+            used.add(name)
+            obj_parts.append(f"{object_key(name)}: {expr}")
+            continue
         key = _unique_projection_key(alias or _infer_key(expr) or f"expr{len(obj_parts) + 1}", expr, used)
         obj_parts.append(f"{key}: {expr}")
     return "{" + ", ".join(obj_parts) + "}"

@@ -88,3 +88,7 @@ class TranslateOptions:
     #: case-insensitively. Off by default: Cypher compares exactly, and
     #: ``LOWER()`` keeps an index from serving the lookup.
     case_insensitive_inline_strings: bool = False
+    #: Name an unaliased RETURN column by its expression as written
+    #: (``n.name``, ``count(*)``), as openCypher does, instead of the inferred
+    #: short key (``name``, ``count``) existing clients read (``columns.py``).
+    cypher_column_names: bool = False

@@ -1,0 +1,65 @@
+version: 1
+cases:
+- id: C1301
+  name: "Column names: property access and count(*)"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "MATCH (n:User) RETURN n.name, count(*)"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  COLLECT name = n.name AGGREGATE _count_rows = SUM(1)\n  LET count = NOT_NULL(_count_rows, 0)\n  RETURN {\"n.name\": name, \"count(*)\": count}"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+- id: C1302
+  name: "Column names: alias kept, expressions as written"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "MATCH (n:User) RETURN n.name AS who, n.age IS NULL, count(n) + 3"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  COLLECT who = n.name, expr2 = (n.age == null) AGGREGATE __agg_nonnull = SUM((n) == null ? 0 : 1)\n  LET _agg = NOT_NULL(__agg_nonnull, 0)\n  LET count = ((_agg == null) ? null : (_agg + 3))\n  RETURN {who: who, \"n.age IS NULL\": expr2, \"count(n) + 3\": count}"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+- id: C1303
+  name: "Column names: DISTINCT with ORDER BY"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "MATCH (n:User) RETURN DISTINCT n.name, n.age ORDER BY n.age DESC"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  SORT (n.age == null) DESC, n.age DESC\n  RETURN DISTINCT {\"n.name\": n.name, \"n.age\": n.age}"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+- id: C1304
+  name: "Column names: bare RETURN of expressions"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "RETURN 1 + 2, 'a'"
+  expected:
+    aql: "RETURN {\"1 + 2\": (1 + 2), \"'a'\": 'a'}"
+    bind_vars:
+- id: C1305
+  name: "Column names: OPTIONAL MATCH null row keyed alike"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "OPTIONAL MATCH (n:User) RETURN n.name, n.age"
+  expected:
+    aql: "LET _rows = (\nFOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  RETURN {\"n.name\": n.name, \"n.age\": n.age}\n  )\n  FOR _r IN (LENGTH(_rows) > 0 ? _rows : [{\"n.name\": null, \"n.age\": null}])\n    RETURN _r"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+- id: C1306
+  name: "Column names: one unaliased column stays bare"
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: "MATCH (n:User) RETURN n.name ORDER BY n.name"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER n[@typeField] == @typeValue\n  SORT (n.name == null), n.name\n  RETURN n.name"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
