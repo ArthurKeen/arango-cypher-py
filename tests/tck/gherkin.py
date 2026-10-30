@@ -25,17 +25,44 @@ class Feature:
     scenarios: list[Scenario]
 
 
-_PLACEHOLDER_RE = re.compile(r"<([^>]+)>")
-
-
 def _substitute(template: str, row: dict[str, str]) -> str:
-    """Replace <placeholder> tokens with values from a row dict."""
+    """Replace ``<header>`` tokens with values from a row dict.
 
-    def _repl(m: re.Match[str]) -> str:
-        key = m.group(1)
-        return row.get(key, m.group(0))
+    Only the Examples headers are placeholders.  A generic ``<[^>]+>`` pattern
+    is wrong for Cypher, where ``<`` is an operator: in ``<lhs> < <rhs>`` it
+    reads `` < <rhs`` as one placeholder and leaves ``<rhs>`` unexpanded.
+    """
+    if not row:
+        return template
+    keys = sorted(row, key=len, reverse=True)
+    pattern = re.compile("<(" + "|".join(re.escape(k) for k in keys) + ")>")
+    return pattern.sub(lambda m: row[m.group(1)], template)
 
-    return _PLACEHOLDER_RE.sub(_repl, template)
+
+def _split_table_row(line: str) -> list[str]:
+    """Split a Gherkin table row into cells, honouring ``\\|``, ``\\\\`` and ``\\n``."""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    cells: list[str] = []
+    cur: list[str] = []
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            cur.append({"|": "|", "\\": "\\", "n": "\n"}.get(nxt, "\\" + nxt))
+            i += 2
+            continue
+        if ch == "|":
+            cells.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    if "".join(cur).strip():
+        cells.append("".join(cur).strip())
+    return cells
 
 
 def _expand_outline(
@@ -139,9 +166,7 @@ def parse_feature(path: Path) -> Feature:
             table: list[list[str]] = []
             j = i + 1
             while j < len(raw_lines) and raw_lines[j].lstrip().startswith("|"):
-                row = raw_lines[j].strip()
-                cells = [c.strip() for c in row.strip("|").split("|")]
-                table.append(cells)
+                table.append(_split_table_row(raw_lines[j]))
                 j += 1
             cur_examples.append(table)
             i = j
@@ -173,9 +198,7 @@ def parse_feature(path: Path) -> Feature:
         elif j < len(raw_lines) and raw_lines[j].lstrip().startswith("|"):
             table_data = []
             while j < len(raw_lines) and raw_lines[j].lstrip().startswith("|"):
-                row = raw_lines[j].strip()
-                cells = [c.strip() for c in row.strip("|").split("|")]
-                table_data.append(cells)
+                table_data.append(_split_table_row(raw_lines[j]))
                 j += 1
 
         cur_steps.append(Step(keyword=step_kw, text=step_txt, doc_string=doc, data_table=table_data))
