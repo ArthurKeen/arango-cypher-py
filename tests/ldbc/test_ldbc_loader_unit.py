@@ -359,11 +359,14 @@ class TestFetch:
             ds.fetch("fake", downloader=lambda url, dest: dest.write_bytes(evil.read_bytes()))
         assert not (tmp_path / "escaped.txt").exists()
 
-    def test_catalog_pins_both_sample_encodings(self):
-        assert {d.encoding for d in ds.DATASETS.values()} == {"epoch_ms", "iso"}
+    def test_catalog_pins_both_encodings_at_every_scale(self):
+        by_scale: dict[str, set[str]] = {}
         for d in ds.DATASETS.values():
+            by_scale.setdefault(d.scale_factor, set()).add(d.encoding)
             assert len(d.content_digest) == 64
-            assert d.url.startswith("https://")
+            assert d.datagen_commit == ds.DATAGEN_COMMIT
+            assert d.generated or (d.url or "").startswith("https://")
+        assert by_scale == {"0.003": {"epoch_ms", "iso"}, "0.1": {"epoch_ms", "iso"}}
 
 
 class TestCountDifferences:

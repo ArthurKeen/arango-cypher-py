@@ -427,11 +427,12 @@ tests/ldbc/
   manifest.yml             # op id → file, workload, kind, sha256 pin, out_of_subset
   corpus.py                # manifest loader, hash check, --rehash
   schema.py                # LDBC labels, supertypes, CSV files and column orders (single source)
-  datasets.py              # fetch + content-digest verification + cache
+  datasets.py              # fetch or generate + content-digest verification + cache
+  datagen.py               # LDBC Datagen in Docker, pinned commit (SF0.1; decision 12)
   loader.py                # LDBC CSV → Arango PG | LPG (the Neo4j loader is WP-33)
+  params.py                # deterministic picker for SF ≤ 0.1: python -m tests.ldbc.params --scale sf0.1
   params/
-    generate.py            # deterministic picker for SF ≤ 0.1
-    sf0.003/<op>.yml       # committed bindings (several per op)
+    sf0.003.yml, sf0.1.yml # committed bindings (several per op)
   expected/sf0.003/<layout-independent>/<op>/<binding>.json   # Neo4j snapshots
   ledger.py                # translation tier → translation_ledger.tsv (reuses the TCK diff)
   translation_ledger.tsv   # op × layout: translatable | fails_closed | syntax_error | out_of_subset
@@ -696,6 +697,12 @@ on its own (incremental-over-atomic).
     - IC3: a friend who posted from two foreign countries;
     - BI16: one person's two tag/day pairs.
   - Regeneration is byte-identical.
+  - **SF0.1 (2026-10-30, decision 12):** `params/sf0.1.yml`, chosen over the
+    Datagen-generated data sets with `--scale sf0.1`. All 36 reads have 3
+    non-empty bindings; BI17, empty at SF0.003, has rows at SF0.1. Loading
+    SF0.1 into the oracle needed the database wipe batched (relationships
+    first, `LIMIT` per transaction): the `IN TRANSACTIONS` form exhausted
+    Neo4j's transaction memory pool at the 512 MB heap.
   - **Write bindings** come from the `inserts/` and `deletes/` streams, and
     land with the post-state comparison (WP-33 part 3).
 

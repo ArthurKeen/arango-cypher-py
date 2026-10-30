@@ -7,6 +7,7 @@ import datetime as dt
 import pytest
 
 from tests.ldbc.neo4j_loader import (
+    _wipe,
     ddl_statements,
     edge_create_statement,
     neo4j_value,
@@ -52,3 +53,42 @@ def test_epoch_ms_timestamps_stay_integers():
 def test_other_values_pass_through():
     assert neo4j_value(["fa", "en"], Column("speaks", "str_list"), "iso") == ["fa", "en"]
     assert neo4j_value("Firefox", Column("browserUsed", "str"), "iso") == "Firefox"
+
+
+class _Result:
+    def __init__(self, c: int) -> None:
+        self._c = c
+
+    def single(self) -> dict[str, int]:
+        return {"c": self._c}
+
+
+class FakeSession:
+    """Mirrors ``neo4j.Session.run(query, **params)``: holds *rels* and *nodes*, deletes up to ``n`` per call."""
+
+    def __init__(self, rels: int, nodes: int) -> None:
+        self.left = {"r": rels, "n": nodes}
+        self.calls: list[tuple[str, int]] = []
+
+    def run(self, query: str, parameters: dict | None = None, **kwargs: int) -> _Result:
+        n = kwargs["n"]
+        kind = "r" if "-[r]->" in query else "n"
+        if kind == "n":
+            assert self.left["r"] == 0, "nodes are deleted only once no relationship is left"
+        deleted = min(n, self.left[kind])
+        self.left[kind] -= deleted
+        self.calls.append((kind, deleted))
+        return _Result(deleted)
+
+
+def test_wipe_deletes_relationships_then_nodes_in_bounded_transactions():
+    session = FakeSession(rels=25, nodes=12)
+    _wipe(session, batch=10)
+    assert session.left == {"r": 0, "n": 0}
+    assert session.calls == [("r", 10), ("r", 10), ("r", 5), ("r", 0), ("n", 10), ("n", 2), ("n", 0)]
+
+
+def test_wipe_of_an_empty_database_runs_one_probe_per_kind():
+    session = FakeSession(rels=0, nodes=0)
+    _wipe(session)
+    assert session.calls == [("r", 0), ("n", 0)]

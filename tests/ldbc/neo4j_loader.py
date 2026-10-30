@@ -152,8 +152,23 @@ def _neo4j_counts(session: Any) -> tuple[Counter[str], Counter[str]]:
     return +nodes, +edges
 
 
-def _wipe(session: Any) -> None:
-    session.run("MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume()
+#: Relationships or nodes deleted per transaction when wiping the database.
+WIPE_BATCH = 10_000
+
+#: One bounded delete per transaction. ``MATCH (n) CALL {…} IN TRANSACTIONS``
+#: streams every node through one outer query and exhausted the 512 MB heap's
+#: transaction memory pool at SF0.1 (367k nodes, 1.76M edges); relationships go
+#: first so no node delete has to detach millions of them at once.
+_WIPE_STATEMENTS = (
+    "MATCH ()-[r]->() WITH r LIMIT $n DELETE r RETURN count(*) AS c",
+    "MATCH (n) WITH n LIMIT $n DETACH DELETE n RETURN count(*) AS c",
+)
+
+
+def _wipe(session: Any, batch: int = WIPE_BATCH) -> None:
+    for stmt in _WIPE_STATEMENTS:
+        while session.run(stmt, n=batch).single()["c"]:
+            pass
 
 
 def load_neo4j(

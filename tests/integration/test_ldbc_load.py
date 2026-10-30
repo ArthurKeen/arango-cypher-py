@@ -19,6 +19,7 @@ import pytest
 from tests.ldbc.arango_dbs import load_fresh
 from tests.ldbc.datasets import DATASETS, fetch
 from tests.ldbc.loader import LoadReport, load, lpg_indexes, pg_indexes
+from tests.ldbc.params import workload_datasets
 from tests.ldbc.schema import REL_TYPES, rel_domain, rel_range
 
 pytestmark = pytest.mark.integration
@@ -57,7 +58,11 @@ SF0003_EDGES = {
     "LIKES": 492,
 }
 
-_CASES = [(name, layout) for name in sorted(DATASETS) for layout in ("pg", "lpg")]
+#: The SF0.003 data sets only: the counts above are SF0.003's, and the generated
+#: SF0.1 sets would run Datagen (minutes) in the integration tier.
+_CASES = [
+    (name, layout) for name in sorted(workload_datasets("sf0.003").values()) for layout in ("pg", "lpg")
+]
 
 
 @pytest.fixture(scope="module")

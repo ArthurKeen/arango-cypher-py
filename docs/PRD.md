@@ -1278,7 +1278,10 @@ corpora). The plan, research and baseline are in
   - LDBC publishes no SF0.1 data set for the BI layout this harness loads (BI
     starts at SF1), so SF0.1 is generated with LDBC's data generator pinned to
     the commit of the samples, and verified by content digest like the
-    downloads.
+    downloads (`tests/ldbc/datagen.py`). Datagen at that commit reproduces
+    the published SF0.003 rows exactly in both encodings
+    (`tests/integration/test_ldbc_datagen_live.py`, opt-in with
+    `RUN_LDBC_DATAGEN=1`), which is what makes the digest pin sound.
   - Each workload is loaded in its reference timestamp encoding: epoch-ms for
     Interactive, ISO-8601 for BI.
 - **LDBC-9 Database lifecycle.** A run owns the databases it starts and
