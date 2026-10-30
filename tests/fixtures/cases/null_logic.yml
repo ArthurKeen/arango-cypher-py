@@ -78,8 +78,10 @@ cases:
     names: &id001
     - a
   expected:
-    aql: "FOR n IN @@collection\n  FILTER ((n.name != null AND @names != null AND n.name NOT IN @names) AND (n.city\
-      \ != null AND STARTS_WITH(n.city, 'S')))\n  RETURN {name: n.name}"
+    aql: |-
+      FOR n IN @@collection
+        FILTER ((n.name != null AND @names != null AND n.name NOT IN @names) AND (IS_STRING(n.city) AND STARTS_WITH(n.city, 'S')))
+        RETURN {name: n.name}
     bind_vars:
       names: *id001
       '@collection': users

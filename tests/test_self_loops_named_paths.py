@@ -26,7 +26,11 @@ def test_goldens(corpus_cases, case_id: str) -> None:
 
 @pytest.mark.parametrize(
     "cypher",
-    ["MATCH (n)-[r]-(n) RETURN n, r", "MATCH (n:User)--(n) RETURN count(*)", "MATCH (a)-->(n)-[r]-(n) RETURN r"],
+    [
+        "MATCH (n)-[r]-(n) RETURN n, r",
+        "MATCH (n:User)--(n) RETURN count(*)",
+        "MATCH (a)-->(n)-[r]-(n) RETURN r",
+    ],
 )
 def test_an_undirected_hop_back_to_its_start_traverses_one_way(cypher: str) -> None:
     aql = _aql(cypher)

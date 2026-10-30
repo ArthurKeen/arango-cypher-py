@@ -118,6 +118,7 @@ from .state import (
     _object_rows,
     _temporal_vars,
 )
+from .string_predicates import compile_string_predicate
 from .subqueries import (
     compile_subquery_call,
     has_subquery_call,
@@ -6303,20 +6304,27 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
                     code="UNSUPPORTED",
                 )
             sop = string_ops[0]
-            rhs = _compile_value(sop.oC_PropertyOrLabelsExpression(), bind_vars)
+            rhs_ctx = sop.oC_PropertyOrLabelsExpression()
+            rhs = _compile_value(rhs_ctx, bind_vars)
             if sop.STARTS() is not None:
-                test = f"STARTS_WITH({base}, {rhs})"
+                kind = "starts"
             elif sop.ENDS() is not None:
-                test = f"RIGHT({base}, LENGTH({rhs})) == {rhs}"
+                kind = "ends"
             elif sop.CONTAINS() is not None:
-                test = f"CONTAINS({base}, {rhs})"
+                kind = "contains"
             elif "=~" in sop.getText():
-                test = f"REGEX_TEST({base}, {rhs})"
+                kind = "regex"
             else:
                 raise CoreError("Unknown string operator", code="UNSUPPORTED")
-            # AQL reads a null operand as "" (CONTAINS('abc', null) is true);
-            # in Cypher the test is null.
-            return _three_valued(test, f"NOT {test}", (base, rhs), mode)
+            # Null unless both operands are strings (string_predicates).
+            return compile_string_predicate(
+                kind,
+                base,
+                rhs,
+                base_is_string=_static_type(ctx.oC_PropertyOrLabelsExpression()) == STRING,
+                rhs_is_string=_static_type(rhs_ctx) == STRING,
+                mode=mode,
+            )
 
         return base
 

@@ -9,7 +9,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER (n.name != null AND STARTS_WITH(n.name, 'A'))
+          FILTER (IS_STRING(n.name) AND STARTS_WITH(n.name, 'A'))
           RETURN n
       bind_vars:
         "@collection": users
@@ -22,7 +22,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER (n.name != null AND RIGHT(n.name, LENGTH('ce')) == 'ce')
+          FILTER (IS_STRING(n.name) AND (RIGHT(n.name, LENGTH('ce')) == 'ce'))
           RETURN n
       bind_vars:
         "@collection": users
@@ -35,7 +35,7 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          FILTER (n.name != null AND CONTAINS(n.name, 'li'))
+          FILTER (IS_STRING(n.name) AND CONTAINS(n.name, 'li'))
           RETURN n
       bind_vars:
         "@collection": users
@@ -48,6 +48,6 @@ cases:
     expected:
       aql: |-
         FOR n IN @@collection
-          RETURN {startsA: ((n.name == null) ? null : STARTS_WITH(n.name, 'A'))}
+          RETURN {startsA: ((IS_STRING(n.name)) ? STARTS_WITH(n.name, 'A') : null)}
       bind_vars:
         "@collection": users

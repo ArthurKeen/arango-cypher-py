@@ -691,7 +691,11 @@ Predicates follow Cypher's three-valued logic (true / false / null), which
 AQL's two-valued operators do not: AQL's `null == null` and `null != 'x'` are
 true, and `NOT null` is true. A comparison (`=`, `<>`, `<`, …), `IN` or
 string operator (`STARTS WITH`, `ENDS WITH`, `CONTAINS`, `=~`) with a null
-operand is null, so `WHERE n.x = null` and `WHERE n.x = $p` with a null `$p`
+operand is null — a string operator with any operand that is not a string
+is null too (`1 CONTAINS 1`; AQL's string functions would convert it), each
+operand the query does not show to be a string being guarded by `IS_STRING`;
+every string contains `''` (AQL's `CONTAINS(x, '')` is false), and `NOT x ENDS
+WITH y` negates the whole test (`string_predicates.py`) — so `WHERE n.x = null` and `WHERE n.x = $p` with a null `$p`
 match nothing, and `WHERE NOT n.name = 'b'` and `WHERE n.name <> 'b'` drop
 rows whose `name` is null. `NOT` of null is null. A predicate in a filter
 (`WHERE`, a comprehension's or quantifier's `WHERE`, a `CASE WHEN` condition)
