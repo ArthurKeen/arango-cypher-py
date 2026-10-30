@@ -162,11 +162,12 @@ def environment(db: Any, settings: Settings, datasets: dict[str, str]) -> dict[s
     """What a run's numbers depend on (PRD LDBC-6)."""
     server = db.version(details=True)
     details = server.get("details", {}) if isinstance(server, dict) else {}
+    engine = db.engine()  # 3.12's version details no longer name the storage engine
     return {
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "server": {
             "version": server.get("version") if isinstance(server, dict) else server,
-            "engine": details.get("engine"),
+            "engine": engine.get("name") if isinstance(engine, dict) else details.get("engine"),
             "mode": details.get("mode"),
             "image": os.environ.get("LDBC_BENCH_IMAGE", "unrecorded"),
         },
