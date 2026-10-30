@@ -54,8 +54,8 @@ def _last_line(q: str, **kw) -> str:
         ("MATCH (n:User) RETURN n, n.name", "RETURN {n: n, name: n.name}", 'RETURN {n: n, "n.name": n.name}'),
         (
             "RETURN 1 + 2, 'a'",
-            "RETURN {expr1: (1 + 2), expr2: 'a'}",
-            "RETURN {\"1 + 2\": (1 + 2), \"'a'\": 'a'}",
+            "RETURN {expr1: 3, expr2: 'a'}",
+            "RETURN {\"1 + 2\": 3, \"'a'\": 'a'}",
         ),
     ],
 )

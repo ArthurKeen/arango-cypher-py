@@ -39,7 +39,7 @@ cases:
   extensions_enabled: false
   cypher: "RETURN 1 + 2, 'a'"
   expected:
-    aql: "RETURN {\"1 + 2\": (1 + 2), \"'a'\": 'a'}"
+    aql: "RETURN {\"1 + 2\": 3, \"'a'\": 'a'}"
     bind_vars:
 - id: C1305
   name: "Column names: OPTIONAL MATCH null row keyed alike"

@@ -729,8 +729,9 @@ a null operand is null; nested arithmetic shares one null guard over its
 operands, and a function call keeps its own (`coalesce(n.a - 1, 0)`). `+`
 adds numbers, concatenates a string with a string or number (`'a' + 1` is
 `'a1'`, evaluated left to right so `1 + 2 + 'a'` is `'3a'`), concatenates two
-lists, and otherwise adds an element to a list, null included (`[1] + null`
-is `[1, null]`). The operation is chosen at translation time when the operand
+lists, and otherwise adds an element to a list; a null operand makes the result
+null, lists included (`[1] + null` is null and `[1] + [null]` is `[1, null]`,
+as on Neo4j 5.26). The operation is chosen at translation time when the operand
 types are known: literals, functions with a fixed result type (`count()`,
 `toString()`, …) and arithmetic results. Otherwise `+` dispatches on the
 operand types at run time. A type the mapping declares for a property does

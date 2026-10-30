@@ -285,15 +285,13 @@ def _null_guarded(expr: str, operands: tuple[str, ...]) -> str:
 def _list_addition(left: str, lt: str | None, right: str, rt: str | None) -> str:
     """``list + x``: concatenation with a list, else the element appended or prepended.
 
-    A null element is kept (``[1] + null`` is ``[1, null]``), but a null list
-    makes the result null; AQL's ``PUSH(null, 'y')`` would give ``['y']``.
+    A null operand makes the result null, as for every ``+`` in Neo4j:
+    ``[1] + null`` and ``null + [1]`` are null (verified on Neo4j 5.26), while
+    ``[1] + [null]`` is ``[1, null]``. AQL's ``PUSH`` would append the null.
     """
-    lists = tuple(text for text, t in ((left, lt), (right, rt)) if t == LIST)
-    return (
-        _null_guarded(_list_addition_unguarded(left, lt, right, rt), lists)
-        if lists
-        else (_list_addition_unguarded(left, lt, right, rt))
-    )
+    if NULL in (lt, rt):
+        return "null"
+    return _null_guarded(_list_addition_unguarded(left, lt, right, rt), (left, right))
 
 
 def _list_addition_unguarded(left: str, lt: str | None, right: str, rt: str | None) -> str:
@@ -318,9 +316,9 @@ def compile_addition(left: str, lt: str | None, right: str, rt: str | None) -> s
 
     Numbers add; a string with a string or number concatenates (AQL's
     ``CONCAT`` renders the number); a list concatenates with a list and
-    otherwise takes the other operand as an element, null included (as in
-    Cypher, ``[1] + null`` is ``[1, null]``). Any other null operand makes the
-    result null.
+    otherwise takes the other operand as an element. A null operand makes the
+    result null (``[1] + null`` is null in Neo4j; ``[1] + [null]`` is
+    ``[1, null]``).
     """
     if LIST in (lt, rt):
         return _list_addition(left, lt, right, rt)
