@@ -1,0 +1,122 @@
+version: 1
+cases:
+- id: C1101
+  name: "Multi-label LPG: label test reads the type field and the labels array"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n:User:Doc) RETURN n.name"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  FILTER (\"User\" IN n.labels)\n  RETURN n.name"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "Doc"
+      "labelsField": "labels"
+- id: C1102
+  name: "Multi-label LPG: label predicate in WHERE"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n) WHERE n:Note RETURN n"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER ((n[@nLabelField] == @nLabelValue OR @nLabelValue IN n[@labelsField]))\n  RETURN n"
+    bind_vars:
+      "@collection": "vertices"
+      "nLabelField": "type"
+      "nLabelValue": "Note"
+      "labelsField": "labels"
+- id: C1103
+  name: "Multi-label LPG: CREATE stores every label"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "CREATE (n:User:Note {name: 'a'}) RETURN labels(n)"
+  expected:
+    aql: "LET n = FIRST(INSERT {type: @typeValue, labels: @nodeLabels, name: 'a'} INTO @@collection RETURN NEW)\nRETURN (n == null ? null : IS_ARRAY(n[\"labels\"]) ? n[\"labels\"] : n[\"type\"] != null ? [n[\"type\"]] : PARSE_IDENTIFIER(n._id).collection IN [\"vertices\"] ? [] : [PARSE_IDENTIFIER(n._id).collection])"
+    bind_vars:
+      "@collection": "vertices"
+      "typeValue": "Note"
+      "nodeLabels": ["User", "Note"]
+- id: C1104
+  name: "Multi-label LPG: SET a label"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n:User) SET n:Doc RETURN n"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  UPDATE n WITH MERGE(n, {\"labels\": UNION_DISTINCT((IS_ARRAY(n[\"labels\"]) ? n[\"labels\"] : n[\"type\"] != null ? [n[\"type\"]] : []), [\"Doc\"]), \"type\": (n[\"type\"] != null ? n[\"type\"] : \"Doc\")}) IN @@collection OPTIONS {keepNull: false}\n  LET n_new = NEW\n  RETURN n_new"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"
+- id: C1105
+  name: "Multi-label LPG: REMOVE a label"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n:User) REMOVE n:Doc RETURN labels(n)"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  UPDATE n WITH MERGE(n, {\"labels\": (IS_ARRAY(n[\"labels\"]) ? n[\"labels\"] : n[\"type\"] != null ? [n[\"type\"]] : [])[* FILTER CURRENT NOT IN [\"Doc\"]], \"type\": (n[\"type\"] IN [\"Doc\"] ? FIRST((IS_ARRAY(n[\"labels\"]) ? n[\"labels\"] : n[\"type\"] != null ? [n[\"type\"]] : [])[* FILTER CURRENT NOT IN [\"Doc\"]]) : n[\"type\"])}) IN @@collection OPTIONS {keepNull: false}\n  LET n_new = NEW\n  RETURN (n_new == null ? null : IS_ARRAY(n_new[\"labels\"]) ? n_new[\"labels\"] : n_new[\"type\"] != null ? [n_new[\"type\"]] : PARSE_IDENTIFIER(n_new._id).collection IN [\"vertices\"] ? [] : [PARSE_IDENTIFIER(n_new._id).collection])"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"
+- id: C1106
+  name: "keys() and properties() hide system and mapping fields"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n:User) RETURN keys(n) AS k, properties(n) AS p"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  RETURN {k: (IS_OBJECT(n) AND HAS(n, '_id') ? ATTRIBUTES(n)[* FILTER CURRENT NOT IN [\"_id\", \"_key\", \"_rev\", \"_from\", \"_to\", \"type\", \"labels\"]] : ATTRIBUTES(n)), p: (IS_OBJECT(n) AND HAS(n, '_id') ? UNSET(n, [\"_id\", \"_key\", \"_rev\", \"_from\", \"_to\", \"type\", \"labels\"]) : n)}"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"
+- id: C1107
+  name: "SET then RETURN reads the updated document; null removes"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (n:User) SET n.name = null, n.age = n.age + 1 RETURN n"
+  expected:
+    aql: "FOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  UPDATE n WITH {name: null, age: (IS_NUMBER(n.age) ? (n.age + 1) : (IS_STRING(n.age) ? CONCAT(n.age, 1) : (IS_ARRAY(n.age) ? PUSH(n.age, 1) : null)))} IN @@collection OPTIONS {keepNull: false}\n  LET n_new = NEW\n  RETURN n_new"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"
+- id: C1108
+  name: "CREATE of two nodes in one collection inserts once per collection"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "CREATE (:User), (:Note) RETURN count(*) AS c"
+  expected:
+    aql: "LET _s1 = (\nLET _key__anon = UUID()\nLET _anon = MERGE({type: @typeValue}, {_key: _key__anon, _id: CONCAT(@collectionName, \"/\", _key__anon)})\nLET _key__anon0 = UUID()\nLET _anon0 = MERGE({type: @typeValue2}, {_key: _key__anon0, _id: CONCAT(@collectionName2, \"/\", _key__anon0)})\nRETURN {_anon: _anon, _anon0: _anon0}\n)\nLET _inserted0 = (FOR _d IN FLATTEN([_s1[*]._anon, _s1[*]._anon0]) INSERT UNSET(_d, '_id') INTO @@collection)\nFOR _r IN NOOPT(_s1)\n  LET _anon = _r._anon\n  LET _anon0 = _r._anon0\n  COLLECT AGGREGATE _c_rows = SUM(1)\n  LET c = NOT_NULL(_c_rows, 0)\n  RETURN c"
+    bind_vars:
+      "@collection": "vertices"
+      "typeValue": "User"
+      "collectionName": "vertices"
+      "typeValue2": "Note"
+      "collectionName2": "vertices"
+- id: C1109
+  name: "OPTIONAL MATCH then SET writes only a matched node"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "OPTIONAL MATCH (n:User) SET n.x = 1 RETURN n"
+  expected:
+    aql: "LET _opt_rows = (\nFOR n IN @@collection\n  FILTER (n[@typeField] == @typeValue OR @typeValue IN n[@labelsField])\n  RETURN {n: n}\n  )\n  FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n    LET n = _opt_row.n\n    LET n_new = FIRST(FOR _w IN (n == null ? [] : [n]) UPDATE _w WITH {x: 1} IN @@collection RETURN NEW)\n    RETURN n_new"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"
+- id: C1110
+  name: "MATCH p = (a): a zero-length named path"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH p = (a:User) RETURN p"
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (a[@typeField] == @typeValue OR @typeValue IN a[@labelsField])\n  LET p = {nodes: [a], edges: []}\n  RETURN p"
+    bind_vars:
+      "@collection": "vertices"
+      "typeField": "type"
+      "typeValue": "User"
+      "labelsField": "labels"

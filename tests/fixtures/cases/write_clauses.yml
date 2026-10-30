@@ -66,7 +66,7 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n  RETURN n\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH {name: \"Bob\"} IN @@collection\n  LET n_new = NEW\n  RETURN n_new\n"
     bind_vars:
       "@collection": persons
 # ─── DELETE ────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ cases:
   cypher: "MATCH (n:Person {name: \"Alice\"}) SET n += $props, n.age = 30"
   params: {"props": {"x": 1}}
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH MERGE(n, @props, {age: 30}) IN @@collection\n"
+    aql: "FOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  UPDATE n WITH MERGE(n, @props, {age: 30}) IN @@collection OPTIONS {keepNull: false}\n"
     bind_vars:
       props: {x: 1}
       "@collection": persons

@@ -69,11 +69,15 @@ class PropertyWrites:
         last_replace = max((i for i, op in enumerate(ops) if op.kind == "replace"), default=None)
         if last_replace is not None:
             doc = _apply(ops[last_replace].value, ops[last_replace + 1 :])
+            if any(_may_be_null(op.value) for op in ops[last_replace:] if op.kind != "remove"):
+                doc = _without_nulls(doc)
             if keep_fields:
                 doc = f"MERGE({doc}, KEEP({var}, {', '.join(keep_fields)}))"
             return StoredWrite("REPLACE", doc)
 
-        removes = any(op.kind == "remove" for op in ops)
+        # A Cypher property is never null: SET to null (or a ``+=`` map entry
+        # that is null) removes it, which UPDATE does under keepNull: false.
+        removes = any(op.kind == "remove" or (op.kind != "remove" and _may_be_null(op.value)) for op in ops)
         segments = _segments(ops)
         if any(op.kind == "merge" for op in ops):
             document = f"MERGE({var}, {', '.join(segments)})"
@@ -99,6 +103,31 @@ class PropertyWrites:
         if server_fields:
             base = f"MERGE({base}, {{{', '.join(server_fields)}}})"
         return _apply(base, ops[last_replace + 1 :], reads=var)
+
+
+_NON_NULL_LITERAL = re.compile(
+    r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\""
+)
+
+
+_MAP_KEY = r"(?:[A-Za-z_]\w*|`[^`]*`|'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")"
+_MAP_ENTRY = rf"{_MAP_KEY}\s*:\s*(?:{_NON_NULL_LITERAL.pattern})\s*"
+_NON_NULL_MAP = re.compile(rf"\{{\s*(?:{_MAP_ENTRY}(?:,\s*{_MAP_ENTRY})*)?\}}")
+
+
+def _may_be_null(value: str) -> bool:
+    """Whether the AQL expression *value* can be (or contain, as a map entry) null.
+
+    Only a number, string or boolean literal, or a map literal of those, is
+    known not to be.
+    """
+    v = value.strip()
+    return _NON_NULL_LITERAL.fullmatch(v) is None and _NON_NULL_MAP.fullmatch(v) is None
+
+
+def _without_nulls(document: str) -> str:
+    """*document* without its null-valued attributes (a Cypher property is never null)."""
+    return f"FIRST(LET _p = {document} RETURN UNSET(_p, ATTRIBUTES(_p)[* FILTER _p[CURRENT] == null]))"
 
 
 def _set_literal(ops: list[PropertyOp], *, nulls_for_removes: bool) -> str:

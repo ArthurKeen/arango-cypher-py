@@ -35,16 +35,12 @@ cases:
 
     '
   expected:
-    aql: 'LET a = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
-
-      LET b = FIRST(INSERT {name: "Bob"} INTO @@collection RETURN NEW)
-
-      INSERT {_from: a._id, _to: b._id} INTO @@edgeCollection
-
-      '
+    aql: "LET _s1 = (\nLET _key_a = UUID()\nLET a = MERGE({name: \"Alice\"}, {_key: _key_a, _id: CONCAT(@collectionName, \"/\", _key_a)})\nLET _key_b = UUID()\nLET b = MERGE({name: \"Bob\"}, {_key: _key_b, _id: CONCAT(@collectionName2, \"/\", _key_b)})\nLET _e0 = {_from: a._id, _to: b._id}\nRETURN {a: a, b: b, _e0: _e0}\n)\nLET _inserted0 = (FOR _d IN FLATTEN([_s1[*].a, _s1[*].b]) INSERT UNSET(_d, '_id') INTO @@collection)\nFOR _d IN _s1[*]._e0 INSERT _d INTO @@edgeCollection\n"
     bind_vars:
-      '@collection': persons
-      '@edgeCollection': follows
+      "@collection": persons
+      collectionName: persons
+      collectionName2: persons
+      "@edgeCollection": follows
 - id: C263
   name: MATCH then CREATE relationship
   mapping_fixture: pg
@@ -94,16 +90,12 @@ cases:
 
     '
   expected:
-    aql: 'LET a = FIRST(INSERT {name: "Alice"} INTO @@collection RETURN NEW)
-
-      LET b = FIRST(INSERT {name: "Bob"} INTO @@collection RETURN NEW)
-
-      INSERT {_from: a._id, _to: b._id, since: 2020} INTO @@edgeCollection
-
-      '
+    aql: "LET _s1 = (\nLET _key_a = UUID()\nLET a = MERGE({name: \"Alice\"}, {_key: _key_a, _id: CONCAT(@collectionName, \"/\", _key_a)})\nLET _key_b = UUID()\nLET b = MERGE({name: \"Bob\"}, {_key: _key_b, _id: CONCAT(@collectionName2, \"/\", _key_b)})\nLET _e0 = {_from: a._id, _to: b._id, since: 2020}\nRETURN {a: a, b: b, _e0: _e0}\n)\nLET _inserted0 = (FOR _d IN FLATTEN([_s1[*].a, _s1[*].b]) INSERT UNSET(_d, '_id') INTO @@collection)\nFOR _d IN _s1[*]._e0 INSERT _d INTO @@edgeCollection\n"
     bind_vars:
-      '@collection': persons
-      '@edgeCollection': follows
+      "@collection": persons
+      collectionName: persons
+      collectionName2: persons
+      "@edgeCollection": follows
 - id: C267
   name: CREATE multiple disconnected nodes
   mapping_fixture: pg

@@ -19,9 +19,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN ATTRIBUTES(n)\n"
+    aql: "FOR n IN @@collection\n  RETURN (IS_OBJECT(n) AND HAS(n, '_id') ? ATTRIBUTES(n)[* FILTER CURRENT NOT IN [\"_id\", \"_key\", \"_rev\", \"_from\", \"_to\"]] : ATTRIBUTES(n))\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C237
   name: return properties function
   mapping_fixture: pg
@@ -30,9 +30,9 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  RETURN UNSET(n, \"_id\", \"_key\", \"_rev\")\n"
+    aql: "FOR n IN @@collection\n  RETURN (IS_OBJECT(n) AND HAS(n, '_id') ? UNSET(n, [\"_id\", \"_key\", \"_rev\", \"_from\", \"_to\"]) : n)\n"
     bind_vars:
-      '@collection': persons
+      "@collection": persons
 - id: C238
   name: return toString function
   mapping_fixture: pg

@@ -247,9 +247,86 @@ def translate_create_pipeline(
     bind_vars: dict[str, Any],
 ) -> AqlQuery:
     """Translate a CREATE pipeline (module docstring)."""
-    pipe = _Pipeline(resolver, bind_vars)
     tail = mpq.oC_SinglePartQuery()
     children = [*(mpq.children or []), *((tail.children or []) if tail is not None else [])]
+    ret = tail.oC_Return() if tail is not None else None
+    return _translate_pipeline(children, ret, resolver=resolver, bind_vars=bind_vars)
+
+
+def single_part_create_needs_pipeline(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    create_clauses: list[CypherParser.OC_CreateContext],
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> bool:
+    """Whether a single-part CREATE must compile as a pipeline (module docstring).
+
+    Inserting where each pattern element stands writes a collection once per
+    created node or relationship, which ArangoDB refuses as soon as two land
+    in the same collection (``CREATE (), ()``, or any two relationships of an
+    LPG edge collection; ERR 1579). And a RETURN that aggregates, sorts,
+    pages or de-duplicates must see every created row while the writes
+    happen for all of them: ``CREATE … RETURN … LIMIT 0`` still creates.
+    """
+    ret = spq.oC_Return()
+    if ret is not None:
+        proj = ret.oC_ProjectionBody()
+        if (
+            proj.DISTINCT() is not None
+            or proj.oC_Order() is not None
+            or proj.oC_Skip() is not None
+            or proj.oC_Limit() is not None
+            or any(
+                _core("_aggregate_call")(it.oC_Expression().getText().strip()) is not None
+                or _core("_parse_collect")(it.oC_Expression().getText().strip()) is not None
+                or _core("nested_aggregates")(it.oC_Expression())
+                for it in proj.oC_ProjectionItems().oC_ProjectionItem()
+            )
+        ):
+            return True
+    scratch = dict(bind_vars)
+    # A node a MATCH binds is referenced by the CREATE, not created.
+    var_env: dict[str, str] = {}
+    for rc in spq.oC_ReadingClause() or []:
+        if rc.oC_Match() is not None:
+            var_env.update((v, v) for v in _match_names(rc.oC_Match())[0])
+    written: set[str] = set()
+    for cc in create_clauses:
+        for op in create_ops(cc, var_env):
+            if op.kind == "node":
+                _, key, _ = create_node_doc(
+                    op.labels or [], op.node_ctx, resolver=resolver, bind_vars=scratch
+                )
+            else:
+                _, key, _ = create_rel_doc(op.rel_pat, "_f", "_t", resolver=resolver, bind_vars=scratch)
+            collection = scratch[key]
+            if collection in written:
+                return True
+            written.add(collection)
+    return False
+
+
+def translate_single_part_create(
+    spq: CypherParser.OC_SinglePartQueryContext,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    """A single-part ``[MATCH|UNWIND …] CREATE … [RETURN …]`` as a one-stage pipeline."""
+    return _translate_pipeline(
+        list(spq.children or []), spq.oC_Return(), resolver=resolver, bind_vars=bind_vars
+    )
+
+
+def _translate_pipeline(
+    children: list[Any],
+    ret: CypherParser.OC_ReturnContext | None,
+    *,
+    resolver: MappingResolver,
+    bind_vars: dict[str, Any],
+) -> AqlQuery:
+    pipe = _Pipeline(resolver, bind_vars)
     for child in children:
         if isinstance(child, CypherParser.OC_WithContext):
             if pipe.pending_creates:
@@ -268,7 +345,6 @@ def translate_create_pipeline(
     last = pipe.close_stage()
 
     writes = pipe.writes()
-    ret = tail.oC_Return() if tail is not None else None
     if ret is None:
         if not writes:
             raise CoreError("A CREATE pipeline that creates nothing", code="INTERNAL_ERROR")
