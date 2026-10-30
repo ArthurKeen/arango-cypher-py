@@ -18,6 +18,7 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError
 
 from .._antlr.CypherParser import CypherParser
+from .columns import written_column
 from .state import _object_rows
 
 
@@ -50,6 +51,7 @@ def _translate_standalone_return(
         raise CoreError("RETURN * requires a MATCH/UNWIND source in v0 subset", code="UNSUPPORTED")
 
     compiled_items: list[tuple[str | None, str]] = []
+    written_names: dict[int, str] = {}
     for it in items:
         expr_ctx = it.oC_Expression()
         expr_txt = expr_ctx.getText().strip()
@@ -60,6 +62,9 @@ def _translate_standalone_return(
             )
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
         expr = _compile_expression(expr_ctx, bind_vars)
+        written = written_column(it)
+        if written is not None:
+            written_names[len(compiled_items)] = written
         compiled_items.append((alias, expr))
 
     # A single unaliased expression returns a scalar column (Cypher
@@ -68,6 +73,6 @@ def _translate_standalone_return(
     if len(compiled_items) == 1 and compiled_items[0][0] is None and not _object_rows.get():
         body = compiled_items[0][1]
     else:
-        body = _compile_return_object(compiled_items)
+        body = _compile_return_object(compiled_items, written_names)
 
     return AqlQuery(text=f"RETURN {body}", bind_vars=bind_vars)

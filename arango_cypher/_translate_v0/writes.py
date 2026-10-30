@@ -16,6 +16,7 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
+from .columns import written_column
 from .label_tests import label_test, label_write, label_write_entries, shared_label_fields
 from .label_tests import labels_field as entity_labels_field
 from .literals import _aql_string_literal
@@ -1429,15 +1430,19 @@ def _compile_return_for_create(
         raise CoreError("RETURN items required", code="UNSUPPORTED")
 
     compiled_items: list[tuple[str | None, str]] = []
+    written_names: dict[int, str] = {}
     for it in items:
         expr = _compile_expression(it.oC_Expression(), bind_vars)
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
+        written = written_column(it)
+        if written is not None:
+            written_names[len(compiled_items)] = written
         compiled_items.append((alias, expr))
 
     if len(compiled_items) == 1 and compiled_items[0][0] is None:
         lines.append(f"{indent}RETURN {compiled_items[0][1]}")
     else:
-        lines.append(f"{indent}RETURN " + _compile_return_object(compiled_items))
+        lines.append(f"{indent}RETURN " + _compile_return_object(compiled_items, written_names))
 
 
 def _translate_merge_query(

@@ -111,7 +111,11 @@ def analyze_execution(*, db_name: str, mapping_fixture: str, only: str | None = 
                 counter["parseable"] += 1
 
             try:
-                translate(query, mapping=_build_mapping_for_scenario(scenario, mapping_fixture))
+                translate(
+                    query,
+                    mapping=_build_mapping_for_scenario(scenario, mapping_fixture),
+                    cypher_column_names=True,
+                )
             except CoreError as exc:
                 if expects_error:
                     for counter in (totals, counts):

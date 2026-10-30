@@ -686,6 +686,19 @@ null value. `translate(..., case_insensitive_inline_strings=True)` (also a
 (`LOWER(n.name) == LOWER('alice')`, which no index serves) for callers, such
 as an NL front end, that want it; it is part of the translation cache key.
 
+An unaliased RETURN column is keyed by a short name inferred from its
+expression (`n.name` → `name`, `count(*)` → `count`, `a.name, b.name` →
+`name`, `b_name`): the result shape API, UI and NL clients read, and the
+default. `translate(..., cypher_column_names=True)` (also a
+`TranslateOptions` field, and part of the translation cache key) names the
+column as openCypher does, by the expression as written in the query —
+`{"n.name": …, "count(*)": …, "n.age IS NULL": …}` — with aliases unchanged
+(`columns.py`). Only the column name changes: the AQL variables a COLLECT,
+DISTINCT or ORDER BY binds keep their inferred names, a single unaliased
+column is still returned bare, an OPTIONAL MATCH's null row uses the same
+keys, and a CALL subquery's RETURN keeps the keys its enclosing query reads
+it by. The service and CLI do not expose the option.
+
 Arithmetic follows Cypher, where AQL's operators are numeric only and read
 null as 0 (`null + 1` is 1, `'a' + 'b'` is 0). An arithmetic expression with
 a null operand is null; nested arithmetic shares one null guard over its
@@ -1278,7 +1291,9 @@ bypass + audit log, MT-8 security review) live in
   the integration job on every PR and MUST fail if a scenario stops passing or an
   improvement goes unrecorded. The harness runs a scenario's steps in order — a
   control query's table is checked against the control query — and compares
-  cells with Cypher equality (a boolean never equals a number). Regenerate with
+  cells with Cypher equality (a boolean never equals a number). The harness
+  translates with `cypher_column_names=True`, so result columns carry the
+  names the TCK's tables use (`n.name`, `count(*)`). Regenerate with
   `RUN_INTEGRATION=1 ./.venv/bin/python tests/tck/execution_ledger.py --write`.
 - **NL eval gate** — opt-in (`RUN_NL2CYPHER_EVAL=1`), nightly CI matrix over
   OpenAI + Anthropic against committed baselines.
