@@ -1033,12 +1033,10 @@ with at compile time. It is ported from arango-gql-gateway's
   accessors and `toString` on values known at translate time. The result is
   bound as its Neo4j string form, and an invalid construction becomes
   `FAIL()`. A temporal expression over data or parameters still lowers through
-  `temporal.py`. On ArangoDB, 949 of the 1,004 `expressions/temporal`
-  scenarios pass (42 before). What remains needs a runtime temporal engine:
-  accessors and arithmetic on stored values (Temporal5, Temporal8). It also
-  needs column names taken from the Cypher text of unaliased projections
-  (Temporal7, Temporal10 [1]) and the statement clock
-  (`duration.inSeconds(date(), date())`).
+  `temporal.py`. On ArangoDB, 965 of the 1,004 `expressions/temporal`
+  scenarios pass. What remains needs a runtime temporal engine: accessors and
+  arithmetic on stored values (Temporal5, Temporal8). It also needs the
+  statement clock (`duration.inSeconds(date(), date())`, Temporal10 [12]).
 
 **A pattern whose last node is bound is read from that node.** In a MATCH
 after WITH or an OPTIONAL MATCH, `(m:Message)-[:HAS_TAG]->(tag)` with `tag`
