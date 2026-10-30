@@ -26,9 +26,13 @@ from types import MappingProxyType
 from typing import Any
 
 from .._antlr.CypherParser import CypherParser
+from . import const_temporal
 from . import cypher_functions as fns
 from . import cypher_values as cv
 from .cypher_values import CypherEvalError, NotConstant
+
+# Temporal values and functions (date(), duration.between(), d.week, …).
+const_temporal.install()
 
 #: Cypher variables bound to translate-time constants by a ``WITH`` (name →
 #: value).  ``_apply_with`` maintains it like ``_temporal_vars``.
