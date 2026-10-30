@@ -89,6 +89,7 @@ from .shortest_path import (
     refuse_unbound_shortest_path,
     shortest_path_pattern,
 )
+from .sort_keys import SORT_VALUE_TYPES, cypher_sort_key, needs_cypher_sort_key, read_grouping_keys
 from .state import (
     TranslateOptions,
     _active_case_insensitive_inline,
@@ -173,6 +174,7 @@ def translate_v0(
     user_params_token = _active_user_params.set(frozenset(params or {}))
     temporal_token = _temporal_vars.set({})
     const_token = _const_env.set(MappingProxyType({}))
+    sort_types_token = SORT_VALUE_TYPES.set({})
 
     try:
         result = _translate_v0_inner(
@@ -198,6 +200,7 @@ def translate_v0(
         )
         return result
     finally:
+        SORT_VALUE_TYPES.reset(sort_types_token)
         _active_user_vars.reset(user_vars_token)
         _active_user_params.reset(user_params_token)
         _temporal_vars.reset(temporal_token)
@@ -3591,6 +3594,9 @@ def _apply_with_projection(
     env = {cy: aql for cy, aql, _ in compiled_nonagg}
     env.update({cy: aql for cy, aql, _ in compiled_agg if cy not in hidden})
     env.update({cy: aql for cy, aql, _ in compiled_post})
+    # After a COLLECT only its keys remain: ORDER BY a grouping key's own
+    # expression (``WITH a.name AS name … ORDER BY a.name``) reads the key.
+    grouped = {expr: aql for _, aql, expr in compiled_nonagg if expr != aql}
     if order_ctx is not None and incoming_env is not None:
         projected = set(env) | {cy for cy, _, _ in compiled_collects if cy not in hidden}
         _refuse_out_of_scope_sort_vars(order_ctx, visible=set(incoming_env) | projected)
@@ -3613,7 +3619,7 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env))
+            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3642,7 +3648,7 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env))
+            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3664,6 +3670,9 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         lines.extend(restore_order)
+        if order_ctx is not None:
+            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
+            order_ctx = None
     else:
         for _, aql, expr in compiled_nonagg:
             if aql != expr:
@@ -3739,11 +3748,14 @@ def _compile_order_by(
     var_env: dict[str, str] | None = None,
     aliases: dict[str, str] | None = None,
     alias_types: dict[str, str | None] | None = None,
+    grouped: dict[str, str] | None = None,
 ) -> str:
     """``SORT`` for an ORDER BY. A sort item that is exactly a projection
     alias in *aliases* sorts by that alias's expression, even where a
     variable has the same name (``RETURN a.name AS a ORDER BY a``), and
-    *alias_types* gives that expression's static type."""
+    *alias_types* gives that expression's static type. After a ``COLLECT``,
+    *grouped* maps each grouping key's source expression to the key variable,
+    which is all the sort can still read (WithOrderBy2 [22]-[24])."""
     items = order_ctx.oC_SortItem() or []
     if not items:
         raise CoreError("ORDER BY requires at least one sort item", code="UNSUPPORTED")
@@ -3756,9 +3768,17 @@ def _compile_order_by(
             static_type = (alias_types or {}).get(text)
         else:
             expr = _compile_expression(it.oC_Expression(), bind_vars)
+            if grouped:
+                expr = read_grouping_keys(expr, grouped)
             if var_env:
                 expr = _rewrite_vars(expr, var_env)
         descending = it.DESC() is not None or it.DESCENDING() is not None
+        if needs_cypher_sort_key(it.oC_Expression()):
+            # Type-ranked key: Cypher's order across types, nulls included.
+            ranked = cypher_sort_key(expr)
+            ascending = it.ASC() is not None or it.ASCENDING() is not None
+            parts.append(f"{ranked} DESC" if descending else f"{ranked} ASC" if ascending else ranked)
+            continue
         key = _code_point_sort_key(expr, static_type)
         if not _is_obvious_non_null(expr):
             # Cypher sorts null after every value ascending and before every

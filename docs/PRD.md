@@ -636,7 +636,17 @@ property the mapping declares `string` does too, but only when its value is a
 string at run time (`IS_STRING(x) ? TO_HEX(x) : x`), since the declaration is
 not checked against the data. A value of unknown type keeps AQL's order
 in both, so sorting and comparing agree (TCK WithOrderBy1 [45]) and a range
-filter on it can still use an index. `RETURN type(r)` on its own is a
+filter on it can still use an index. `ORDER BY` a value the query shows to
+be a list (`UNWIND [[1], ['a']] AS l … ORDER BY l`, `collect(…)`), or an
+element of a list of mixed types (`UNWIND [1, 'a', null] AS x`), sorts in
+Cypher's cross-type order — maps, nodes, relationships, lists, paths,
+strings, booleans, numbers, null last ascending — lists element by element:
+the key is `[type rank, value]`, a list's elements keyed the same way one
+level deep (`sort_keys.py`; the semantic pass records each sort item's type).
+Every other sort, a property above all, keeps the plain key an index can
+serve. After a `COLLECT`, an `ORDER BY` on a grouping key's own expression
+(`WITH a.name AS name, count(*) AS c ORDER BY a.name`) reads the key.
+`RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
 self-loop once.
 `CALL { … }` subqueries (`arango_cypher/_translate_v0/subqueries.py`): for

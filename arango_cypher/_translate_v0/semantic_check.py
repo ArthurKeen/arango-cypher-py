@@ -56,6 +56,7 @@ from .semantic_types import (
     element_type,
     list_of,
 )
+from .sort_keys import record_sort_type
 
 _P = CypherParser
 
@@ -256,7 +257,9 @@ class _QueryChecker:
         visible = {**scope, **projected}
         if order is not None:
             for sort_item in order.oC_SortItem():
-                self.expr.visit(sort_item.oC_Expression(), visible)
+                record_sort_type(
+                    sort_item.oC_Expression(), self.expr.visit(sort_item.oC_Expression(), visible)
+                )
         for clause, word in ((body.oC_Skip(), "SKIP"), (body.oC_Limit(), "LIMIT")):
             if clause is not None:
                 self.expr.visit(clause.oC_Expression(), scope)
