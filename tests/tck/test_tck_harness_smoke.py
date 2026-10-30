@@ -222,6 +222,47 @@ class TestScenarioOutlineExpansion:
         assert len(feat.scenarios) == 0
 
 
+class TestBackground:
+    def test_background_steps_prefix_every_scenario(self, tmp_path: Path):
+        p = _write_feature(
+            tmp_path,
+            """\
+        Feature: Background test
+
+          Background:
+            Given an empty graph
+            And having executed:
+              \"\"\"
+              CREATE (:A {name: 'n0'})
+              \"\"\"
+
+          Scenario: [1] First
+            When executing query:
+              \"\"\"
+              MATCH (a:A) RETURN a.name
+              \"\"\"
+            Then the result should be empty
+
+          Scenario Outline: [2] Second
+            When executing query:
+              \"\"\"
+              RETURN <v>
+              \"\"\"
+            Then the result should be empty
+
+          Examples:
+            | v |
+            | 1 |
+        """,
+        )
+        feat = parse_feature(p)
+        assert [s.name for s in feat.scenarios] == ["[1] First", "[2] Second [v=1]"]
+        for sc in feat.scenarios:
+            assert [st.text for st in sc.steps[:2]] == ["an empty graph", "having executed:"]
+            assert (sc.steps[1].doc_string or "").strip() == "CREATE (:A {name: 'n0'})"
+            assert sc.steps[2].keyword == "When"
+
+
 # ---------------------------------------------------------------------------
 # normalize.py — normalize_expected_value
 # ---------------------------------------------------------------------------

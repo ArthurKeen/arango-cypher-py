@@ -103,8 +103,10 @@ def parse_feature(path: Path) -> Feature:
     """
     Minimal Gherkin parser for the subset used by openCypher TCK feature files.
 
-    Supports: Feature, Scenario, Scenario Outline + Examples,
+    Supports: Feature, Background, Scenario, Scenario Outline + Examples,
     Given/When/Then/And/But steps, doc strings (triple quotes), data tables.
+    Background steps are prepended to every scenario of the feature, as
+    Gherkin specifies (Match5 seeds its graph in a Background).
     """
     raw_lines = path.read_text(encoding="utf-8").splitlines()
 
@@ -115,9 +117,16 @@ def parse_feature(path: Path) -> Feature:
     cur_steps: list[Step] = []
     cur_is_outline: bool = False
     cur_examples: list[list[list[str]]] = []
+    background_steps: list[Step] = []
+    in_background = False
 
     def _flush_scenario() -> None:
-        nonlocal cur_scenario_name, cur_steps, cur_is_outline, cur_examples
+        nonlocal cur_scenario_name, cur_steps, cur_is_outline, cur_examples, background_steps, in_background
+        if in_background:
+            background_steps = cur_steps
+            cur_steps = []
+            in_background = False
+            return
         if cur_scenario_name is None:
             return
         if cur_is_outline:
@@ -143,11 +152,18 @@ def parse_feature(path: Path) -> Feature:
             i += 1
             continue
 
+        if line.startswith("Background:"):
+            _flush_scenario()
+            in_background = True
+            cur_steps = []
+            i += 1
+            continue
+
         if line.startswith("Scenario Outline:") or line.startswith("Scenario Template:"):
             _flush_scenario()
             prefix = "Scenario Outline:" if line.startswith("Scenario Outline:") else "Scenario Template:"
             cur_scenario_name = line[len(prefix) :].strip() or "Unnamed Outline"
-            cur_steps = []
+            cur_steps = list(background_steps)
             cur_is_outline = True
             cur_examples = []
             i += 1
@@ -156,7 +172,7 @@ def parse_feature(path: Path) -> Feature:
         if line.startswith("Scenario:"):
             _flush_scenario()
             cur_scenario_name = line[len("Scenario:") :].strip() or "Unnamed Scenario"
-            cur_steps = []
+            cur_steps = list(background_steps)
             cur_is_outline = False
             cur_examples = []
             i += 1
