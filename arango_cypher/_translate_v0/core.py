@@ -622,6 +622,18 @@ def _emit_single_hop(
         lines.append(f"    FILTER {f}")
 
 
+def _self_loop_direction(direction: str, *, back_to_start: bool, rel_range: tuple[int, int]) -> str:
+    """OUTBOUND for an undirected single hop back to the node it starts from.
+
+    Such a hop (``(n)-[r]-(n)``) matches only self-loops, and an ANY
+    traversal yields each loop twice (once per direction) where Cypher
+    matches it once (Match3 [12]).
+    """
+    if direction == "ANY" and back_to_start and rel_range == (1, 1):
+        return "OUTBOUND"
+    return direction
+
+
 def _emit_merged_hops(
     hops: list[_HopMeta],
     *,
@@ -971,6 +983,12 @@ def _try_compile_edge_only_scan(
     else:  # DEDICATED_COLLECTION
         rel_type_exprs[rel_var] = _dedicated_rel_type_expr(rel_type, rel_var, resolver)
 
+    if _relationship_direction(rel_pat) == "ANY":
+        # An undirected pattern matches an edge once per orientation, a
+        # self-loop once (CountingSubgraphMatches1 [3]): one row per side.
+        side = _pick_fresh_var("_side", forbidden_vars={rel_var})
+        lines.append(f"  FOR {side} IN ({rel_var}._from == {rel_var}._to ? [0] : [0, 1])")
+
     for f in _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars):
         lines.append(f"  FILTER {f}")
 
@@ -1243,6 +1261,7 @@ def _translate_match_body(
 
     # --- Phase 1: pre-process chains into _HopMeta list ---
     hops: list[_HopMeta] = []
+    hop_start = u_var  # the Cypher node each hop leaves from
     for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
         v_node = chain.oC_NodePattern()
@@ -1270,7 +1289,11 @@ def _translate_match_body(
         forbidden_vars.add(rel_var)
 
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
-        direction = _relationship_direction(rel_pat)
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_bound and v_var == hop_start,
+            rel_range=rel_range,
+        )
 
         if direction == "ANY" and rel_type:
             stats_dir = resolver.preferred_traversal_direction(rel_type)
@@ -1337,6 +1360,7 @@ def _translate_match_body(
 
         if not v_bound:
             forbidden_vars.add(v_var)
+        hop_start = v_var
 
     # --- Phase 2: group consecutive mergeable hops ---
     groups: list[list[int]] = []
@@ -2619,7 +2643,9 @@ def _compile_match_from_bound(
         if part.oC_AnonymousPatternPart() is None:
             raise CoreError("Named paths in a MATCH after WITH are not supported", code="UNSUPPORTED")
         # Read from the bound end when only the last node is bound (pattern_reversal).
-        elem = from_bound_end(part.oC_AnonymousPatternPart().oC_PatternElement(), out_env)
+        written = part.oC_AnonymousPatternPart().oC_PatternElement()
+        elem = from_bound_end(written, out_env)
+        path_name = part.oC_Variable().getText().strip() if part.oC_Variable() is not None else None
         has_chain = _compile_bound_part(
             elem,
             resolver=resolver,
@@ -2628,6 +2654,8 @@ def _compile_match_from_bound(
             out_env=out_env,
             rel_type_exprs=rel_type_exprs,
             lines=lines,
+            path_name=path_name,
+            reversed_part=elem is not written,
         )
         any_chain = any_chain or has_chain
 
@@ -2658,9 +2686,18 @@ def _compile_bound_part(
     out_env: dict[str, str],
     rel_type_exprs: dict[str, str],
     lines: list[str],
+    path_name: str | None = None,
+    reversed_part: bool = False,
 ) -> bool:
     """Compile one pattern part of a MATCH after WITH into *lines*, extending
-    *out_env* with the variables it binds. Returns whether it has relationships."""
+    *out_env* with the variables it binds. Returns whether it has relationships.
+
+    *path_name* names the part's path (``OPTIONAL MATCH p = (a)-->(b)``): it is
+    bound to ``{nodes, edges}`` as in a leading MATCH, a variable-length hop
+    contributing its traversal's vertices and edges. *reversed_part* says the
+    part is compiled from its bound end (``pattern_reversal``), so the path
+    is reversed back to the order it was written in.
+    """
     node = elem.oC_NodePattern()
     if node is None:
         raise CoreError("Only node patterns are supported in v0", code="UNSUPPORTED")
@@ -2733,7 +2770,12 @@ def _compile_bound_part(
         for f in tail_props:
             lines.append(f"    FILTER {f}")
 
+    node_segments: list[str] = [f"[{u_aql}]"]
+    edge_segments: list[str] = []
     if not chains:
+        _bind_bound_path(
+            path_name, node_segments, edge_segments, out_env, forbidden_vars, lines, reversed_part
+        )
         return False
 
     current_aql = u_aql
@@ -2780,12 +2822,11 @@ def _compile_bound_part(
         forbidden_vars.add(v_aql)
         forbidden_vars.add(r_aql)
 
-        direction = _relationship_direction(rel_pat)
-        # An undirected single hop back to its own start node matches only
-        # self-loops, and an ANY traversal yields each loop twice (once per
-        # direction), where Cypher matches it once.
-        if direction == "ANY" and v_is_backref and out_env[v_cy] == current_aql and rel_range == (1, 1):
-            direction = "OUTBOUND"
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_is_backref and out_env[v_cy] == current_aql,
+            rel_range=rel_range,
+        )
         # Resolve an unlabeled (non-back-reference) endpoint of a typed
         # relationship from the relationship's domain/range.
         if not v_labels and not v_is_backref and rel_type:
@@ -2824,9 +2865,26 @@ def _compile_bound_part(
                 )
 
         rmin, rmax = rel_range
+        trav_vars = f"{v_aql}, {r_aql}"
+        named_list = rel_named and not r_is_backref and rel_range != (1, 1)
+        hop_path: str | None = None
+        if rel_range != (1, 1) and (path_name is not None or named_list):
+            hop_path = _pick_fresh_var("_hop_path", forbidden_vars=forbidden_vars)
+            trav_vars += f", {hop_path}"
+            node_segments.append(f"SLICE({hop_path}.vertices, 1)")
+            edge_segments.append(f"{hop_path}.edges")
+        else:
+            node_segments.append(f"[{v_aql}]")
+            edge_segments.append(f"[{r_aql}]")
         lines.append(
-            f"  FOR {v_aql}, {r_aql} IN {rmin}..{rmax} {direction} {current_aql} {_aql_collection_ref(edge_key)}"
+            f"  FOR {trav_vars} IN {rmin}..{rmax} {direction} {current_aql} {_aql_collection_ref(edge_key)}"
         )
+        if named_list and hop_path is not None:
+            # A named variable-length relationship is the list of its edges
+            # (Match9 [9]), not the traversal's last edge.
+            rel_list = _pick_fresh_var(_affix_name(r_aql, suffix="_list"), forbidden_vars=forbidden_vars)
+            lines.append(f"    LET {rel_list} = {hop_path}.edges")
+            out_env[rel_cy] = rel_list
 
         v_filters: list[str] = []
         if coll_filter is not None:
@@ -2881,7 +2939,30 @@ def _compile_bound_part(
 
         current_aql = out_env[v_cy] if v_is_backref else v_aql
 
+    _bind_bound_path(path_name, node_segments, edge_segments, out_env, forbidden_vars, lines, reversed_part)
     return True
+
+
+def _bind_bound_path(
+    path_name: str | None,
+    node_segments: list[str],
+    edge_segments: list[str],
+    out_env: dict[str, str],
+    forbidden_vars: set[str],
+    lines: list[str],
+    reversed_part: bool,
+) -> None:
+    """Bind *path_name* (if any) to the ``{nodes, edges}`` of a bound part."""
+    if path_name is None:
+        return
+    path_aql = _pick_fresh_var(path_name, forbidden_vars=forbidden_vars)
+    nodes = f"FLATTEN([{', '.join(node_segments)}])"
+    edges = f"FLATTEN([{', '.join(edge_segments)}])" if edge_segments else "[]"
+    if reversed_part:
+        nodes, edges = f"REVERSE({nodes})", f"REVERSE({edges})"
+    lines.append(f"    LET {path_aql} = {{nodes: {nodes}, edges: {edges}}}")
+    out_env[path_name] = path_aql
+    _active_path_vars.get()[path_name] = ([], [])
 
 
 def _compile_match_pipeline(
@@ -3046,7 +3127,11 @@ def _compile_match_pipeline(
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
 
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
-        direction = _relationship_direction(rel_pat)
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_bound and v_var == current_var,
+            rel_range=rel_range,
+        )
 
         if direction == "ANY" and rel_type:
             stats_dir = resolver.preferred_traversal_direction(rel_type)

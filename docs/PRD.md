@@ -657,7 +657,11 @@ serve. After a `COLLECT`, an `ORDER BY` on a grouping key's own expression
 (`WITH a.name AS name, count(*) AS c ORDER BY a.name`) reads the key.
 `RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
-self-loop once.
+self-loop once, in every pattern position, and an undirected pattern with both
+ends anonymous (`MATCH ()--()`, an edge-collection scan) yields each edge once
+per orientation and a self-loop once. An undirected hop between two *different*
+variables still yields a self-loop twice (an ANY traversal visits it in both
+directions), where Cypher matches it once (TCK Match3 [11]/[15]/[16]): known gap.
 `CALL { … }` subqueries (`arango_cypher/_translate_v0/subqueries.py`): for
 each incoming row the body runs once, and the row continues once per row it
 returns, with its columns added; a row whose body returns nothing is dropped.
@@ -782,7 +786,11 @@ and a named variable-length relationship is its list of edges. A named path
 pattern is the pattern predicate itself. In MATCH, a named path is bound for a
 single node (`MATCH p = (a)` is `{nodes: [a], edges: []}`) and before a `WITH`
 (`MATCH p = (a)-[*]->(b) WITH p …`), where each hop's traversal path
-contributes its vertices and edges in pattern order.
+contributes its vertices and edges in pattern order; and in an `OPTIONAL MATCH`
+or a `MATCH` after a `WITH` (`OPTIONAL MATCH p = (a)-[:X]->(b)`, null when
+nothing matches), in the order the pattern is written even when it is compiled
+from its bound end. There a named variable-length relationship is its list of
+edges too.
 
 An aggregate may be nested in a projection expression (`head(collect(x))`,
 `100 * count(*) + count(x)`, `list + collect(x)`, `[y IN collect(x) | …]`):
