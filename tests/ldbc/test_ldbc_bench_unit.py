@@ -52,7 +52,9 @@ def test_a_plan_digest_changes_with_the_plan():
 
 
 class _Db:
-    """Mirrors ``arango.database.Database.version(self, details: bool = False)``."""
+    """Mirrors ``arango.database.Database.version(self, details: bool = False)``
+    and ``Database.engine(self)``, as ArangoDB 3.12 answers them: the version
+    details no longer name the storage engine."""
 
     def version(self, details: bool = False) -> Any:
         if not details:
@@ -61,8 +63,11 @@ class _Db:
             "server": "arango",
             "version": "3.12.12",
             "license": "community",
-            "details": {"engine": "rocksdb", "mode": "server"},
+            "details": {"mode": "server"},
         }
+
+    def engine(self) -> Any:
+        return {"name": "rocksdb", "supports": {}}
 
 
 def test_the_environment_records_what_the_numbers_depend_on():
