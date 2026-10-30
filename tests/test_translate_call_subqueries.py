@@ -48,8 +48,8 @@ def test_union_and_union_all() -> None:
 def test_the_columns_must_match_across_a_union() -> None:
     _refused(
         "CALL { MATCH (u:User) RETURN u.id AS a UNION MATCH (u:User) RETURN u.id AS b } RETURN a",
-        "UNSUPPORTED",
-        "same columns",
+        "CYPHER_SEMANTIC_ERROR",
+        "DifferentColumnsInUnion",
     )
 
 

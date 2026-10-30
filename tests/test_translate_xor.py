@@ -27,8 +27,12 @@ def test_xor_chain_preserves_null_propagation() -> None:
 @pytest.mark.parametrize("operator", ["AND", "OR", "XOR"])
 @pytest.mark.parametrize("literal", ["123", "'text'", "[]", "{}"])
 def test_boolean_operators_reject_obvious_non_boolean_literal(literal: str, operator: str) -> None:
-    with pytest.raises(CoreError, match=f"{operator} requires boolean operands"):
+    # Invalid Cypher (Neo4j's InvalidArgumentType), refused by the semantic pass.
+    with pytest.raises(
+        CoreError, match=f"InvalidArgumentType: Type mismatch: {operator} expected Boolean"
+    ) as err:
         translate(f"RETURN {literal} {operator} true", mapping=mapping_bundle_for("lpg"))
+    assert err.value.code == "CYPHER_SEMANTIC_ERROR"
 
 
 @pytest.mark.parametrize("operator", ["AND", "OR"])

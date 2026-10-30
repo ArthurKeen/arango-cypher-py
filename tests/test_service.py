@@ -162,6 +162,21 @@ class TestTranslate:
         )
         assert resp.status_code == 422
 
+    def test_translate_semantically_invalid_cypher_is_a_client_error(self):
+        # Parses, but Neo4j rejects it: a 422 carrying the semantic error code,
+        # not a 500 and not UNSUPPORTED (which would invite the AI fallback).
+        resp = client.post(
+            "/translate",
+            json={
+                "cypher": "MATCH (n:User)-[n:FOLLOWS]->(m:User) RETURN n",
+                "mapping": PG_MAPPING,
+            },
+        )
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail["code"] == "CYPHER_SEMANTIC_ERROR"
+        assert detail["error"].startswith("VariableTypeConflict:")
+
     def test_translate_empty_cypher_rejected(self):
         resp = client.post(
             "/translate",

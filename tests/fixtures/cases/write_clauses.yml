@@ -119,14 +119,14 @@ cases:
       "@deleteNodes": vertices
       deleteNodesName: vertices
 - id: C413
-  name: DELETE with RETURN
+  name: DELETE with RETURN of a deleted property (DeletedEntityAccess per row)
   mapping_fixture: pg
   extensions_enabled: false
   cypher: 'MATCH (n:Person {name: "Alice"}) DELETE n RETURN n.name
 
     '
   expected:
-    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _removed0 = (FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes)\n  FOR _row IN _matched\n    LET n = _row.n\n    RETURN n.name\n"
+    aql: "LET _matched = (\nFOR n IN @@collection\n  FILTER (n.name == \"Alice\")\n  RETURN {n: n, _row: true}\n  )\n  LET _deleted_nodes = UNIQUE(REMOVE_VALUE(FLATTEN(_matched[*].n._id), null))\n  LET _removed0 = (FOR _id IN _deleted_nodes FILTER PARSE_IDENTIFIER(_id).collection == @deleteNodesName REMOVE PARSE_IDENTIFIER(_id).key IN @@deleteNodes)\n  FOR _row IN _matched\n    LET n = _row.n\n    FILTER n == null OR FAIL(\"DeletedEntityAccess: the query reads a property or the labels of a node or relationship it deleted\")\n    RETURN n.name\n"
     bind_vars:
       "@collection": persons
       "@deleteNodes": persons

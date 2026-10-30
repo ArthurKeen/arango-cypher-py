@@ -77,3 +77,40 @@ def test_with_return_the_rows_are_the_matched_ones() -> None:
 def test_refusals(cypher: str, message: str) -> None:
     with pytest.raises(CoreError, match=message):
         translate(cypher, mapping=mapping_bundle_for("pg"))
+
+
+_GUARD = 'OR FAIL("DeletedEntityAccess'
+
+
+@pytest.mark.parametrize(
+    ("cypher", "variable"),
+    [
+        ("MATCH (n:User) DELETE n RETURN n.name", "n"),
+        ("MATCH (n:User) DELETE n RETURN labels(n)", "n"),
+        ("MATCH (n:User) DELETE n RETURN properties(n) AS p", "n"),
+        ("MATCH (n:User) DETACH DELETE n RETURN keys(n) AS k", "n"),
+        ("MATCH (n:User) DELETE n RETURN n.age + 1 AS older", "n"),
+        ("MATCH (:User)-[r:FOLLOWS]->(:User) DELETE r RETURN r.since", "r"),
+    ],
+)
+def test_reading_a_deleted_entity_fails_each_returned_row(cypher: str, variable: str) -> None:
+    """Neo4j raises DeletedEntityAccess for each row that reads a property or
+    the labels of what the query deleted — at run time, so a match with no
+    rows still succeeds: the guard is a per-row FILTER, not a refusal."""
+    aql = translate(cypher, mapping=mapping_bundle_for("pg")).aql
+    guard = f"FILTER {variable} == null {_GUARD}"
+    assert guard in aql
+    assert aql.index(f"LET {variable} = _row.{variable}") < aql.index(guard) < aql.rindex("RETURN")
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (n:User) DELETE n RETURN n",
+        "MATCH (n:User) DELETE n RETURN count(*) AS c",
+        "MATCH (:User)-[r:FOLLOWS]->(:User) DELETE r RETURN type(r)",
+        "MATCH (:User)-[r:FOLLOWS]->(m:User) DELETE r RETURN m.name",
+    ],
+)
+def test_returning_without_reading_a_deleted_entity_is_not_guarded(cypher: str) -> None:
+    assert _GUARD not in translate(cypher, mapping=mapping_bundle_for("pg")).aql
