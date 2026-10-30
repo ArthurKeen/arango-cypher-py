@@ -59,6 +59,11 @@ def label_write(var: str, labels: list[str], *, add: bool, fields: tuple[str, st
     takes the first label left, or null — which the UPDATE drops
     (``keepNull: false``) — when none is.
     """
+    return "{" + ", ".join(label_write_entries(var, labels, add=add, fields=fields)) + "}"
+
+
+def label_write_entries(var: str, labels: list[str], *, add: bool, fields: tuple[str, str]) -> list[str]:
+    """The ``key: value`` entries of :func:`label_write`'s patch."""
     tf, lf = (f"{var}[{_lit(f)}]" for f in fields)
     current = f"(IS_ARRAY({lf}) ? {lf} : {tf} != null ? [{tf}] : [])"
     names = "[" + ", ".join(_lit(lab) for lab in labels) + "]"
@@ -68,7 +73,7 @@ def label_write(var: str, labels: list[str], *, add: bool, fields: tuple[str, st
     else:
         new_labels = f"{current}[* FILTER CURRENT NOT IN {names}]"
         new_type = f"({tf} IN {names} ? FIRST({new_labels}) : {tf})"
-    return f"{{{_lit(fields[1])}: {new_labels}, {_lit(fields[0])}: {new_type}}}"
+    return [f"{_lit(fields[1])}: {new_labels}", f"{_lit(fields[0])}: {new_type}"]
 
 
 def _lit(name: str) -> str:

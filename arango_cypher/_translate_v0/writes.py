@@ -7,6 +7,7 @@ split without a core <-> writes import cycle at module import time.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,11 +16,12 @@ from typing import Any
 from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
-from .label_tests import label_test, label_write, shared_label_fields
+from .label_tests import label_test, label_write, label_write_entries, shared_label_fields
 from .label_tests import labels_field as entity_labels_field
 from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _pick_fresh_var, _strip_label_backticks
 from .property_writes import PropertyOp, PropertyWrites, StoredWrite, keep_fields_for
+from .scopes import outer_bound_names
 from .state import _active_resolver
 from .supertypes import union_scan_source
 
@@ -1386,6 +1388,26 @@ def _build_insert_doc(
     return inner
 
 
+def projection_reshapes_rows(proj: CypherParser.OC_ProjectionBodyContext) -> bool:
+    """Whether a projection aggregates, sorts, pages or de-duplicates its rows."""
+    if (
+        proj.DISTINCT() is not None
+        or proj.oC_Order() is not None
+        or proj.oC_Skip() is not None
+        or proj.oC_Limit() is not None
+    ):
+        return True
+    aggregate_call = _core_helper("_aggregate_call")
+    parse_collect = _core_helper("_parse_collect")
+    nested = _core_helper("nested_aggregates")
+    return any(
+        aggregate_call(it.oC_Expression().getText().strip()) is not None
+        or parse_collect(it.oC_Expression().getText().strip()) is not None
+        or bool(nested(it.oC_Expression()))
+        for it in proj.oC_ProjectionItems().oC_ProjectionItem()
+    )
+
+
 def _compile_return_for_create(
     proj: CypherParser.OC_ProjectionBodyContext,
     *,
@@ -1393,7 +1415,14 @@ def _compile_return_for_create(
     bind_vars: dict[str, Any],
     indent: str = "",
 ) -> None:
-    """Compile a RETURN clause for a CREATE query (respects indent level)."""
+    """Compile a RETURN clause for a CREATE/MERGE query (respects indent level).
+
+    A RETURN that aggregates, sorts, pages or de-duplicates is the general
+    RETURN (``_append_return``); the plain one stays a bare ``RETURN``.
+    """
+    if projection_reshapes_rows(proj):
+        _append_return(proj, lines=lines, bind_vars=bind_vars)
+        return
     items_ctx = proj.oC_ProjectionItems()
     items = items_ctx.oC_ProjectionItem()
     if not items:
@@ -1486,6 +1515,30 @@ def _compile_merge_reading_clauses(
     lines.extend(read_lines)
 
 
+def _declared_names(ctx: Any) -> set[str]:
+    """Variables a pattern declares (nodes, relationships, the path)."""
+    names: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if (
+            isinstance(
+                node,
+                (
+                    CypherParser.OC_NodePatternContext,
+                    CypherParser.OC_RelationshipDetailContext,
+                    CypherParser.OC_PatternPartContext,
+                ),
+            )
+            and node.oC_Variable() is not None
+        ):
+            names.add(node.oC_Variable().getText().strip())
+        for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0):
+            walk(node.getChild(i))
+
+    walk(ctx)
+    return names
+
+
 def _extract_merge_actions(
     merge_ctx: CypherParser.OC_MergeContext,
     bind_vars: dict[str, Any],
@@ -1493,6 +1546,19 @@ def _extract_merge_actions(
     """Extract ON CREATE SET / ON MATCH SET fields from a MERGE clause."""
     on_create_fields: list[str] = []
     on_match_fields: list[str] = []
+
+    # The node a node-only MERGE binds, and its pattern labels.
+    elem = merge_ctx.oC_PatternPart().oC_AnonymousPatternPart().oC_PatternElement()
+    merged_var, merged_labels = (
+        _extract_node_var_and_labels(elem.oC_NodePattern(), default_var="n")
+        if not elem.oC_PatternElementChain()
+        else ("", [])
+    )
+    resolver = _active_resolver.get()
+    label_fields = shared_label_fields(resolver.bundle.physical_mapping) if resolver is not None else None
+    # What an ON CREATE / ON MATCH item may write: the pattern's variables
+    # and the query's.
+    visible = outer_bound_names(merge_ctx) | _declared_names(merge_ctx.oC_PatternPart())
 
     merge_actions = merge_ctx.oC_MergeAction() or []
     for action in merge_actions:
@@ -1502,6 +1568,45 @@ def _extract_merge_actions(
             continue
         set_items = set_ctx.oC_SetItem() or []
         for si in set_items:
+            if si.oC_NodeLabels() is not None:
+                target = si.oC_Variable().getText().strip() if si.oC_Variable() is not None else ""
+                if target != merged_var or label_fields is None:
+                    raise CoreError(
+                        f"MERGE ... SET of a label ({si.getText()}) is not supported here",
+                        code="UNSUPPORTED",
+                    )
+                added = [
+                    _strip_label_backticks(nl.oC_LabelName().getText().strip())
+                    for nl in si.oC_NodeLabels().oC_NodeLabel()
+                ]
+                if is_on_create:
+                    # The created node's labels are known: the pattern's and these.
+                    known = list(
+                        dict.fromkeys([*(_strip_label_backticks(lb) for lb in merged_labels), *added])
+                    )
+                    on_create_fields.append(f"{_aql_string_literal(label_fields[1])}: {json.dumps(known)}")
+                    if not merged_labels:
+                        on_create_fields.append(
+                            f"{_aql_string_literal(label_fields[0])}: {json.dumps(known[0])}"
+                        )
+                else:
+                    on_match_fields.extend(label_write_entries("OLD", added, add=True, fields=label_fields))
+                continue
+            prop_target = (
+                _atom_variable(si.oC_PropertyExpression().oC_Atom())
+                if si.oC_PropertyExpression() is not None
+                else None
+            )
+            if prop_target is not None and prop_target not in visible:
+                # openCypher UndefinedVariable.
+                raise CoreError(
+                    f"MERGE ... SET refers to undefined variable {prop_target!r}", code="UNSUPPORTED"
+                )
+            if si.oC_PropertyExpression() is None:
+                # ``SET r = map`` / ``SET r += map`` would otherwise be dropped.
+                raise CoreError(
+                    f"MERGE ... SET of a whole map ({si.getText()}) is not supported", code="NOT_IMPLEMENTED"
+                )
             prop_expr = si.oC_PropertyExpression()
             if prop_expr is not None:
                 lookups = prop_expr.oC_PropertyLookup() or []
@@ -1746,8 +1851,25 @@ def _build_merge_node_docs(
     document literals (only the surrounding statement form differs).
     """
     var, labels = _extract_node_var_and_labels(node, default_var="n")
+    if node.oC_Variable() is not None and var in outer_bound_names(merge_ctx):
+        # openCypher VariableAlreadyBound: MERGE (a) after MATCH (a).
+        raise CoreError(f"MERGE cannot rebind the bound variable {var!r}", code="UNSUPPORTED")
+    if any(v.strip() == "null" for _, v in _compile_create_props(node.oC_Properties(), dict(bind_vars))):
+        # openCypher MergeReadOwnWrites: a null property can never be matched.
+        raise CoreError("MERGE cannot match a null property value", code="UNSUPPORTED")
     if not labels:
-        raise CoreError("MERGE requires a labeled node", code="UNSUPPORTED")
+        # ``MERGE (a {…})``: any node of the one collection unlabeled nodes
+        # live in (failing closed when that is ambiguous), by its properties.
+        coll_key = _find_or_create_collection_bind_key(
+            "@collection", _infer_unlabeled_collection(resolver), bind_vars
+        )
+        props = _compile_create_props(node.oC_Properties(), bind_vars)
+        search_doc = _build_insert_doc(props, [])
+        on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+        insert_fields = [*(f"{k}: {v}" for k, v in props), *on_create_fields]
+        insert_doc = "{" + ", ".join(insert_fields) + "}" if on_create_fields else search_doc
+        update_doc = "{" + ", ".join(on_match_fields) + "}" if on_match_fields else "{}"
+        return var, coll_key, _aql_collection_ref(coll_key), search_doc, insert_doc, update_doc
 
     primary = _pick_primary_entity_label(labels, resolver)
     entity_mapping = resolver.resolve_entity(_strip_label_backticks(primary))

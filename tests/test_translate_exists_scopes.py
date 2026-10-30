@@ -64,4 +64,7 @@ def test_outer_bound_names_excludes_the_subquery_itself():
     query = tree.oC_Statement().oC_Query()
     assert outer_bound_names(query) == set()
     unwind = find(query, CypherParser.OC_UnwindContext)
-    assert outer_bound_names(unwind) == {"n", "y", "m"}
+    # Only what is declared before: the later MATCH (m) does not bind for it.
+    assert outer_bound_names(unwind) == {"n"}
+    later_match = find(find(query, CypherParser.OC_SinglePartQueryContext), CypherParser.OC_MatchContext)
+    assert outer_bound_names(later_match) == {"n", "x", "y"}

@@ -227,7 +227,7 @@ cases:
   mapping_fixture: pg
   extensions_enabled: false
   cypher: 'MATCH (a:Person {name: "Alice"}), (b:Person {name: "Bob"})
-    MERGE (a)-[:FOLLOWS]->(b) ON CREATE SET r.created = timestamp() ON MATCH SET r.updated = timestamp()
+    MERGE (a)-[r:FOLLOWS]->(b) ON CREATE SET r.created = timestamp() ON MATCH SET r.updated = timestamp()
 
     '
   expected:

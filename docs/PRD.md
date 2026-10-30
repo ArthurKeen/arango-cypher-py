@@ -744,7 +744,12 @@ list such a construct iterates over may aggregate.
 `CREATE → SET/REMOVE`, folded into the inserted document); `SET` (`=`, `+=`,
 property and whole-document forms); `DELETE` / `DETACH DELETE`; `REMOVE`
 (property removal); `MERGE` (node and single-hop relationship, with
-`ON CREATE` / `ON MATCH SET`); `FOREACH` (with `SET`, and — newly — `CREATE` /
+`ON CREATE` / `ON MATCH SET` of properties, and of labels where the mapping
+stores several per node; an unlabeled node MERGEs within the one collection
+unlabeled nodes live in; a RETURN after MERGE may aggregate, sort and page.
+MERGE refuses to rebind a variable bound before it, a null property value, an
+action on an undefined variable, and a whole-map `SET r = …`/`+= …` action,
+which it used to drop); `FOREACH` (with `SET`, and — newly — `CREATE` /
 `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
 (including identity aliases such as `WITH p AS x`, and relationship variables
 from traversals).
@@ -805,7 +810,17 @@ A Cypher property is never null: `SET n.p = null`, a null entry of a `+=` map
 or of a parameter map removes the property (`UPDATE … OPTIONS {keepNull:
 false}`), and `SET n = {…}` stores the map without its null entries. A
 `RETURN` after `SET`/`REMOVE` reads the written document (`LET n_new = NEW`),
-not the one matched.
+not the one matched. After a sole `OPTIONAL MATCH` that matches nothing there
+is one row whose variables are null, and `SET`/`REMOVE`/`DELETE` of null does
+nothing (each write is guarded: `FOR _w IN (n == null ? [] : [n]) UPDATE _w …`).
+`SKIP`/`LIMIT` refuse a parameter whose value is not a non-negative integer.
+
+An `EXISTS { … }` pattern correlates with a node only when the query binds
+that name before the subquery (`scopes.py`); otherwise the name is the
+subquery's own variable (a traversal target, or a scan of the unlabeled-node
+collection for a single node), and a named relationship is the subquery's
+edge variable. A multi-hop pattern inside `EXISTS { }` fails closed rather
+than being shortened to its first hop.
 
 **Multi-label nodes in a type-discriminated collection.** A `LABEL` entity
 mapping may name a `labelsField` (`"labels"`) besides its `typeField`: a node

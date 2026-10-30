@@ -29,7 +29,7 @@ from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
 from .naming import _aql_collection_ref, _pick_bind_key, _pick_fresh_var, _strip_label_backticks
-from .writes import create_node_doc, create_ops, create_rel_doc
+from .writes import create_node_doc, create_ops, create_rel_doc, projection_reshapes_rows
 
 
 def _core(name: str) -> Any:
@@ -270,21 +270,8 @@ def single_part_create_needs_pipeline(
     happen for all of them: ``CREATE … RETURN … LIMIT 0`` still creates.
     """
     ret = spq.oC_Return()
-    if ret is not None:
-        proj = ret.oC_ProjectionBody()
-        if (
-            proj.DISTINCT() is not None
-            or proj.oC_Order() is not None
-            or proj.oC_Skip() is not None
-            or proj.oC_Limit() is not None
-            or any(
-                _core("_aggregate_call")(it.oC_Expression().getText().strip()) is not None
-                or _core("_parse_collect")(it.oC_Expression().getText().strip()) is not None
-                or _core("nested_aggregates")(it.oC_Expression())
-                for it in proj.oC_ProjectionItems().oC_ProjectionItem()
-            )
-        ):
-            return True
+    if ret is not None and projection_reshapes_rows(ret.oC_ProjectionBody()):
+        return True
     scratch = dict(bind_vars)
     # A node a MATCH binds is referenced by the CREATE, not created.
     var_env: dict[str, str] = {}

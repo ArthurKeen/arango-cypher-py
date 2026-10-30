@@ -4,7 +4,7 @@ An ``EXISTS { (n)-->(m) }`` pattern correlates with ``m`` only when the
 enclosing query binds ``m``; otherwise ``m`` is a fresh variable of the
 subquery. The parse tree answers that: a name is outer when the enclosing
 statement declares it (a pattern variable, a named path, an UNWIND or
-projection alias) anywhere outside the subquery itself.
+projection alias) before the subquery, outside it.
 """
 
 from __future__ import annotations
@@ -30,11 +30,19 @@ def _statement_root(ctx: Any) -> Any:
 
 
 def outer_bound_names(ctx: Any) -> set[str]:
-    """Names declared in the statement enclosing *ctx*, outside *ctx*'s subtree."""
+    """Names declared in the statement enclosing *ctx* before it (outside its subtree).
+
+    A pattern later in the query that names the variable references it; it
+    does not bind it for *ctx*.
+    """
     names: set[str] = set()
+    limit = ctx.start.tokenIndex
 
     def walk(node: Any) -> None:
         if node is ctx:
+            return
+        start = getattr(node, "start", None)
+        if start is not None and start.tokenIndex >= limit:
             return
         if isinstance(node, _DECLARING):
             var = node.oC_Variable() if hasattr(node, "oC_Variable") else None

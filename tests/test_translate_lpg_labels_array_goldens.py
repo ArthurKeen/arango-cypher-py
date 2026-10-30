@@ -14,7 +14,7 @@ from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
 
-@pytest.mark.parametrize("case_id", [f"C{n}" for n in range(1101, 1111)])
+@pytest.mark.parametrize("case_id", [f"C{n}" for n in range(1101, 1114)])
 def test_translate_lpg_labels_array_goldens(corpus_cases, case_id: str):
     case = next(c for c in corpus_cases if c.id == case_id)
     mapping = mapping_bundle_for(case.mapping_fixture)
@@ -60,6 +60,25 @@ def test_set_map_with_null_drops_null_attributes():
     assert "ATTRIBUTES(_p)[* FILTER _p[CURRENT] == null]" in out.aql
     literal = translate("MATCH (n:User) SET n = {name: 'a'}", mapping=mapping_bundle_for("lpg"))
     assert "FILTER _p[CURRENT] == null" not in literal.aql
+
+
+def test_merge_refusals():
+    """openCypher VariableAlreadyBound, MergeReadOwnWrites, UndefinedVariable; a
+    whole-map SET in a MERGE action fails closed instead of being dropped."""
+    from arango_query_core import CoreError
+
+    for q in (
+        "MATCH (a) MERGE (a)",
+        "MERGE ({num: null})",
+        "MERGE (n) ON CREATE SET x.num = 1",
+        "MATCH (a:User), (b:User) MERGE (a)-[r:FOLLOWS]->(b) ON CREATE SET r = a",
+    ):
+        with pytest.raises(CoreError):
+            translate(q, mapping=mapping_bundle_for("lpg"))
+    # A variable named later in the query is not bound for the MERGE.
+    translate(
+        "MERGE (t:User {id: 42}) CREATE (f:Doc) CREATE (t)-[:FOLLOWS]->(f)", mapping=mapping_bundle_for("lpg")
+    )
 
 
 def test_keys_hides_fields_only_of_stored_documents():

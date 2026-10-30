@@ -120,3 +120,39 @@ cases:
       "typeField": "type"
       "typeValue": "User"
       "labelsField": "labels"
+- id: C1111
+  name: "MERGE ... ON MATCH SET a label"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MERGE (a:User) ON CREATE SET a:Note ON MATCH SET a:Doc RETURN labels(a)"
+  expected:
+    aql: "UPSERT {type: @typeValue}\nINSERT {type: @typeValue, \"labels\": [\"User\", \"Note\"]}\nUPDATE {\"labels\": UNION_DISTINCT((IS_ARRAY(OLD[\"labels\"]) ? OLD[\"labels\"] : OLD[\"type\"] != null ? [OLD[\"type\"]] : []), [\"Doc\"]), \"type\": (OLD[\"type\"] != null ? OLD[\"type\"] : \"Doc\")}\nIN @@collection\nLET a = NEW\nRETURN (a == null ? null : IS_ARRAY(a[\"labels\"]) ? a[\"labels\"] : a[\"type\"] != null ? [a[\"type\"]] : PARSE_IDENTIFIER(a._id).collection IN [\"vertices\"] ? [] : [PARSE_IDENTIFIER(a._id).collection])"
+    bind_vars:
+      "@collection": "vertices"
+      "typeValue": "User"
+- id: C1112
+  name: "MERGE then an aggregating RETURN"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MATCH (a:User), (b:User) MERGE (a)-[r:FOLLOWS]->(b) RETURN count(r) AS c"
+  expected:
+    aql: "FOR a IN @@collection\n  FILTER (a[@aTypeField] == @aTypeValue OR @aTypeValue IN a[@labelsField])\n  FOR b IN @@collection2\n    FILTER (b[@bTypeField] == @bTypeValue OR @bTypeValue IN b[@labelsField])\n    UPSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    INSERT {_from: a._id, _to: b._id, type: @relTypeValue}\n    UPDATE {}\n    IN @@edgeCollection\n    LET r = NEW\n    COLLECT AGGREGATE _c_nonnull = SUM((r) == null ? 0 : 1)\n    LET c = NOT_NULL(_c_nonnull, 0)\n    RETURN c"
+    bind_vars:
+      "@edgeCollection": "edges"
+      "relTypeValue": "FOLLOWS"
+      "@collection": "vertices"
+      "aTypeField": "type"
+      "aTypeValue": "User"
+      "labelsField": "labels"
+      "@collection2": "vertices"
+      "bTypeField": "type"
+      "bTypeValue": "User"
+- id: C1113
+  name: "MERGE of an unlabeled node"
+  mapping_fixture: lpg_labels
+  extensions_enabled: false
+  cypher: "MERGE (a {num: 1}) RETURN a"
+  expected:
+    aql: "UPSERT {num: 1}\nINSERT {num: 1}\nUPDATE {}\nIN @@collection\nLET a = NEW\nRETURN a"
+    bind_vars:
+      "@collection": "vertices"
