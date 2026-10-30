@@ -6,8 +6,17 @@ import copy
 from typing import Any
 
 import pytest
+import requests
 
-from tests.ldbc.bench import Settings, environment, percentiles, plan_shape
+from tests.ldbc.bench import (
+    CLIENT_TIMEOUT_MARGIN_S,
+    Settings,
+    environment,
+    load_databases,
+    percentiles,
+    plan_shape,
+    time_execution,
+)
 from tests.ldbc.report import ATTRIBUTION, DISCLAIMER, check, compare, render
 
 
@@ -146,3 +155,47 @@ def test_compare_flags_plan_changes_p50_moves_and_outcomes():
     assert any("outcome ok -> TIMEOUT" in f for f in compare(_result(), _result(outcome="TIMEOUT")))
     # Moves below the noise floor are not flagged.
     assert compare(_result(p50=0.5), _result(p50=2.0)) == []
+
+
+class _TimingOutAql:
+    """Mirrors ``arango.aql.AQL.execute(self, query, count=False, ..., bind_vars=None, ..., max_runtime=None,
+    ..., cache=None)``; the HTTP read times out as python-arango's ``requests`` session reports it."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def execute(self, query: str, count: bool = False, bind_vars: Any = None, **kwargs: Any) -> Any:
+        self.calls.append({"query": query, "count": count, "bind_vars": bind_vars, **kwargs})
+        raise requests.exceptions.ReadTimeout("HTTPConnectionPool(host='127.0.0.1'): Read timed out.")
+
+
+class _SlowDb:
+    def __init__(self) -> None:
+        self.aql = _TimingOutAql()
+
+
+def test_a_client_side_timeout_is_one_cells_timeout_not_the_runs_end():
+    db = _SlowDb()
+    out = time_execution(db, "FOR x IN c RETURN x", {}, warmup=1, repeats=3, timeout_s=60.0)
+    assert out["outcome"] == "TIMEOUT" and out["timeout_s"] == 60.0
+    assert out["detail"].startswith("client: ")
+    assert len(db.aql.calls) == 1, "a timed-out binding is not retried"
+    assert db.aql.calls[0]["max_runtime"] == 60.0 and db.aql.calls[0]["cache"] is False
+
+
+def test_the_client_waits_longer_than_the_servers_max_runtime(monkeypatch):
+    from tests.ldbc import arango_dbs
+
+    seen: list[tuple[str, str, float]] = []
+
+    def fake_load_fresh(
+        dataset: str, layout: str, url: str | None = None, *, request_timeout: float = 60
+    ) -> Any:
+        seen.append((dataset, layout, request_timeout))
+        return object(), None
+
+    monkeypatch.setattr(arango_dbs, "load_fresh", fake_load_fresh)
+    settings = Settings(layouts=("pg",), timeout_s=45.0)
+    load_databases("http://127.0.0.1:1", settings)
+    assert seen and all(t == 45.0 + CLIENT_TIMEOUT_MARGIN_S for _, _, t in seen)
+    assert CLIENT_TIMEOUT_MARGIN_S > 0
