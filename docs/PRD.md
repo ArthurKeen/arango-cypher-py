@@ -492,6 +492,38 @@ mirrors arango-sparql-py's `schema/acquire.py`).
    post-pass that re-indents by `FOR` depth and prepends a `WITH` collection
    declaration for traversals.
 
+**Semantic validation.** Between parse and emit, `check_semantics`
+(`_translate_v0/semantic_check.py`, expression rules in `semantic_expr.py`,
+types in `semantic_types.py`) runs Neo4j's compile-time semantic analysis over
+the parse tree, so a query no Cypher engine accepts is refused instead of
+translated and run. It tracks the variables in scope per clause and the type
+each one is shown to have, and rejects: a variable bound twice
+(`VariableAlreadyBound` — a path variable naming a bound variable, a bound node
+re-declared in `CREATE`/`MERGE` alone or with labels/properties, a bound
+relationship in `CREATE`/`MERGE`, `UNWIND` onto a bound name); one name used as
+two kinds of value (`VariableTypeConflict`); a pattern predicate introducing a
+variable (`UndefinedVariable`); a value of the wrong type where the query shows
+the type (`InvalidArgumentType` — `NOT`/`AND`/`OR`/`XOR`/`WHERE` over a
+non-boolean, arithmetic on strings/booleans/lists/maps/graph elements, `IN` a
+non-list, subscripting a scalar or a list with a non-integer, a property read
+off a scalar, list or path, `type()`/`length()`/`size()`/`labels()`/
+`properties()`/... of the wrong kind of value, a non-integer `SKIP`/`LIMIT`);
+a negative `SKIP`/`LIMIT` literal; integer literals outside 64 bits and float
+literals outside double range; duplicate column names, an unaliased `WITH`
+expression, `UNION` branches with different columns or mixed `UNION`/`UNION
+ALL`. Errors Neo4j raises at run time are raised here when a literal shows the
+offending value: `range()` of a non-integer or with a zero step, and a
+conversion (`toBoolean()`, `toInteger()`, `toFloat()`, `toString()`) or
+`type()`/`labels()` of a list-literal element of the wrong kind in a list
+comprehension. The refusal is a `CypherSemanticError` (a `CoreError`) with code
+`CYPHER_SEMANTIC_ERROR` (compile-time `SyntaxError` class) or
+`CYPHER_TYPE_ERROR` (run-time `TypeError`/`ArgumentError` class), its message
+led by the openCypher error detail; the service answers it with HTTP 422, and
+it is never `UNSUPPORTED`, so the AI fallback (§8.5) does not try to "recover"
+an invalid query. The analysis only rejects what the query shows: a type it
+cannot see (a property value, a parameter, most function results) passes, and
+an open scope (`YIELD *`) turns the undefined-variable check off.
+
 **Name safety.** Cypher values reach AQL as bind parameters. Cypher *names*
 (variables, aliases, property keys, labels) reach the AQL text, and
 backtick-quoted ones are copied with their backticks. Inside AQL backticks a

@@ -67,6 +67,7 @@ from .naming import (
     _strip_label_backticks,
 )
 from .pattern_reversal import from_bound_end
+from .semantic_check import check_semantics
 from .shortest_path import (
     compile_shortest_path,
     pattern_element,
@@ -203,6 +204,7 @@ def _translate_v0_inner(
     pr = parse_cypher(cypher)
     tree = pr.tree
     _reject_unsafe_escaped_names(tree)
+    check_semantics(tree)
     _quote_aql_reserved_names(tree)
     refuse_shortest_path_in_writes(tree)
     refuse_unsupported_subquery_calls(tree)

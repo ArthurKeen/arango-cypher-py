@@ -57,9 +57,10 @@ def test_translate_v0_requires_mapping():
         ("RETURN *", "UNSUPPORTED", "MATCH"),
         ("MATCH (n) RETURN n", "UNSUPPORTED", "label is required"),
         (
+            # One name for a node and a relationship: invalid Cypher.
             "MATCH (u:User)-[u:FOLLOWS]->(v:User) RETURN u",
-            "UNSUPPORTED",
-            "Relationship variable must not shadow",
+            "CYPHER_SEMANTIC_ERROR",
+            "VariableTypeConflict",
         ),
         (
             "MATCH (u:User)-[:FOLLOWS $props]->(v:User) RETURN u",
