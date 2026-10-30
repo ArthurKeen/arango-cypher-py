@@ -107,6 +107,48 @@ REJECTED = [
     ("RETURN -9223372036854775809 AS literal", "IntegerOverflow", SEMANTIC_ERROR_CODE),
     ("RETURN 0x8000000000000000 AS literal", "IntegerOverflow", SEMANTIC_ERROR_CODE),
     ("RETURN 1.34E999", "FloatingPointOverflow", SEMANTIC_ERROR_CODE),
+    # Aggregating expressions mentioning what is not a simple grouping key.
+    (
+        "MATCH (me)--(you) RETURN me.age + count(you.age)",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) RETURN me.age + you.age, me.age + you.age + count(*)",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) WITH me.age + count(you.age) AS agg RETURN *",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) WITH me.age + you.age AS grp, me.age + you.age + count(*) AS agg RETURN *",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) RETURN me, you.age + count(*) AS x",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    ("MATCH (n) RETURN size(n.list) + count(*) AS x", "AmbiguousAggregationExpression", SEMANTIC_ERROR_CODE),
+    (
+        "MATCH (me)--(you) RETURN me.age + you.age, count(*) AS cnt ORDER BY me.age + you.age + count(*)",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) WITH me.age + you.age, count(*) AS cnt ORDER BY me.age + you.age + count(*) RETURN *",
+        "AmbiguousAggregationExpression",
+        SEMANTIC_ERROR_CODE,
+    ),
+    (
+        "MATCH (me)--(you) RETURN count(you.age) AS agg ORDER BY me.age + count(you.age)",
+        "UndefinedVariable",
+        SEMANTIC_ERROR_CODE,
+    ),
     # Projections and UNION.
     ("RETURN 1 AS a, 2 AS a", "ColumnNameConflict", SEMANTIC_ERROR_CODE),
     ("WITH 1 AS a, 2 AS a RETURN a", "ColumnNameConflict", SEMANTIC_ERROR_CODE),
@@ -219,6 +261,23 @@ ACCEPTED = [
     "RETURN all(x IN [1, 2] WHERE x % 2 = 0), any(x IN [] WHERE x)",
     "RETURN reduce(acc = 0, x IN [1, 2] | acc + x) AS total",
     "RETURN toBoolean(1), toBoolean('true'), toInteger(true), toFloat('1.5'), toString(1.5)",
+    # Aggregating expressions over simple grouping keys, literals, parameters.
+    "MATCH (person) RETURN $age + avg(person.age) - 1000",
+    "MATCH (person) WITH $age + avg(person.age) - 1000 AS agg RETURN *",
+    "MATCH (me)--(you) WITH me.age AS age, you RETURN age, age + count(you.age)",
+    "MATCH (me)--(you) RETURN me.age, me.age + count(you.age)",
+    "MATCH (me)--(you) WITH me.age AS age, me.age + count(you.age) AS agg RETURN *",
+    "MATCH (n) RETURN n, count(n) + n.prop AS x",
+    "MATCH (n) RETURN n.x, n.x + count(*) AS y",
+    "MATCH (n) RETURN n.a.b, n.a.b + count(*) AS y",
+    "MATCH (n) WITH *, count(*) AS c RETURN c",
+    "MATCH (me)-[r1]->()<-[r2]-(you) RETURN me, you, sum(r1.times / (1 + r2.times)) AS s",
+    "MATCH (n) RETURN n.k AS k, [x IN n.list | x] + collect(n.v) AS mixed",
+    "MATCH (me)--(you) RETURN me.age AS age, count(you.age) AS cnt ORDER BY age, age + count(you.age)",
+    "MATCH (me)--(you) RETURN me.age AS age, count(you.age) AS cnt ORDER BY me.age + count(you.age)",
+    "MATCH (me)--(you) WITH me.age AS age, count(you.age) AS cnt ORDER BY cnt + count(*) RETURN age",
+    "MATCH (person) RETURN avg(person.age) AS a ORDER BY $age + avg(person.age) - 1000",
+    "MATCH (n) RETURN n.x + 1 AS k, count(*) AS c ORDER BY k",
     # Projections.
     "MATCH (n) WITH n, count(*) AS c RETURN n, c",
     "MATCH (n) WITH * RETURN n",

@@ -98,10 +98,10 @@ def variable_name(ctx: CypherParser.OC_VariableContext) -> str:
     return _strip_label_backticks(ctx.getText().strip())
 
 
-def bare_variable(expr: ParserRuleContext) -> str | None:
-    """The variable *expr* is, when it is nothing but a variable."""
+def sole_operand(expr: ParserRuleContext, target: type[ParserRuleContext]) -> ParserRuleContext | None:
+    """The *target* context *expr* only wraps (no operator on the way), else None."""
     node: ParserRuleContext = expr
-    while not isinstance(node, _P.OC_AtomContext):
+    while not isinstance(node, target):
         rules = [c for c in node.getChildren() if isinstance(c, ParserRuleContext)]
         tokens = [
             c for c in node.getChildren() if not isinstance(c, ParserRuleContext) and c.getText().strip()
@@ -109,7 +109,13 @@ def bare_variable(expr: ParserRuleContext) -> str | None:
         if len(rules) != 1 or tokens:
             return None
         node = rules[0]
-    variable = node.oC_Variable()
+    return node
+
+
+def bare_variable(expr: ParserRuleContext) -> str | None:
+    """The variable *expr* is, when it is nothing but a variable."""
+    atom = sole_operand(expr, _P.OC_AtomContext)
+    variable = atom.oC_Variable() if atom is not None else None
     return variable_name(variable) if variable is not None else None
 
 

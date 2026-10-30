@@ -511,8 +511,14 @@ off a scalar, list or path, `type()`/`length()`/`size()`/`labels()`/
 a negative `SKIP`/`LIMIT` literal; integer literals outside 64 bits and float
 literals outside double range; duplicate column names, an unaliased `WITH`
 expression, `UNION` branches with different columns or mixed `UNION`/`UNION
-ALL`. Errors Neo4j raises at run time are raised here when a literal shows the
-offending value: `range()` of a non-integer or with a zero step, and a
+ALL`; and, in a projection that aggregates, an item or `ORDER BY` item that
+mixes an aggregate with anything but literals, parameters, the projection's
+columns (in `ORDER BY`) and grouping keys that are a variable or a property
+access (or a property of a grouped variable) — `RETURN me.age + count(*)`
+without `me.age` as a key, or a compound key such as `me.age + you.age`
+reused beside the aggregate, is `AmbiguousAggregationExpression`
+(`semantic_aggregation.py`). Errors Neo4j raises at run time are raised here
+when a literal shows the offending value: `range()` of a non-integer or with a zero step, and a
 conversion (`toBoolean()`, `toInteger()`, `toFloat()`, `toString()`) or
 `type()`/`labels()` of a list-literal element of the wrong kind in a list
 comprehension. The refusal is a `CypherSemanticError` (a `CoreError`) with code

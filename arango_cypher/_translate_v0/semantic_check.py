@@ -41,6 +41,7 @@ from collections.abc import Iterator
 from antlr4 import ParserRuleContext
 
 from .._antlr.CypherParser import CypherParser
+from .semantic_aggregation import check_aggregation
 from .semantic_errors import semantic_error
 from .semantic_expr import ExpressionChecker, Scope, bare_variable, variable_name
 from .semantic_types import (
@@ -223,6 +224,16 @@ class _QueryChecker:
         items_ctx = body.oC_ProjectionItems()
         star = items_ctx.getChild(0).getText() == "*"
         projected: Scope = dict(scope) if star else {}
+        order = body.oC_Order()
+        # Before the items are named: Neo4j reports an ambiguous aggregation
+        # ahead of a missing WITH alias (WithOrderBy4 [20] has both).
+        check_aggregation(
+            items_ctx.oC_ProjectionItem(),
+            order,
+            columns=[_column_name(item) for item in items_ctx.oC_ProjectionItem()],
+            star_keys=[name for name in scope if star and name != _OPEN],
+            keyword=keyword,
+        )
         # column name -> whether an AS alias gave it
         names: dict[str, bool] = {}
         all_named = True
@@ -243,7 +254,6 @@ class _QueryChecker:
             names[name] = names.get(name, False) or aliased
             projected[name] = t
         visible = {**scope, **projected}
-        order = body.oC_Order()
         if order is not None:
             for sort_item in order.oC_SortItem():
                 self.expr.visit(sort_item.oC_Expression(), visible)
@@ -382,6 +392,13 @@ def _clauses(ctx: ParserRuleContext) -> Iterator[ParserRuleContext]:
             yield child
         elif isinstance(child, (_P.OC_SinglePartQueryContext, _P.OC_MultiPartQueryContext)):
             yield from _clauses(child)
+
+
+def _column_name(item: CypherParser.OC_ProjectionItemContext) -> str:
+    """The column a projection item names: its alias, its variable, or its text."""
+    if item.oC_Variable() is not None:
+        return variable_name(item.oC_Variable())
+    return bare_variable(item.oC_Expression()) or item.oC_Expression().getText().strip()
 
 
 def _projection_name(item: CypherParser.OC_ProjectionItemContext, keyword: str) -> str:
