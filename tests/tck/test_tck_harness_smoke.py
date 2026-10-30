@@ -342,21 +342,77 @@ class TestNormalizeExpectedValue:
 class TestNormalizeActualValue:
     def test_strips_meta_keys(self):
         doc = {"_id": "x/1", "_key": "1", "_rev": "abc", "name": "Alice"}
-        assert normalize_actual_value(doc) == {"name": "Alice"}
+        # A stored document (it has an ``_id``) is a node: unlabeled here.
+        assert normalize_actual_value(doc) == {"name": "Alice", "_labels": []}
 
     def test_float_to_int(self):
         assert normalize_actual_value(3.0) == 3
         assert isinstance(normalize_actual_value(3.0), int)
 
     def test_nested_dict(self):
-        doc = {"_id": "x/1", "addr": {"_rev": "z", "city": "NYC"}}
+        doc = {"addr": {"_rev": "z", "city": "NYC"}}
         result = normalize_actual_value(doc)
         assert result == {"addr": {"city": "NYC"}}
 
     def test_list_of_dicts(self):
-        rows = [{"_id": "a", "v": 1}, {"_id": "b", "v": 2}]
+        rows = [{"v": 1, "_key": "a"}, {"v": 2, "_key": "b"}]
         result = normalize_actual_value(rows)
         assert result == [{"v": 1}, {"v": 2}]
+
+    def test_stored_documents_normalize_by_shape(self):
+        """Nodes and edges inside lists/maps are recognized by their document shape."""
+        node = {"_id": "v/1", "_key": "1", "_rev": "r", "type": "A", "name": "a"}
+        edge = {"_id": "e/1", "_key": "1", "_rev": "r", "_from": "v/1", "_to": "v/2", "type": "T"}
+        assert normalize_actual_value([node, edge]) == [
+            {"_labels": ["A"], "name": "a"},
+            {"_type": "T"},
+        ]
+        assert normalize_actual_value({"n": node}) == {"n": {"_labels": ["A"], "name": "a"}}
+
+    def test_multi_label_node_uses_labels_array(self):
+        node = {"_id": "v/1", "type": "A", "labels": ["B", "A"]}
+        assert normalize_actual_value(node, as_node=True) == {"_labels": ["A", "B"]}
+
+    def test_path_records_relationship_direction(self):
+        path = {
+            "nodes": [{"_id": "v/1", "type": "A"}, {"_id": "v/2"}, {"_id": "v/3", "type": "C"}],
+            "edges": [
+                {"_id": "e/1", "_from": "v/1", "_to": "v/2", "type": "T", "num": 1},
+                {"_id": "e/2", "_from": "v/3", "_to": "v/2", "type": "U"},
+            ],
+        }
+        assert normalize_actual_value(path) == normalize_expected_value("<(:A)-[:T {num: 1}]->()<-[:U]-(:C)>")
+
+
+class TestNormalizeExpectedGraphLiterals:
+    def test_multi_label_node(self):
+        assert normalize_expected_value("(:A:B:C)") == {"_labels": ["A", "B", "C"]}
+        assert normalize_expected_value("(:B :A {name: 'x'})") == {"_labels": ["A", "B"], "name": "x"}
+
+    def test_node_with_nested_map_property(self):
+        assert normalize_expected_value("({m: {a: 1}})") == {"_labels": [], "m": {"a": 1}}
+
+    def test_zero_length_path(self):
+        assert normalize_expected_value("<({num: 1})>") == {"_path": [{"_labels": [], "num": 1}]}
+
+    def test_path_with_both_directions(self):
+        assert normalize_expected_value("<(:A)<-[:T1]-(:B)-[:T2 {k: 'v'}]->()>") == {
+            "_path": [
+                {"_labels": ["A"]},
+                {"_type": "T1", "_dir": "<-"},
+                {"_labels": ["B"]},
+                {"_type": "T2", "k": "v", "_dir": "->"},
+                {"_labels": []},
+            ]
+        }
+
+    def test_list_of_paths(self):
+        assert normalize_expected_value("[<(:A)-[:T]->(:B)>]") == [
+            {"_path": [{"_labels": ["A"]}, {"_type": "T", "_dir": "->"}, {"_labels": ["B"]}]}
+        ]
+
+    def test_malformed_path_stays_a_string(self):
+        assert normalize_expected_value("<(:A)-[:T]-(:B)>") == "<(:A)-[:T]-(:B)>"
 
     def test_preserves_real_float(self):
         assert normalize_actual_value(3.5) == 3.5
