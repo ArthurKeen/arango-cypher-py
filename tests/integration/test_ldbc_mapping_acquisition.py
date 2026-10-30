@@ -4,7 +4,8 @@ diffed against its committed fixture (PRD §12.1 LDBC-2; plan §5.5).
 Every difference must be a known analyzer gap, filed upstream and listed in
 ``tests/ldbc/mapping_diff.KNOWN_GAPS``. A new difference is either an analyzer
 regression or a fixture error, and fails here. Needs the optional schema
-analyzer (``arango-cypher-py[analyzer]``); skipped without it.
+analyzer (``arango-cypher-py[analyzer]``), which CI's integration job installs;
+skipped without it.
 """
 
 from __future__ import annotations

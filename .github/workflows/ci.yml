@@ -106,7 +106,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
+      # The schema analyzer extra runs the live-acquisition tiers here
+      # (tests/integration/test_schema_acquisition.py, the LDBC live mapping
+      # diff), and puts the analyzer pin band under CI.
+      - run: pip install -e ".[dev,analyzer]"
       # LDBC SNB samples (tests/ldbc/datasets.py). Keyed on the catalog, so a
       # changed pin re-downloads; the loader re-verifies the content digest anyway.
       - uses: actions/cache@v4

@@ -6,7 +6,7 @@ rendered document against its run, and compare two runs.
   operation × layout. Numbers are generated, never copied by hand.
 - ``check(markdown, result)`` is the conformance check: the disclaimer is
   present, and every table row is one ``render`` would write from *result*.
-- ``compare(old, new)`` flags what the nightly run reports: a plan whose
+- ``compare(old, new)`` flags what changed between two runs: a plan whose
   shape changed, an operation whose server p50 moved by more than a factor,
   and a cell whose outcome changed. Shared CI runners make p99 too noisy to
   flag, so only p50 is compared.
