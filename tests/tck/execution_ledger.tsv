@@ -81,7 +81,7 @@ passed	clauses/create/Create2/[13] Create a single relationship with a property
 passed	clauses/create/Create2/[14] Create a single relationship with a property and return it
 passed	clauses/create/Create2/[15] Create a single relationship with two properties
 passed	clauses/create/Create2/[16] Create a single relationship with two properties and return them
-execution_failure	clauses/create/Create2/[17] Create a single relationship with null properties should not return those properties
+passed	clauses/create/Create2/[17] Create a single relationship with null properties should not return those properties
 correct_rejection	clauses/create/Create2/[18] Fail when creating a relationship without a type
 correct_rejection	clauses/create/Create2/[19] Fail when creating a relationship without a direction
 passed	clauses/create/Create2/[1] Create two nodes and a single relationship in a single pattern
@@ -179,7 +179,7 @@ passed	clauses/match-where/MatchWhere1/[12] Filter path with path length predica
 passed	clauses/match-where/MatchWhere1/[13] Filter path with false path length predicate on multi variables with one binding
 correct_rejection	clauses/match-where/MatchWhere1/[14] Fail when filtering path with property predicate
 correct_rejection	clauses/match-where/MatchWhere1/[15] Fail on aggregation in WHERE
-execution_failure	clauses/match-where/MatchWhere1/[1] Filter node with node label predicate on multi variables with multiple bindings
+passed	clauses/match-where/MatchWhere1/[1] Filter node with node label predicate on multi variables with multiple bindings
 passed	clauses/match-where/MatchWhere1/[2] Filter node with node label predicate on multi variables without any bindings
 passed	clauses/match-where/MatchWhere1/[3] Filter node with property predicate on a single variable with multiple bindings
 passed	clauses/match-where/MatchWhere1/[4] Filter start node of relationship with property predicate on multi variables with multiple bindings
@@ -719,7 +719,7 @@ translation_failure	clauses/return-orderby/ReturnOrderBy2/[3] Sort on aggregated
 passed	clauses/return-orderby/ReturnOrderBy2/[4] Support sort and distinct
 passed	clauses/return-orderby/ReturnOrderBy2/[5] Support ordering by a property after being distinct-ified
 translation_failure	clauses/return-orderby/ReturnOrderBy2/[6] Count star should count everything in scope
-execution_failure	clauses/return-orderby/ReturnOrderBy2/[7] Ordering with aggregation
+passed	clauses/return-orderby/ReturnOrderBy2/[7] Ordering with aggregation
 passed	clauses/return-orderby/ReturnOrderBy2/[8] Returning all variables with ordering
 passed	clauses/return-orderby/ReturnOrderBy2/[9] Using aliased DISTINCT expression in ORDER BY
 translation_failure	clauses/return-orderby/ReturnOrderBy3/[1] Sort on aggregate function and normal property
@@ -757,7 +757,7 @@ passed	clauses/return-skip-limit/ReturnSkipLimit2/[4] Handle ORDER BY with LIMIT
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[5] ORDER BY with LIMIT 0 should not generate errors
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[6] LIMIT with an expression that does not depend on variables
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[7] Limit to more rows than actual results 1
-execution_failure	clauses/return-skip-limit/ReturnSkipLimit2/[8] Limit to more rows than actual results 2
+passed	clauses/return-skip-limit/ReturnSkipLimit2/[8] Limit to more rows than actual results 2
 passed	clauses/return-skip-limit/ReturnSkipLimit2/[9] Fail when using non-constants in LIMIT
 passed	clauses/return-skip-limit/ReturnSkipLimit3/[1] Get rows in the middle
 passed	clauses/return-skip-limit/ReturnSkipLimit3/[2] Get rows in the middle by param
@@ -783,13 +783,13 @@ passed	clauses/return/Return2/[7] Adding list properties in projection
 passed	clauses/return/Return2/[8] Returning label predicate expression
 passed	clauses/return/Return2/[9] Returning a projected map
 passed	clauses/return/Return3/[1] Returning multiple expressions
-execution_failure	clauses/return/Return3/[2] Returning multiple node property values
+passed	clauses/return/Return3/[2] Returning multiple node property values
 passed	clauses/return/Return3/[3] Projecting nodes and relationships
 correct_rejection	clauses/return/Return4/[10] Fail when returning multiple columns with same name
 passed	clauses/return/Return4/[11] Reusing variable names in RETURN
 passed	clauses/return/Return4/[1] Honour the column name for RETURN items
 passed	clauses/return/Return4/[2] Support column renaming
-execution_failure	clauses/return/Return4/[3] Aliasing expressions
+passed	clauses/return/Return4/[3] Aliasing expressions
 passed	clauses/return/Return4/[4] Keeping used expression 1
 passed	clauses/return/Return4/[5] Keeping used expression 2
 passed	clauses/return/Return4/[6] Keeping used expression 3
@@ -800,10 +800,10 @@ passed	clauses/return/Return5/[1] DISTINCT inside aggregation should work with l
 passed	clauses/return/Return5/[2] DISTINCT on nullable values
 passed	clauses/return/Return5/[3] DISTINCT inside aggregation should work with nested lists in maps
 passed	clauses/return/Return5/[4] DISTINCT inside aggregation should work with nested lists of maps in maps
-execution_failure	clauses/return/Return5/[5] Aggregate on list values
-execution_failure	clauses/return/Return6/[10] Multiple aggregates on same variable
+passed	clauses/return/Return5/[5] Aggregate on list values
+passed	clauses/return/Return6/[10] Multiple aggregates on same variable
 passed	clauses/return/Return6/[11] Counting matches
-execution_failure	clauses/return/Return6/[12] Counting matches per group
+passed	clauses/return/Return6/[12] Counting matches per group
 passed	clauses/return/Return6/[13] Returning the minimum length of paths
 correct_rejection	clauses/return/Return6/[14] Aggregates in aggregates
 correct_rejection	clauses/return/Return6/[15] Using `rand()` in aggregations
@@ -814,13 +814,13 @@ passed	clauses/return/Return6/[19] Handle returned property accesses inside an e
 passed	clauses/return/Return6/[1] Return count aggregation over nodes
 correct_rejection	clauses/return/Return6/[20] Fail if not returned variables are used inside an expression which contains an aggregation expression
 correct_rejection	clauses/return/Return6/[21] Fail if more complex expressions, even if returned, are used inside expression which contains an aggregation expression
-execution_failure	clauses/return/Return6/[2] Projecting an arithmetic expression with aggregation
+passed	clauses/return/Return6/[2] Projecting an arithmetic expression with aggregation
 passed	clauses/return/Return6/[3] Aggregating by a list property has a correct definition of equality
 passed	clauses/return/Return6/[4] Support multiple divisions in aggregate function
 passed	clauses/return/Return6/[5] Aggregates inside normal functions
 passed	clauses/return/Return6/[6] Handle aggregates inside non-aggregate expressions
-execution_failure	clauses/return/Return6/[7] Aggregate on property
-execution_failure	clauses/return/Return6/[8] Handle aggregation on functions
+passed	clauses/return/Return6/[7] Aggregate on property
+passed	clauses/return/Return6/[8] Handle aggregation on functions
 passed	clauses/return/Return6/[9] Aggregates with arithmetics
 passed	clauses/return/Return7/[1] Return all variables
 correct_rejection	clauses/return/Return7/[2] Fail when using RETURN * without variables in scope
@@ -1253,7 +1253,7 @@ correct_rejection	clauses/with/With6/[8] Fail if not projected variables are use
 correct_rejection	clauses/with/With6/[9] Fail if more complex expression, even if projected, are used inside expression which contains an aggregation expression
 passed	clauses/with/With7/[1] A simple pattern with one bound endpoint
 passed	clauses/with/With7/[2] Multiple WITHs using a predicate and aggregation
-execution_failure	expressions/aggregation/Aggregation1/[1] Count only non-null values
+passed	expressions/aggregation/Aggregation1/[1] Count only non-null values
 passed	expressions/aggregation/Aggregation1/[2] Counting loop relationships
 passed	expressions/aggregation/Aggregation2/[10] `min()` over list values
 execution_failure	expressions/aggregation/Aggregation2/[11] `max()` over mixed values
@@ -1267,9 +1267,9 @@ passed	expressions/aggregation/Aggregation2/[6] `min()` over mixed numeric value
 passed	expressions/aggregation/Aggregation2/[7] `max()` over strings
 execution_failure	expressions/aggregation/Aggregation2/[8] `min()` over strings
 passed	expressions/aggregation/Aggregation2/[9] `max()` over list values
-execution_failure	expressions/aggregation/Aggregation3/[1] Sum only non-null values
+passed	expressions/aggregation/Aggregation3/[1] Sum only non-null values
 passed	expressions/aggregation/Aggregation3/[2] No overflow during summation
-execution_failure	expressions/aggregation/Aggregation5/[1] `collect()` filtering nulls
+passed	expressions/aggregation/Aggregation5/[1] `collect()` filtering nulls
 passed	expressions/aggregation/Aggregation5/[2] OPTIONAL MATCH and `collect()` on node property
 translation_failure	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.0, result=10.0]
 translation_failure	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.5, result=20.0]
@@ -1539,12 +1539,12 @@ passed	expressions/graph/Graph3/[3] Ignore space when creating node with labels
 passed	expressions/graph/Graph3/[4] Create node with label in pattern
 passed	expressions/graph/Graph3/[5] Using `labels()` in return clauses
 passed	expressions/graph/Graph3/[6] `labels()` should accept type Any
-execution_failure	expressions/graph/Graph3/[7] `labels()` on null node
+passed	expressions/graph/Graph3/[7] `labels()` on null node
 correct_rejection	expressions/graph/Graph3/[8] `labels()` failing on a path
 correct_rejection	expressions/graph/Graph3/[9] `labels()` failing on invalid arguments
 passed	expressions/graph/Graph4/[1] `type()`
-execution_failure	expressions/graph/Graph4/[2] `type()` on two relationships
-execution_failure	expressions/graph/Graph4/[3] `type()` on null relationship
+passed	expressions/graph/Graph4/[2] `type()` on two relationships
+passed	expressions/graph/Graph4/[3] `type()` on null relationship
 passed	expressions/graph/Graph4/[4] `type()` on mixed null and non-null relationships
 passed	expressions/graph/Graph4/[5] `type()` handling Any type
 correct_rejection	expressions/graph/Graph4/[6] `type()` failing on invalid arguments [invalid='']
@@ -1562,14 +1562,14 @@ passed	expressions/graph/Graph5/[4] Conjunctive labels expression on nodes with 
 passed	expressions/graph/Graph5/[4] Conjunctive labels expression on nodes with varying order and repeating labels [labelexp=:C:A:A:C, result=(:A:C)]
 passed	expressions/graph/Graph5/[4] Conjunctive labels expression on nodes with varying order and repeating labels [labelexp=:C:C:A, result=(:A:C)]
 translation_failure	expressions/graph/Graph5/[5] Label expression on null
-execution_failure	expressions/graph/Graph6/[1] Statically access a property of a non-null node
-execution_failure	expressions/graph/Graph6/[2] Statically access a property of a optional non-null node
+passed	expressions/graph/Graph6/[1] Statically access a property of a non-null node
+passed	expressions/graph/Graph6/[2] Statically access a property of a optional non-null node
 passed	expressions/graph/Graph6/[3] Statically access a property of a null node
-execution_failure	expressions/graph/Graph6/[4] Statically access a property of a node resulting from an expression
-execution_failure	expressions/graph/Graph6/[5] Statically access a property of a non-null relationship
-execution_failure	expressions/graph/Graph6/[6] Statically access a property of a optional non-null relationship
+passed	expressions/graph/Graph6/[4] Statically access a property of a node resulting from an expression
+passed	expressions/graph/Graph6/[5] Statically access a property of a non-null relationship
+passed	expressions/graph/Graph6/[6] Statically access a property of a optional non-null relationship
 passed	expressions/graph/Graph6/[7] Statically access a property of a null relationship
-execution_failure	expressions/graph/Graph6/[8] Statically access a property of a relationship resulting from an expression
+passed	expressions/graph/Graph6/[8] Statically access a property of a relationship resulting from an expression
 correct_rejection	expressions/graph/Graph6/[9] Fail when performing property access on a non-graph element [exp='string']
 correct_rejection	expressions/graph/Graph6/[9] Fail when performing property access on a non-graph element [exp=123]
 correct_rejection	expressions/graph/Graph6/[9] Fail when performing property access on a non-graph element [exp=42.45]
@@ -1589,7 +1589,7 @@ execution_failure	expressions/graph/Graph8/[7] Using `keys()` on an optionally m
 execution_failure	expressions/graph/Graph8/[8] Using `keys()` and `IN` to check property existence
 passed	expressions/graph/Graph9/[1] `properties()` on a node
 passed	expressions/graph/Graph9/[2] `properties()` on a relationship
-execution_failure	expressions/graph/Graph9/[3] `properties()` on null
+passed	expressions/graph/Graph9/[3] `properties()` on null
 passed	expressions/graph/Graph9/[4] `properties()` on a map
 correct_rejection	expressions/graph/Graph9/[5] `properties()` failing on an integer literal
 correct_rejection	expressions/graph/Graph9/[6] `properties()` failing on a string literal
@@ -1910,9 +1910,9 @@ passed	expressions/literals/Literals8/[6] Return a map containing a boolean
 passed	expressions/literals/Literals8/[7] Return a map containing a null
 passed	expressions/literals/Literals8/[8] Return a map containing a integer
 passed	expressions/literals/Literals8/[9] Return a map containing a hexadecimal integer
-execution_failure	expressions/map/Map1/[1] Statically access a field of a non-null map
+passed	expressions/map/Map1/[1] Statically access a field of a non-null map
 passed	expressions/map/Map1/[2] Statically access a field of a null map
-execution_failure	expressions/map/Map1/[3] Statically access a field of a map resulting from an expression
+passed	expressions/map/Map1/[3] Statically access a field of a map resulting from an expression
 passed	expressions/map/Map1/[4] Statically access a field is case-sensitive [map={name: 'Mats', Name: 'Pontus'}, key=Name, result='Pontus']
 passed	expressions/map/Map1/[4] Statically access a field is case-sensitive [map={name: 'Mats', Name: 'Pontus'}, key=nAMe, result=null]
 passed	expressions/map/Map1/[4] Statically access a field is case-sensitive [map={name: 'Mats', Name: 'Pontus'}, key=name, result='Mats']
@@ -1945,7 +1945,7 @@ execution_failure	expressions/map/Map2/[7] Fail at runtime when trying to index 
 execution_failure	expressions/map/Map2/[8] Fail at runtime when trying to index something which is not a map
 passed	expressions/map/Map3/[1] Using `keys()` on a literal map
 passed	expressions/map/Map3/[2] Using `keys()` on a parameter map
-execution_failure	expressions/map/Map3/[3] Using `keys()` on null map
+passed	expressions/map/Map3/[3] Using `keys()` on null map
 passed	expressions/map/Map3/[4] Using `keys()` on map with null values [map={k: 1, l: null, m: 1}, result=['k', 'l', 'm']]
 passed	expressions/map/Map3/[4] Using `keys()` on map with null values [map={k: 1, l: null}, result=['k', 'l']]
 passed	expressions/map/Map3/[4] Using `keys()` on map with null values [map={k: 1}, result=['k']]
@@ -1960,8 +1960,8 @@ passed	expressions/mathematical/Mathematical2/[1] Allow addition
 correct_rejection	expressions/mathematical/Mathematical3/[1] Fail for invalid Unicode hyphen in subtraction
 passed	expressions/mathematical/Mathematical8/[1] Arithmetic precedence test
 passed	expressions/mathematical/Mathematical8/[2] Arithmetic precedence with parenthesis test
-execution_failure	expressions/null/Null1/[1] Property null check on non-null node
-execution_failure	expressions/null/Null1/[2] Property null check on optional non-null node
+passed	expressions/null/Null1/[1] Property null check on non-null node
+passed	expressions/null/Null1/[2] Property null check on optional non-null node
 execution_failure	expressions/null/Null1/[3] Property null check on null node
 passed	expressions/null/Null1/[4] A literal null IS null
 passed	expressions/null/Null1/[5] IS NULL on a map [map=null, key=name, result=true]
@@ -1977,8 +1977,8 @@ passed	expressions/null/Null1/[5] IS NULL on a map [map={notName: 0}, key=name, 
 passed	expressions/null/Null1/[5] IS NULL on a map [map={notName: null, notName2: null}, key=name, result=true]
 passed	expressions/null/Null1/[5] IS NULL on a map [map={}, key=name, result=true]
 passed	expressions/null/Null1/[6] IS NULL is case insensitive
-execution_failure	expressions/null/Null2/[1] Property not null check on non-null node
-execution_failure	expressions/null/Null2/[2] Property not null check on optional non-null node
+passed	expressions/null/Null2/[1] Property not null check on non-null node
+passed	expressions/null/Null2/[2] Property not null check on optional non-null node
 execution_failure	expressions/null/Null2/[3] Property not null check on null node
 passed	expressions/null/Null2/[4] A literal null is not IS NOT null
 passed	expressions/null/Null2/[5] IS NOT NULL on a map [map=null, key=name, result=false]
@@ -2790,7 +2790,7 @@ passed	expressions/string/String8/[4] Finding strings starting with whitespace
 passed	expressions/string/String8/[5] Finding strings starting with newline
 passed	expressions/string/String8/[6] No string starts with null
 passed	expressions/string/String8/[7] No string does not start with null
-execution_failure	expressions/string/String8/[8] Handling non-string operands for STARTS WITH
+passed	expressions/string/String8/[8] Handling non-string operands for STARTS WITH
 passed	expressions/string/String8/[9] NOT with STARTS WITH
 passed	expressions/string/String9/[1] Finding exact matches with non-proper suffix
 passed	expressions/string/String9/[2] Finding end of string
@@ -3438,14 +3438,14 @@ translation_failure	expressions/temporal/Temporal6/[6] Should serialize duration
 translation_failure	expressions/temporal/Temporal6/[6] Should serialize duration [map={years: 12, months: 5, days: -14, hours: 16}, toString='P12Y5M-14DT16H', isEqual=true]
 translation_failure	expressions/temporal/Temporal6/[6] Should serialize duration [map={years: 12, months: 5, days: 14, hours: 16, minutes: 12, seconds: 70, nanoseconds: 1}, toString='P12Y5M14DT16H13M10.000000001S', isEqual=true]
 translation_failure	expressions/temporal/Temporal6/[7] Should serialize timezones correctly
-execution_failure	expressions/temporal/Temporal7/[1] Should compare dates [map={year: 1980, month: 12, day: 24}, map2={year: 1984, month: 10, day: 11}, gt=false, lt=true, ge=false, le=true, e=false]
-execution_failure	expressions/temporal/Temporal7/[1] Should compare dates [map={year: 1984, month: 10, day: 11}, map2={year: 1984, month: 10, day: 11}, gt=false, lt=false, ge=true, le=true, e=true]
+passed	expressions/temporal/Temporal7/[1] Should compare dates [map={year: 1980, month: 12, day: 24}, map2={year: 1984, month: 10, day: 11}, gt=false, lt=true, ge=false, le=true, e=false]
+passed	expressions/temporal/Temporal7/[1] Should compare dates [map={year: 1984, month: 10, day: 11}, map2={year: 1984, month: 10, day: 11}, gt=false, lt=false, ge=true, le=true, e=true]
 translation_failure	expressions/temporal/Temporal7/[2] Should compare local times [map={hour: 10, minute: 35}, map2={hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=true, ge=false, le=true, e=false]
 translation_failure	expressions/temporal/Temporal7/[2] Should compare local times [map={hour: 12, minute: 31, second: 14, nanosecond: 645876123}, map2={hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=false, ge=true, le=true, e=true]
 translation_failure	expressions/temporal/Temporal7/[3] Should compare times [map={hour: 10, minute: 0, timezone: '+01:00'}, map2={hour: 9, minute: 35, second: 14, nanosecond: 645876123, timezone: '+00:00'}, gt=false, lt=true, ge=false, le=true, e=false]
 translation_failure	expressions/temporal/Temporal7/[3] Should compare times [map={hour: 9, minute: 35, second: 14, nanosecond: 645876123, timezone: '+00:00'}, map2={hour: 9, minute: 35, second: 14, nanosecond: 645876123, timezone: '+00:00'}, gt=false, lt=false, ge=true, le=true, e=true]
-execution_failure	expressions/temporal/Temporal7/[4] Should compare local date times [map={year: 1980, month: 12, day: 11, hour: 12, minute: 31, second: 14}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=true, ge=false, le=true, e=false]
-execution_failure	expressions/temporal/Temporal7/[4] Should compare local date times [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=false, ge=true, le=true, e=true]
+passed	expressions/temporal/Temporal7/[4] Should compare local date times [map={year: 1980, month: 12, day: 11, hour: 12, minute: 31, second: 14}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=true, ge=false, le=true, e=false]
+passed	expressions/temporal/Temporal7/[4] Should compare local date times [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123}, gt=false, lt=false, ge=true, le=true, e=true]
 translation_failure	expressions/temporal/Temporal7/[5] Should compare date times [map={year: 1980, month: 12, day: 11, hour: 12, minute: 31, second: 14, timezone: '+00:00'}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, timezone: '+05:00'}, gt=false, lt=true, ge=false, le=true, e=false]
 translation_failure	expressions/temporal/Temporal7/[5] Should compare date times [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, timezone: '+05:00'}, map2={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, timezone: '+05:00'}, gt=false, lt=false, ge=true, le=true, e=true]
 execution_failure	expressions/temporal/Temporal7/[6] Should compare durations for equality [other=date({year: 1984, month: 10, day: 11}), e=false]
