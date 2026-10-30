@@ -145,8 +145,8 @@ translatable	clauses/delete/Delete2/[2] Delete optionally matched relationship
 translatable	clauses/delete/Delete2/[3] Delete relationship with bidirectional matching
 translatable	clauses/delete/Delete2/[4] Ignore null when deleting relationship
 correct_rejection	clauses/delete/Delete2/[5] Failing when deleting a relationship type
-translate_fail	clauses/delete/Delete3/[1] Detach deleting paths
-translate_fail	clauses/delete/Delete3/[2] Delete on null path
+translatable	clauses/delete/Delete3/[1] Detach deleting paths
+translatable	clauses/delete/Delete3/[2] Delete on null path
 translatable	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
 translatable	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
 translate_fail	clauses/delete/Delete4/[3] Create and delete in same query
@@ -161,16 +161,16 @@ correct_rejection	clauses/delete/Delete5/[8] Failing when using undefined variab
 correct_rejection	clauses/delete/Delete5/[9] Failing when deleting an integer expression
 translatable	clauses/delete/Delete6/[10] Skipping and limiting to a few results after deleting relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[11] Skipping zero result and limiting to all results after deleting relationships does not affect the result set nor the side effects
-translate_fail	clauses/delete/Delete6/[12] Filtering after deleting relationships affects the result set but not the side effects
+translatable	clauses/delete/Delete6/[12] Filtering after deleting relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[13] Aggregating in `RETURN` after deleting relationships affects the result set but not the side effects
-translate_fail	clauses/delete/Delete6/[14] Aggregating in `WITH` after deleting relationships affects the result set but not the side effects
+translatable	clauses/delete/Delete6/[14] Aggregating in `WITH` after deleting relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[1] Limiting to zero results after deleting nodes affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[2] Skipping all results after deleting nodes affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[3] Skipping and limiting to a few results after deleting nodes affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[4] Skipping zero results and limiting to all results after deleting nodes does not affect the result set nor the side effects
-translate_fail	clauses/delete/Delete6/[5] Filtering after deleting nodes affects the result set but not the side effects
+translatable	clauses/delete/Delete6/[5] Filtering after deleting nodes affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[6] Aggregating in `RETURN` after deleting nodes affects the result set but not the side effects
-translate_fail	clauses/delete/Delete6/[7] Aggregating in `WITH` after deleting nodes affects the result set but not the side effects
+translatable	clauses/delete/Delete6/[7] Aggregating in `WITH` after deleting nodes affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[8] Limiting to zero results after deleting relationships affects the result set but not the side effects
 translatable	clauses/delete/Delete6/[9] Skipping all results after deleting relationships affects the result set but not the side effects
 translatable	clauses/match-where/MatchWhere1/[10] Filter node with disjunctive property predicate on single variables with multiple bindings
@@ -590,8 +590,8 @@ translatable	clauses/match/Match9/[8] Variable length relationship in OPTIONAL M
 translatable	clauses/match/Match9/[9] Optionally matching named paths with variable length patterns
 translatable	clauses/merge/Merge1/[10] Merge must properly handle multiple labels
 translatable	clauses/merge/Merge1/[11] Merge should be able to merge using property of bound node
-translatable	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
-translatable	clauses/merge/Merge1/[13] Merge should bind a path
+translate_fail	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
+translate_fail	clauses/merge/Merge1/[13] Merge should bind a path
 translatable	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
 correct_rejection	clauses/merge/Merge1/[15] Fail when merge a node that is already bound
 correct_rejection	clauses/merge/Merge1/[16] Fail when using parameter as node predicate in MERGE
@@ -638,10 +638,10 @@ correct_rejection	clauses/merge/Merge5/[25] Fail when merging relationship with 
 correct_rejection	clauses/merge/Merge5/[26] Fail when merging relationship that is already bound
 correct_rejection	clauses/merge/Merge5/[27] Fail when using parameter as relationship predicate in MERGE
 correct_rejection	clauses/merge/Merge5/[28] Fail when using variable length relationship in MERGE
-translatable	clauses/merge/Merge5/[29] Fail on merging relationship with null property
+correct_rejection	clauses/merge/Merge5/[29] Fail on merging relationship with null property
 translatable	clauses/merge/Merge5/[2] Matching a relationship
 translatable	clauses/merge/Merge5/[3] Matching two relationships
-translatable	clauses/merge/Merge5/[4] Using bound variables from other updating clause
+translate_fail	clauses/merge/Merge5/[4] Using bound variables from other updating clause
 translatable	clauses/merge/Merge5/[5] Filtering relationships
 translatable	clauses/merge/Merge5/[6] Creating relationship when all matches filtered out
 translatable	clauses/merge/Merge5/[7] Matching incoming relationship
@@ -661,7 +661,7 @@ translate_fail	clauses/merge/Merge7/[5] Copying properties from literal map with
 translatable	clauses/merge/Merge8/[1] Using ON CREATE and ON MATCH
 translatable	clauses/merge/Merge9/[1] UNWIND with one MERGE
 translate_fail	clauses/merge/Merge9/[2] UNWIND with multiple MERGE
-translatable	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
+translate_fail	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
 translate_fail	clauses/merge/Merge9/[4] MERGE after WITH with predicate and WITH with aggregation
 translatable	clauses/remove/Remove1/[1] Remove a single node property
 translatable	clauses/remove/Remove1/[2] Remove multiple node properties
@@ -677,23 +677,23 @@ translatable	clauses/remove/Remove2/[4] Remove a non-existent node label
 translatable	clauses/remove/Remove2/[5] Ignore null when removing a node label
 translatable	clauses/remove/Remove3/[10] Skipping and limiting to a few results after removing a label from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[11] Skipping zero result and limiting to all results after removing a label from nodes does not affect the result set nor the side effects
-translate_fail	clauses/remove/Remove3/[12] Filtering after removing a label from nodes affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[12] Filtering after removing a label from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[13] Aggregating in `RETURN` after removing a label from nodes affects the result set but not the side effects
-translate_fail	clauses/remove/Remove3/[14] Aggregating in `WITH` after removing a label from nodes affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[14] Aggregating in `WITH` after removing a label from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[15] Limiting to zero results after removing a property from relationships affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[16] Skipping all results after removing a property from relationships affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[17] Skipping and limiting to a few results after removing a property from relationships affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[18] Skipping zero result and limiting to all results after removing a property from relationships does not affect the result set nor the side effects
-translate_fail	clauses/remove/Remove3/[19] Filtering after removing a property from relationships affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[19] Filtering after removing a property from relationships affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[1] Limiting to zero results after removing a property from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[20] Aggregating in `RETURN` after removing a property from relationships affects the result set but not the side effects
-translate_fail	clauses/remove/Remove3/[21] Aggregating in `WITH` after removing a property from relationships affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[21] Aggregating in `WITH` after removing a property from relationships affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[2] Skipping all results after removing a property from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[3] Skipping and limiting to a few results after removing a property from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[4] Skipping zero results and limiting to all results after removing a property from nodes does not affect the result set nor the side effects
-translate_fail	clauses/remove/Remove3/[5] Filtering after removing a property from nodes affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[5] Filtering after removing a property from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[6] Aggregating in `RETURN` after removing a property from nodes affects the result set but not the side effects
-translate_fail	clauses/remove/Remove3/[7] Aggregating in `WITH` after removing a property from nodes affects the result set but not the side effects
+translatable	clauses/remove/Remove3/[7] Aggregating in `WITH` after removing a property from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[8] Limiting to zero results after removing a label from nodes affects the result set but not the side effects
 translatable	clauses/remove/Remove3/[9] Skipping all results after removing a label from nodes affects the result set but not the side effects
 translatable	clauses/return-orderby/ReturnOrderBy1/[10] ORDER BY DESC should order lists in the expected order
@@ -715,20 +715,20 @@ translatable	clauses/return-orderby/ReturnOrderBy2/[13] Fail when sorting on var
 correct_rejection	clauses/return-orderby/ReturnOrderBy2/[14] Fail on aggregation in ORDER BY after RETURN
 translatable	clauses/return-orderby/ReturnOrderBy2/[1] ORDER BY should return results in ascending order
 translatable	clauses/return-orderby/ReturnOrderBy2/[2] ORDER BY DESC should return results in descending order
-translate_fail	clauses/return-orderby/ReturnOrderBy2/[3] Sort on aggregated function
+translatable	clauses/return-orderby/ReturnOrderBy2/[3] Sort on aggregated function
 translatable	clauses/return-orderby/ReturnOrderBy2/[4] Support sort and distinct
 translatable	clauses/return-orderby/ReturnOrderBy2/[5] Support ordering by a property after being distinct-ified
-translate_fail	clauses/return-orderby/ReturnOrderBy2/[6] Count star should count everything in scope
+translatable	clauses/return-orderby/ReturnOrderBy2/[6] Count star should count everything in scope
 translatable	clauses/return-orderby/ReturnOrderBy2/[7] Ordering with aggregation
 translatable	clauses/return-orderby/ReturnOrderBy2/[8] Returning all variables with ordering
 translatable	clauses/return-orderby/ReturnOrderBy2/[9] Using aliased DISTINCT expression in ORDER BY
-translate_fail	clauses/return-orderby/ReturnOrderBy3/[1] Sort on aggregate function and normal property
+translatable	clauses/return-orderby/ReturnOrderBy3/[1] Sort on aggregate function and normal property
 translatable	clauses/return-orderby/ReturnOrderBy4/[1] ORDER BY of a column introduced in RETURN should return salient results in ascending order
 translatable	clauses/return-orderby/ReturnOrderBy4/[2] Handle projections with ORDER BY
 translatable	clauses/return-orderby/ReturnOrderBy5/[1] Renaming columns before ORDER BY should return results in ascending order
-translate_fail	clauses/return-orderby/ReturnOrderBy6/[1] Handle constants and parameters inside an order by item which contains an aggregation expression
-translate_fail	clauses/return-orderby/ReturnOrderBy6/[2] Handle returned aliases inside an order by item which contains an aggregation expression
-translate_fail	clauses/return-orderby/ReturnOrderBy6/[3] Handle returned property accesses inside an order by item which contains an aggregation expression
+translatable	clauses/return-orderby/ReturnOrderBy6/[1] Handle constants and parameters inside an order by item which contains an aggregation expression
+translatable	clauses/return-orderby/ReturnOrderBy6/[2] Handle returned aliases inside an order by item which contains an aggregation expression
+translatable	clauses/return-orderby/ReturnOrderBy6/[3] Handle returned property accesses inside an order by item which contains an aggregation expression
 correct_rejection	clauses/return-orderby/ReturnOrderBy6/[4] Fail if not returned variables are used inside an order by item which contains an aggregation expression
 correct_rejection	clauses/return-orderby/ReturnOrderBy6/[5] Fail if more complex expressions, even if returned, are used inside an order by item which contains an aggregation expression
 translatable	clauses/return-skip-limit/ReturnSkipLimit1/[10] Fail when using non-constants in SKIP
@@ -859,23 +859,23 @@ translatable	clauses/set/Set5/[4] Explicit null values in a map remove old value
 translatable	clauses/set/Set5/[5] Set an empty map when using += has no effect
 translatable	clauses/set/Set6/[10] Skipping and limiting to a few results after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[11] Skipping zero result and limiting to all results after adding a label on nodes does not affect the result set nor the side effects
-translate_fail	clauses/set/Set6/[12] Filtering after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[12] Filtering after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[13] Aggregating in `RETURN` after adding a label on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[14] Aggregating in `WITH` after adding a label on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[14] Aggregating in `WITH` after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[15] Limiting to zero results after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[16] Skipping all results after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[17] Skipping and limiting to a few results after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[18] Skipping zero result and limiting to all results after setting a property on relationships does not affect the result set nor the side effects
-translate_fail	clauses/set/Set6/[19] Filtering after setting a property on relationships affects the result set but not the side effects
+translatable	clauses/set/Set6/[19] Filtering after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[1] Limiting to zero results after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[20] Aggregating in `RETURN` after setting a property on relationships affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[21] Aggregating in `WITH` after setting a property on relationships affects the result set but not the side effects
+translatable	clauses/set/Set6/[21] Aggregating in `WITH` after setting a property on relationships affects the result set but not the side effects
 translatable	clauses/set/Set6/[2] Skipping all results after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[3] Skipping and limiting to a few results after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[4] Skipping zero results and limiting to all results after setting a property on nodes does not affect the result set nor the side effects
-translate_fail	clauses/set/Set6/[5] Filtering after setting a property on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[5] Filtering after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[6] Aggregating in `RETURN` after setting a property on nodes affects the result set but not the side effects
-translate_fail	clauses/set/Set6/[7] Aggregating in `WITH` after setting a property on nodes affects the result set but not the side effects
+translatable	clauses/set/Set6/[7] Aggregating in `WITH` after setting a property on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[8] Limiting to zero results after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/set/Set6/[9] Skipping all results after adding a label on nodes affects the result set but not the side effects
 translatable	clauses/union/Union1/[1] Two elements, both unique, distinct
@@ -1177,14 +1177,14 @@ correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any n
 correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, a, exampleName=never defined]
 correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, b, b, f, e, a, exampleName=never defined]
 translatable	clauses/with-orderBy/WithOrderBy4/[10] Sort by a non-projected expression containing an alias of a projected expression containing the variable shadowed by the alias
-translate_fail	clauses/with-orderBy/WithOrderBy4/[11] Sort by an aggregate projection
+translatable	clauses/with-orderBy/WithOrderBy4/[11] Sort by an aggregate projection
 translatable	clauses/with-orderBy/WithOrderBy4/[12] Sort by an aliased aggregate projection
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[13] Fail on sorting by a non-projected aggregation on a variable
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[14] Fail on sorting by a non-projected aggregation on an expression
 translatable	clauses/with-orderBy/WithOrderBy4/[15] Sort by an aliased aggregate projection does allow subsequent matching
-translate_fail	clauses/with-orderBy/WithOrderBy4/[16] Handle constants and parameters inside an order by item which contains an aggregation expression
-translate_fail	clauses/with-orderBy/WithOrderBy4/[17] Handle projected variables inside an order by item which contains an aggregation expression
-translate_fail	clauses/with-orderBy/WithOrderBy4/[18]  Handle projected property accesses inside an order by item which contains an aggregation expression
+translatable	clauses/with-orderBy/WithOrderBy4/[16] Handle constants and parameters inside an order by item which contains an aggregation expression
+translatable	clauses/with-orderBy/WithOrderBy4/[17] Handle projected variables inside an order by item which contains an aggregation expression
+translatable	clauses/with-orderBy/WithOrderBy4/[18]  Handle projected property accesses inside an order by item which contains an aggregation expression
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[19] Fail if not projected variables are used inside an order by item which contains an aggregation expression
 translatable	clauses/with-orderBy/WithOrderBy4/[1] Sort by a projected expression
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[20] Fail if more complex expressions, even if projected, are used inside an order by item which contains an aggregation expression
@@ -1271,19 +1271,19 @@ translatable	expressions/aggregation/Aggregation3/[1] Sum only non-null values
 translatable	expressions/aggregation/Aggregation3/[2] No overflow during summation
 translatable	expressions/aggregation/Aggregation5/[1] `collect()` filtering nulls
 translatable	expressions/aggregation/Aggregation5/[2] OPTIONAL MATCH and `collect()` on node property
-translate_fail	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.0, result=10.0]
-translate_fail	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.5, result=20.0]
-translate_fail	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=1.0, result=30.0]
-translate_fail	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.0, result=10.0]
-translate_fail	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.5, result=20.0]
-translate_fail	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=1.0, result=30.0]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=-1]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1.1]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1000]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=-1]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1.1]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1000]
-correct_rejection	expressions/aggregation/Aggregation6/[5] `percentileDisc()` failing in more involved query
+translatable	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.0, result=10.0]
+translatable	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.5, result=20.0]
+translatable	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=1.0, result=30.0]
+translatable	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.0, result=10.0]
+translatable	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.5, result=20.0]
+translatable	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=1.0, result=30.0]
+translatable	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=-1]
+translatable	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1.1]
+translatable	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1000]
+translatable	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=-1]
+translatable	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1.1]
+translatable	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1000]
+translatable	expressions/aggregation/Aggregation6/[5] `percentileDisc()` failing in more involved query
 translatable	expressions/aggregation/Aggregation8/[1] Distinct on unbound node
 translatable	expressions/aggregation/Aggregation8/[2] Distinct on null
 translatable	expressions/aggregation/Aggregation8/[3] Collect distinct nulls
