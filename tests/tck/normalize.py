@@ -99,16 +99,61 @@ def normalize_actual_value(value: Any, *, as_node: bool = False, as_rel: bool = 
     return value
 
 
+def values_equal(actual: Any, expected: Any, *, ignore_list_order: bool = False) -> bool:
+    """Cypher-value equality for comparing a result cell with a TCK cell.
+
+    Stricter than Python ``==``: a boolean never equals a number (Python says
+    ``True == 1``), and ``NaN`` equals ``NaN`` (a TCK cell ``NaN`` asserts the
+    value is NaN).  Integers and floats compare numerically, because ArangoDB
+    returns a whole float as an integer.  With ``ignore_list_order`` lists
+    compare as multisets, at every depth.
+    """
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return isinstance(actual, bool) and isinstance(expected, bool) and actual == expected
+    if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+        if actual != actual and expected != expected:
+            return True
+        return actual == expected
+    if isinstance(actual, list) and isinstance(expected, list):
+        if len(actual) != len(expected):
+            return False
+        if not ignore_list_order:
+            return all(
+                values_equal(a, e, ignore_list_order=False) for a, e in zip(actual, expected, strict=True)
+            )
+        return _multiset_equal(actual, expected, ignore_list_order=True)
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        if actual.keys() != expected.keys():
+            return False
+        return all(
+            values_equal(actual[k], expected[k], ignore_list_order=ignore_list_order) for k in expected
+        )
+    return type(actual) is type(expected) and actual == expected
+
+
+def _multiset_equal(actual: list[Any], expected: list[Any], *, ignore_list_order: bool) -> bool:
+    remaining = list(actual)
+    for e in expected:
+        for i, a in enumerate(remaining):
+            if values_equal(a, e, ignore_list_order=ignore_list_order):
+                remaining.pop(i)
+                break
+        else:
+            return False
+    return not remaining
+
+
 def results_match(
     actual_rows: list[dict[str, Any]],
     expected_table: list[dict[str, str]],
     *,
     ordered: bool = False,
+    ignore_list_order: bool = False,
 ) -> tuple[bool, str]:
     """Compare actual query results against expected TCK table.
 
     Returns (match, explanation_if_mismatch). When *ordered* is False,
-    rows are compared as multisets (sorted by canonical repr).
+    rows are compared as multisets.
     """
     if len(actual_rows) != len(expected_table):
         return False, (f"row count mismatch: got {len(actual_rows)}, expected {len(expected_table)}")
@@ -118,16 +163,19 @@ def results_match(
 
     if ordered:
         for idx, (a, e) in enumerate(zip(norm_actual, norm_expected, strict=True)):
-            if a != e:
+            if not values_equal(a, e, ignore_list_order=ignore_list_order):
                 return False, f"row {idx} mismatch: {a!r} != {e!r}"
         return True, ""
 
-    key_fn = _row_sort_key
-    sorted_actual = sorted(norm_actual, key=key_fn)
-    sorted_expected = sorted(norm_expected, key=key_fn)
-    for idx, (a, e) in enumerate(zip(sorted_actual, sorted_expected, strict=True)):
-        if a != e:
-            return False, f"mismatch after sorting at position {idx}: {a!r} != {e!r}"
+    remaining = list(norm_actual)
+    for e in sorted(norm_expected, key=_row_sort_key):
+        for i, a in enumerate(remaining):
+            if values_equal(a, e, ignore_list_order=ignore_list_order):
+                remaining.pop(i)
+                break
+        else:
+            closest = sorted(remaining, key=_row_sort_key)[0] if remaining else None
+            return False, f"expected row not found: {e!r}; first unmatched actual: {closest!r}"
     return True, ""
 
 
@@ -341,7 +389,7 @@ def results_contain(
         for e_row in norm_expected:
             found = False
             while ai < len(norm_actual):
-                if norm_actual[ai] == e_row:
+                if values_equal(norm_actual[ai], e_row):
                     found = True
                     ai += 1
                     break
@@ -354,7 +402,7 @@ def results_contain(
     for e_row in norm_expected:
         found = False
         for i, a_row in enumerate(remaining):
-            if a_row == e_row:
+            if values_equal(a_row, e_row):
                 remaining.pop(i)
                 found = True
                 break

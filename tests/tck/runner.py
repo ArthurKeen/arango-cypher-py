@@ -254,9 +254,23 @@ def _split_props(s: str) -> list[str]:
     return parts
 
 
+_FUNCTION_CALL_RE = re.compile(r"^[A-Za-z_][\w.]*\s*\(")
+
+
+class _UnloadableValue(ValueError):
+    """The direct loader cannot evaluate a setup value (e.g. a function call)."""
+
+
 def _parse_cypher_value(val_str: str) -> Any:
-    """Parse a Cypher literal value."""
+    """Parse a Cypher literal value.
+
+    A function call is refused: storing its source text as a string would seed
+    a different graph from the one the scenario describes, and the scenario
+    would then fail (or pass) for a reason unrelated to the query under test.
+    """
     s = val_str.strip()
+    if _FUNCTION_CALL_RE.match(s):
+        raise _UnloadableValue(f"direct loader cannot evaluate {s!r}")
     if s == "null":
         return None
     if s == "true":
@@ -463,6 +477,13 @@ def _resolve_expression(expr: str, var_ids: dict[str, str], coll: Any) -> Any:
     return None
 
 
+def _execute_create_directly_or_fail(db: Any, cypher: str) -> ScenarioOutcome | None:
+    try:
+        return _execute_create_directly(db, cypher)
+    except _UnloadableValue as e:
+        return ScenarioOutcome(status="failed", reason=f"setup: {e}")
+
+
 def _execute_setup_cypher(
     db: Any,
     cypher: str,
@@ -476,7 +497,7 @@ def _execute_setup_cypher(
         out = translate(cypher, mapping=mb)
     except CoreError as e:
         if e.code in _SKIP_TRANSLATE_CODES:
-            return _execute_create_directly(db, cypher)
+            return _execute_create_directly_or_fail(db, cypher)
         return ScenarioOutcome(status="failed", reason=f"setup translate failed: {e}")
     except Exception as e:
         return ScenarioOutcome(status="skipped", reason=f"setup translate error: {e}")
@@ -491,7 +512,7 @@ def _execute_setup_cypher(
             or "1511" in err_str
             or "assigned multiple times" in err_str
         ):
-            return _execute_create_directly(db, cypher)
+            return _execute_create_directly_or_fail(db, cypher)
         return ScenarioOutcome(status="failed", reason=f"setup execute failed: {e}")
     return None
 
@@ -507,28 +528,90 @@ def _check_error_expectation(step_text: str, error: Exception) -> ScenarioOutcom
     return ScenarioOutcome(status="failed", reason=f"expected error but got: {error!r}")
 
 
+@dataclass
+class _QueryResult:
+    """What the last ``executing [control] query:`` step produced."""
+
+    query: str
+    rows: list[Any] | None = None
+    error: Exception | None = None
+    stage: str = ""  # translate|execute, when ``error`` is set
+
+
+def _run_query(db: Any, cypher: str, mapping: MappingBundle, params: dict[str, Any]) -> _QueryResult:
+    try:
+        out = translate(cypher, mapping=mapping, params=params or None)
+    except Exception as e:  # CoreError and anything else the translator raises
+        return _QueryResult(query=cypher, error=e, stage="translate")
+    try:
+        rows = list(AqlExecutor(db).execute(out.to_aql_query()))
+    except Exception as e:
+        return _QueryResult(query=cypher, error=e, stage="execute")
+    return _QueryResult(query=cypher, rows=rows)
+
+
+def _rows_or_failure(result: _QueryResult | None) -> list[Any] | ScenarioOutcome:
+    """The result's rows, or the failed outcome a row assertion reports."""
+    if result is None:
+        return ScenarioOutcome(status="skipped", reason="assertion before any query")
+    if result.error is None:
+        assert result.rows is not None
+        return result.rows
+    e = result.error
+    if result.stage == "translate" and isinstance(e, CoreError) and e.code in _SKIP_TRANSLATE_CODES:
+        return ScenarioOutcome(status="skipped", reason=f"translate skipped: {e.code}")
+    return ScenarioOutcome(status="failed", reason=f"{result.stage} failed: {e}")
+
+
+def _check_rows(
+    rows: list[Any],
+    table: list[dict[str, Any]],
+    *,
+    ordered: bool,
+    ignore_list_order: bool = False,
+    contains: bool = False,
+) -> ScenarioOutcome | None:
+    if contains:
+        match, explanation = results_contain(rows, table, ordered=ordered)
+    else:
+        match, explanation = results_match(rows, table, ordered=ordered, ignore_list_order=ignore_list_order)
+    return None if match else ScenarioOutcome(status="failed", reason=explanation)
+
+
+#: ``Then`` step prefix -> (ordered, ignore_list_order, contains) for row-table assertions.
+_TABLE_ASSERTIONS: tuple[tuple[str, tuple[bool, bool, bool]], ...] = (
+    ("the result should be, in order (ignoring element order for lists):", (True, True, False)),
+    ("the result should be (ignoring element order for lists):", (False, True, False)),
+    ("the result should be, in order:", (True, False, False)),
+    ("the result should be, in any order:", (False, False, False)),
+    ("the result should be:", (False, False, False)),
+    ("the result should contain, in any order:", (False, False, True)),
+    ("the result should contain, in order:", (True, False, True)),
+)
+
+
 def run_scenario(
     scenario: Scenario,
     *,
     db_name: str,
     mapping_fixture: str,
 ) -> ScenarioOutcome:
-    """Run a single TCK scenario."""
+    """Run a single TCK scenario, step by step.
+
+    Steps run in order: each ``executing query:`` / ``executing control
+    query:`` step runs its query, and each ``Then`` assertion checks the most
+    recent result — so a control query's table is checked against the control
+    query, not the query before it.  Error expectations accept any error (the
+    error class is not compared); side effects are not verified.
+    """
     db = _connect_db(db_name)
     _ensure_doc_collection(db, "vertices")
     _ensure_edge_collection(db, "edges")
     mapping = _build_mapping_for_scenario(scenario, mapping_fixture)
     params: dict[str, Any] = {}
-    cypher: str | None = None
-    expected_rows: list[dict[str, Any]] | None = None
-    expect_empty: bool = False
-    expect_error: str | None = None
-    expect_ordered: bool = False
-
-    expect_row_count: int | None = None
-    expect_contains: list[dict[str, Any]] | None = None
-    expect_contains_ordered: bool = False
-    expect_ignoring_list_order: bool = False
+    last: _QueryResult | None = None
+    asserted = False
+    error_stage = ""
 
     for step in scenario.steps:
         s = step.text
@@ -558,144 +641,85 @@ def run_scenario(
         if step.keyword in {"Given", "And"} and s.startswith("there exists a procedure"):
             return ScenarioOutcome(status="skipped", reason="procedures not supported")
 
-        if step.keyword in {"When", "And"} and s.startswith("executing query:"):
+        if step.keyword in {"When", "And"} and (
+            s.startswith("executing query:") or s.startswith("executing control query:")
+        ):
             if not step.doc_string:
                 return ScenarioOutcome(status="skipped", reason="missing query docstring")
-            cypher = step.doc_string.strip()
+            last = _run_query(db, step.doc_string.strip(), mapping, params)
             continue
 
-        if step.keyword in {"When", "And"} and s.startswith("executing control query:"):
+        if step.keyword not in {"Then", "And"}:
+            return ScenarioOutcome(status="skipped", reason=f"unsupported step: {step.keyword} {step.text}")
+
+        if s.startswith("the side effects should be:") or s == "no side effects":
             continue
 
-        if step.keyword in {"Then", "And"} and s == "the result should be empty":
-            expect_empty = True
+        if any(s.startswith(prefix) for prefix in _ERROR_STEP_PREFIXES):
+            if last is None:
+                return ScenarioOutcome(status="skipped", reason="error assertion before any query")
+            if last.error is None:
+                return ScenarioOutcome(
+                    status="failed",
+                    reason=f"expected error ({s}) but query translated successfully",
+                )
+            outcome = _check_error_expectation(s, last.error)
+            if outcome.status != "passed":
+                return outcome
+            # Which stage raised is kept for the report: a translator refusal is
+            # evidence the error is understood; an ArangoDB execution error may
+            # be one for an unrelated reason.
+            error_stage = last.stage
+            asserted = True
             continue
 
-        if step.keyword in {"Then", "And"} and s.startswith("the result should be, in order:"):
-            expected_rows = _parse_table(step.data_table)
-            expect_ordered = True
+        if s == "the result should be empty":
+            rows = _rows_or_failure(last)
+            if isinstance(rows, ScenarioOutcome):
+                return rows
+            if rows:
+                return ScenarioOutcome(status="failed", reason=f"expected empty, got {len(rows)} rows")
+            asserted = True
             continue
 
-        if step.keyword in {"Then", "And"} and s.startswith("the result should be, in any order:"):
-            expected_rows = _parse_table(step.data_table)
-            expect_ordered = False
-            continue
-
-        if step.keyword in {"Then", "And"} and s.startswith(
-            "the result should be (ignoring element order for lists):"
-        ):
-            expected_rows = _parse_table(step.data_table)
-            expect_ordered = False
-            expect_ignoring_list_order = True
-            continue
-
-        if step.keyword in {"Then", "And"} and s.startswith(
-            "the result should be, in order (ignoring element order for lists):"
-        ):
-            expected_rows = _parse_table(step.data_table)
-            expect_ordered = True
-            expect_ignoring_list_order = True
-            continue
-
-        if step.keyword in {"Then", "And"} and s.startswith("the result should be:"):
-            expected_rows = _parse_table(step.data_table)
-            continue
-
-        if step.keyword in {"Then", "And"} and s.startswith("the result should contain, in any order:"):
-            expect_contains = _parse_table(step.data_table)
-            expect_contains_ordered = False
-            continue
-
-        if step.keyword in {"Then", "And"} and s.startswith("the result should contain, in order:"):
-            expect_contains = _parse_table(step.data_table)
-            expect_contains_ordered = True
-            continue
-
-        row_count_m = _ROW_COUNT_RE.match(s) if step.keyword in {"Then", "And"} else None
+        row_count_m = _ROW_COUNT_RE.match(s)
         if row_count_m:
-            expect_row_count = int(row_count_m.group(1))
+            rows = _rows_or_failure(last)
+            if isinstance(rows, ScenarioOutcome):
+                return rows
+            if len(rows) != int(row_count_m.group(1)):
+                return ScenarioOutcome(
+                    status="failed",
+                    reason=f"row count: got {len(rows)}, expected {row_count_m.group(1)}",
+                )
+            asserted = True
             continue
 
-        if step.keyword in {"Then", "And"}:
-            for prefix in _ERROR_STEP_PREFIXES:
-                if s.startswith(prefix):
-                    expect_error = s
-                    break
-            if expect_error:
-                continue
-
-        if step.keyword in {"Then", "And"} and s.startswith("the side effects should be:"):
-            continue
-
-        if step.keyword in {"Then", "And"} and s == "no side effects":
+        table_mode = next((mode for prefix, mode in _TABLE_ASSERTIONS if s.startswith(prefix)), None)
+        if table_mode is not None:
+            rows = _rows_or_failure(last)
+            if isinstance(rows, ScenarioOutcome):
+                return rows
+            ordered, ignore_list_order, contains = table_mode
+            failure = _check_rows(
+                rows,
+                _parse_table(step.data_table),
+                ordered=ordered,
+                ignore_list_order=ignore_list_order,
+                contains=contains,
+            )
+            if failure is not None:
+                return failure
+            asserted = True
             continue
 
         return ScenarioOutcome(status="skipped", reason=f"unsupported step: {step.keyword} {step.text}")
 
-    if not cypher:
+    if last is None:
         return ScenarioOutcome(status="skipped", reason="no query executed")
-
-    try:
-        out = translate(cypher, mapping=mapping, params=params or None)
-    except CoreError as e:
-        if expect_error:
-            return _check_error_expectation(expect_error, e)
-        if e.code in _SKIP_TRANSLATE_CODES:
-            return ScenarioOutcome(status="skipped", reason=f"translate skipped: {e.code}")
-        return ScenarioOutcome(status="failed", reason=f"translate failed: {e}")
-    except Exception as e:
-        if expect_error:
-            return _check_error_expectation(expect_error, e)
-        return ScenarioOutcome(status="skipped", reason=f"translate error: {e}")
-
-    if expect_error:
-        return ScenarioOutcome(
-            status="failed",
-            reason=f"expected error ({expect_error}) but query translated successfully",
-        )
-
-    try:
-        rows = list(AqlExecutor(db).execute(out.to_aql_query()))
-    except Exception as e:
-        if expect_error:
-            return _check_error_expectation(expect_error, e)
-        return ScenarioOutcome(status="failed", reason=f"execute failed: {e}")
-
-    if expect_empty:
-        if rows:
-            return ScenarioOutcome(status="failed", reason=f"expected empty, got {len(rows)} rows")
-        return ScenarioOutcome(status="passed")
-
-    if expect_row_count is not None:
-        if len(rows) != expect_row_count:
-            return ScenarioOutcome(
-                status="failed",
-                reason=f"row count: got {len(rows)}, expected {expect_row_count}",
-            )
-        if expected_rows is None and expect_contains is None:
-            return ScenarioOutcome(status="passed")
-
-    if expected_rows is not None:
-        match, explanation = results_match(
-            rows,
-            expected_rows,
-            ordered=expect_ordered,
-        )
-        if match:
-            return ScenarioOutcome(status="passed")
-        return ScenarioOutcome(status="failed", reason=explanation)
-
-    if expect_contains is not None:
-        match, explanation = results_contain(
-            rows,
-            expect_contains,
-            ordered=expect_contains_ordered,
-        )
-        if match:
-            return ScenarioOutcome(status="passed")
-        return ScenarioOutcome(status="failed", reason=explanation)
-
-    return ScenarioOutcome(status="skipped", reason="no assertion")
+    if not asserted:
+        return ScenarioOutcome(status="skipped", reason="no assertion")
+    return ScenarioOutcome(status="passed", reason=f"error at {error_stage}" if error_stage else None)
 
 
 def run_feature(

@@ -21,6 +21,32 @@ Every scenario accounted for, from the live run:
 | Harness-skipped (procedure step) | 51 |
 | **Total** | **3,861** |
 
+## Re-baseline — 2026-10-30
+
+The 2026-09-10 figure is superseded. Measured by the per-scenario execution ledger
+(`tests/tck/execution_ledger.tsv`, ratcheted on every PR by
+`tests/integration/test_tck_execution_ratchet.py`) after the harness fixes below:
+
+| Outcome | Count |
+| --- | ---: |
+| Rows / expected error matched | 1,598 |
+| Correctly rejected by the translator | 306 |
+| **Correct outcomes** | **1,904 (49.3%)** |
+| Execution failures (wrong rows, AQL errors, missing rejections) | 889 |
+| Translation failures | 1,017 |
+| Harness-skipped (procedure steps) | 51 |
+
+For comparison, arango-gql-gateway reports 3,816 of 3,897 (97.9%) with the same
+definition (rows match, or some error when an error is expected; side effects not
+verified). Temporal accounts for 956 of our 2,019 failures.
+
+Harness fixes in this re-baseline: steps run in order, so `executing control query:`
+runs and its table is checked against it (12 former false passes in Temporal4 and
+Merge6/7 now fail honestly); cells compare with Cypher equality (Python's
+`True == 1` no longer passes); rows match as a multiset rather than by a text sort;
+"ignoring element order for lists" is honoured; the setup loader refuses function
+calls instead of storing their source text.
+
 ## Definition of done
 
 "100% syntax" **must** mean *passability* — the scenario translates, or is rejected exactly

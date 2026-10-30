@@ -1183,6 +1183,17 @@ bypass + audit log, MT-8 security review) live in
   `./.venv/bin/python tests/tck/ledger.py --write`. Passing outcomes are
   `translatable` and `correct_rejection` — never "translates" alone, since 690
   scenarios are negative tests where translating is the defect.
+- **Execution ratchet** — translatability is an upper bound, not conformance.
+  [`tests/tck/execution_ledger.tsv`](../tests/tck/execution_ledger.tsv) records,
+  per scenario, whether it returned the TCK's expected rows (or its expected
+  error) on a live ArangoDB; this is the headline conformance figure and the one
+  comparable with other Cypher-on-Arango engines.
+  `tests/integration/test_tck_execution_ratchet.py` runs the corpus (~1 min) in
+  the integration job on every PR and MUST fail if a scenario stops passing or an
+  improvement goes unrecorded. The harness runs a scenario's steps in order — a
+  control query's table is checked against the control query — and compares
+  cells with Cypher equality (a boolean never equals a number). Regenerate with
+  `RUN_INTEGRATION=1 ./.venv/bin/python tests/tck/execution_ledger.py --write`.
 - **NL eval gate** — opt-in (`RUN_NL2CYPHER_EVAL=1`), nightly CI matrix over
   OpenAI + Anthropic against committed baselines.
 - **CI** — `ci.yml` (ruff + unit incl. the conformance ratchet + integration on
