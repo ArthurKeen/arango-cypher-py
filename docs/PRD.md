@@ -676,8 +676,32 @@ compiles to the two-valued test the filter observes, with De Morgan's laws
 under `NOT`; an equality keeps its plain `n.p == @v` form beside a null guard
 on the parameter, so ArangoDB still serves it from an index. A predicate
 whose value is returned or stored keeps null (`RETURN n.age > 30` is null for
-a null `age`). The quantifiers `any`/`all`/`none`/`single` treat a null
-element predicate as not true rather than returning null.
+a null `age`). The quantifiers `any`/`all`/`none`/`single` return Cypher's
+three-valued answer: the predicate is evaluated per element as a value and the
+counts of true, false and null results decide (`all(x IN [1, null] WHERE x > 0)`
+is null, `any(…)` of it is true; a null list gives null;
+`_translate_v0/local_scopes.py`).
+
+**Constant expressions are evaluated at translate time**
+(`_translate_v0/const_eval.py`, value rules in `cypher_values.py`, functions in
+`cypher_functions.py`). An expression whose inputs are all known — literals,
+variables a `WITH` bound to constants, deterministic functions of those — is
+evaluated with Cypher's semantics and emitted as a literal (strings and
+composites as bind variables, never interpolated). Cypher and AQL disagree on
+exactly these values: nulls inside lists and maps (`[1, null] = [1, null]` is
+null), comparison across types (`1 < '1'` is null, `NaN` orders false), integer
+division and remainder (Java's), number formatting (`toString(1e20)` is
+`'1.0E20'`), 64-bit overflow. Anything the evaluator does not model (data,
+parameters, `rand()`, aggregates) is compiled to AQL as before. A runtime
+Cypher error becomes `FAIL()` at its position, so it fires only when evaluated
+(`CASE WHEN false THEN 1/0 END` is fine); a compile-time error (wrong arity)
+still rejects the query. A NaN or infinite result is not folded (JSON cannot
+carry it).
+
+A variable local to an expression — a list comprehension's, quantifier's or
+`reduce()`'s — and an `UNWIND` variable get a fresh AQL name when the same name
+is bound elsewhere in the query: AQL keeps a `FOR` variable in scope after Cypher
+drops it at a `WITH`, and redeclaring it is an error (ERR 1511).
 
 An inline pattern property (`(n {name: 'Alice'})`, `[r {since: $s}]`) is the
 same `=`: exact, served by an index on the property, and never true for a

@@ -47,6 +47,11 @@ def without_constant_folding():
     ``true`` and the lowering a data-dependent list takes is never exercised.
     """
     from arango_cypher._translate_v0.const_eval import constant_folding
+    from arango_cypher.api import clear_translate_cache
 
+    # translate() caches by query text, mapping and options — not by this
+    # switch — so an earlier test's folded translation would be served here.
+    clear_translate_cache()
     with constant_folding(False):
         yield
+    clear_translate_cache()

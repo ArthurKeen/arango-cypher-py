@@ -36,19 +36,22 @@ _const_env: ContextVar[Mapping[str, Any]] = ContextVar("_const_env", default=Map
 
 #: Off only in tests that check how a construct lowers to AQL: they use
 #: literal inputs, which folding would evaluate before the lowering runs.
-_folding_enabled: ContextVar[bool] = ContextVar("_folding_enabled", default=True)
+#: Production never changes it.  ``translate()``'s cache is not keyed on it, so
+#: whoever toggles it clears that cache (the ``without_constant_folding`` fixture).
+_folding_enabled = True
 
 _MISSING = object()
 
 
 @contextmanager
 def constant_folding(enabled: bool) -> Iterator[None]:
-    """Enable or disable compile-time folding for the translations inside."""
-    token = _folding_enabled.set(enabled)
+    """Enable or disable compile-time folding for the translations inside (tests)."""
+    global _folding_enabled
+    previous, _folding_enabled = _folding_enabled, enabled
     try:
         yield
     finally:
-        _folding_enabled.reset(token)
+        _folding_enabled = previous
 
 
 def const_env() -> Mapping[str, Any]:
@@ -183,7 +186,7 @@ def try_fold(
     fails, whose AQL is a ``FAIL()``); ``None`` overall means "not constant —
     compile it normally".
     """
-    if not _folding_enabled.get() or is_trivial(ctx):
+    if not _folding_enabled or is_trivial(ctx):
         return None
     try:
         value = evaluate_or_not_constant(ctx, shadowed=shadowed)
