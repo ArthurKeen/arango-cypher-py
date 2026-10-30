@@ -532,6 +532,16 @@ either an analyzer defect (filed upstream against `arangodb-schema-analyzer`) or
 a fixture error. The benchmark therefore also measures whether the analyzer can
 detect LDBC's label hierarchy, which today it cannot.
 
+**Status (2026-10-29): implemented** (`tests/ldbc/mapping_diff.py`,
+`tests/integration/test_ldbc_mapping_acquisition.py`), on both data sets and
+both layouts, with analyzer 0.15.1 and 0.17.0. Labels, collections, styles,
+type values and relationship types agree. The remaining differences are
+filed: arangodb-schema-analyzer #21 (every property typed `string`), #43
+(supertypes not detected), #44 (no domain/range for relationships between
+several labels) and #46 (a property on only some documents is dropped). The
+`string` typing also led to arango-cypher #76: declared property types no
+longer choose what an operator computes.
+
 ---
 
 ## 6. Work packages
@@ -982,6 +992,10 @@ Decided by the maintainer on 2026-10-26:
 6. **The INS1 upstream bug** is reported:
    [ldbc/ldbc_snb_interactive_v2_impls#10](https://github.com/ldbc/ldbc_snb_interactive_v2_impls/issues/10).
    v1 has the same bug.
+
+**Correctness on ArangoDB 3.12 (2026-10-29).** The execution ledger, the
+integration suite and the TCK were run against `arangodb:3.12.12`: identical
+to 3.11 (PG 52 / LPG 52; same 1,861 TCK scenarios pass).
 
 Decided by the maintainer on 2026-10-29, closing out correctness:
 

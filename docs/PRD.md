@@ -1219,7 +1219,14 @@ corpora). The plan, research and baseline are in
     and LPG.
   - Both layouts have committed mapping fixtures (`ldbc_pg`, `ldbc_lpg`).
   - The bundle acquired live from each loaded layout is diffed against its
-    fixture. This is §7 live-database coverage.
+    fixture. This is §7 live-database coverage
+    (`tests/integration/test_ldbc_mapping_acquisition.py`,
+    `tests/ldbc/mapping_diff.py`). Every difference must be a known analyzer
+    gap filed upstream (arangodb-schema-analyzer #21 property types, #43
+    supertypes, #44 domain/range of multi-label relationships, #46 sparse
+    properties); anything else fails. Labels, collections, styles, type values
+    and relationship types already agree. The test needs the optional
+    analyzer and is skipped without it.
 - **LDBC-3 Outcome ledger.** Each operation × layout records `parses`,
   `translates`, `executes` and `matches_oracle`, or a terminal state with a
   reason:
@@ -1385,7 +1392,7 @@ React + TypeScript + Vite + CodeMirror 6 + Cytoscape.js + Tailwind (UI).
 | FastAPI service (connection/translate/NL/schema/mapping/corrections/tools) | **Done** |
 | Cypher Workbench UI (chat-first redesign, schema graph, results, history, learning) | **Done** (debug/demo scope) |
 | Neo4j cross-validation (Movies 20/20, Northwind 14/14) | **Done** (34/34 re-verified 2026-08-06) |
-| LDBC SNB benchmark (§12.1) | **Correctness done, performance in progress.** Phase 0 (WP-31 to WP-34) and Phase 1 (WP-35 to WP-42) are complete, and milestones M2 and M3 were achieved on 2026-10-29: every operation in subset matches the Neo4j oracle on PG and LPG, with no `translates_wrong` cell. Open: the live mapping diff (LDBC-2), the benchmark runner and SF0.1/SF1 runs (LDBC-6, LDBC-8, WP-43/44), then the hybrid layout. Current figures are in `tests/ldbc/execution_ledger.tsv` and `translation_ledger.tsv`; they are intentionally not inlined here |
+| LDBC SNB benchmark (§12.1) | **Correctness done, performance in progress.** Phase 0 (WP-31 to WP-34) and Phase 1 (WP-35 to WP-42) are complete, and milestones M2 and M3 were achieved on 2026-10-29: every operation in subset matches the Neo4j oracle on PG and LPG, with no `translates_wrong` cell. Open: the benchmark runner and SF0.1/SF1 runs (LDBC-6, LDBC-8, WP-43/44), then the hybrid layout. Current figures are in `tests/ldbc/execution_ledger.tsv` and `translation_ledger.tsv`; they are intentionally not inlined here |
 | Multi-tenant Layers 1, 2, 4, 5, 6 | **Done** |
 | Multi-tenant Layer 3 (Cypher AST injection) route wiring | **Partial** (core done) |
 | Multi-tenant Layer 0 (storage) | **Partial** |
