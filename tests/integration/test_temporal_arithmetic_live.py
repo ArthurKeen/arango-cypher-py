@@ -148,13 +148,36 @@ def test_a_property_plus_a_duration_from_a_parameter(db: Any) -> None:
     assert rows == [{"id": 11}, {"id": 12}, {"id": 13}, {"id": 20}]
 
 
+_CLAMP = (
+    "RETURN datetime('2012-01-31T10:00:00Z') + duration({months: 1}) AS feb, "
+    "datetime('2013-03-31T10:00:00Z') - duration({months: 1, hours: 2}) AS back"
+)
+
+
+@pytest.mark.usefixtures("without_constant_folding")
 def test_months_clamp_to_the_end_of_the_month(db: Any) -> None:
+    # The run-time lowering (data-dependent operands take it); literals here.
+    rows = _run(db, _CLAMP)
+    assert rows == [{"feb": "2012-02-29T10:00:00.000Z", "back": "2013-02-28T08:00:00.000Z"}]
+
+
+def test_months_clamp_when_folded(db: Any) -> None:
+    # Constant operands fold at translate time and print as Neo4j does.
+    rows = _run(db, _CLAMP)
+    assert rows == [{"feb": "2012-02-29T10:00Z", "back": "2013-02-28T08:00Z"}]
+
+
+def test_a_constant_in_a_named_zone_filters_stored_values(db: Any) -> None:
+    # Folded, the bound prints as '2012-09-09T02:00+02:00[Europe/Berlin]';
+    # AQL's DATE_TIMESTAMP reads the [zone] suffix as invalid (null), which
+    # would silently match nothing. 02:00 in Berlin's summer time is 00:00Z.
     rows = _run(
         db,
-        "RETURN datetime('2012-01-31T10:00:00Z') + duration({months: 1}) AS feb, "
-        "datetime('2013-03-31T10:00:00Z') - duration({months: 1, hours: 2}) AS back",
+        "MATCH (p:Post) WHERE p.creationDate >= "
+        "datetime({year: 2012, month: 9, day: 9, hour: 2, timezone: 'Europe/Berlin'}) "
+        "RETURN p.id AS id ORDER BY id",
     )
-    assert rows == [{"feb": "2012-02-29T10:00:00.000Z", "back": "2013-02-28T08:00:00.000Z"}]
+    assert rows == [{"id": 12}, {"id": 13}]
 
 
 def test_a_null_duration_field_makes_the_sum_null(db: Any) -> None:

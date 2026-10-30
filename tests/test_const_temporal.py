@@ -215,3 +215,24 @@ def test_comparison_with_a_property_reads_the_folded_value_on_the_time_line() ->
         "MATCH (n:User) WHERE n.born > datetime('2010-01-01T12:00+01:00') RETURN n", mapping=MAPPING
     )
     assert out.bind_vars["cv0"] == "2010-01-01T12:00+01:00"
+
+
+def test_a_folded_zoned_constant_is_compared_without_its_zone_name():
+    # AQL's DATE_TIMESTAMP reads '…+02:00[Europe/Berlin]' as invalid (null).
+    out = translate(
+        "MATCH (p:Post) WHERE p.creationDate >= "
+        "datetime({year: 2012, month: 9, day: 9, hour: 2, timezone: 'Europe/Berlin'}) RETURN p.id",
+        mapping=mapping_bundle_for("ldbc_pg"),
+    )
+    assert out.bind_vars["cv0"] == "2012-09-09T02:00+02:00[Europe/Berlin]"
+    assert 'DATE_TIMESTAMP(IS_STRING(@cv0) ? FIRST(SPLIT(@cv0, "[")) : @cv0)' in out.aql
+    assert "DATE_TIMESTAMP(p.creationDate)" in out.aql
+
+
+def test_run_time_temporal_operands_keep_the_plain_form():
+    out = translate(
+        "MATCH (m:Message) WHERE $date <= m.creationDate RETURN m.id",
+        mapping=mapping_bundle_for("ldbc_pg"),
+        params={"date": "2012-01-01T00:00:00Z"},
+    )
+    assert "SPLIT" not in out.aql
