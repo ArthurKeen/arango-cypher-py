@@ -18,6 +18,8 @@ WRITE_CLAUSE_IDS = (
     + [f"C{n}" for n in range(430, 432)]
     # One write per variable, in its own collection
     + [f"C{n}" for n in range(440, 446)]
+    # SET / DELETE mid-pipeline, before a WITH
+    + [f"C{n}" for n in range(446, 448)]
 )
 
 

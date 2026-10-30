@@ -809,6 +809,17 @@ match with no rows still succeeds and returning the entity itself or its
 forbids reading a collection after writing it (ERR 1579), which deleting
 inside the matching loop did as soon as a pattern matched more than one row.
 
+`SET`, `REMOVE` and `DELETE` may also stand before a WITH (`MATCH (n) SET
+n.num = n.num + 1 WITH n WHERE n.num % 2 = 0 RETURN n.num`, `MATCH (n) WITH n,
+n.num AS num DELETE n WITH sum(num) AS s RETURN s`; TCK Set6, Remove3,
+Delete6). The writes nest inside the matching loop, and the clauses after them
+read each written variable as the document after the write (`LET n_new =
+NEW`). After such a write the query may filter, project, aggregate and
+`UNWIND`, but a later `MATCH`, `OPTIONAL MATCH`, `CALL` or second write is
+refused (`UNSUPPORTED`): AQL cannot read a collection after writing it in the
+same query (ERR 1579), nor write one twice (`pipeline_writes.py`). `CREATE`
+and `MERGE` before a WITH in a query with MATCH stay refused.
+
 A CREATE may stand before a WITH (`MATCH … CREATE … WITH … UNWIND … MATCH …
 CREATE`, LDBC INS1/4/6/7), with only CREATE as the updating clause. The query
 compiles as a chain of stages, one per CREATE group, each a list of rows; a new

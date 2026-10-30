@@ -192,84 +192,17 @@ def _append_multipart_mutate_tail(
     targets are recovered from the already-built MATCH/WITH AQL so aliased
     document projections (``WITH p AS x``) stay bound to the source collection.
     """
-    if not (set_clauses or delete_clauses or remove_clauses):
-        raise CoreError(
-            "SET/DELETE/REMOVE after WITH requires at least one mutating clause",
-            code="UNSUPPORTED",
-        )
+    from .pipeline_writes import emit_pipeline_writes
 
-    var_collections = _infer_var_collections_from_pipeline(lines)
-    if not var_collections:
-        raise CoreError(
-            "SET/DELETE/REMOVE after WITH requires a document variable from MATCH",
-            code="NOT_IMPLEMENTED",
-        )
-
-    def _coll_key_for(target_var: str) -> str:
-        aql_var = var_env.get(target_var, target_var)
-        key = var_collections.get(aql_var) or var_collections.get(target_var)
-        if key is None:
-            raise CoreError(
-                f"SET/DELETE/REMOVE after WITH targets {target_var!r}, which is not a "
-                "MATCH-bound document variable",
-                code="NOT_IMPLEMENTED",
-            )
-        if key not in bind_vars:
-            raise CoreError(
-                f"Missing collection bind for SET/DELETE/REMOVE target {target_var!r}",
-                code="UNSUPPORTED",
-            )
-        return key
-
-    def _coll_ref_for(target_var: str) -> str:
-        return _aql_collection_ref(_coll_key_for(target_var))
-
-    def _rewrite_target(name: str) -> str:
-        return var_env.get(name, name)
-
-    writes = _property_writes(
-        set_clauses,
-        remove_clauses,
+    emit_pipeline_writes(
+        set_clauses=set_clauses,
+        delete_clauses=delete_clauses,
+        remove_clauses=remove_clauses,
+        lines=lines,
+        var_env=var_env,
         bind_vars=bind_vars,
-        target_of=_rewrite_target,
-        rewrite_value=(lambda value: _rewrite_vars(value, var_env)) if var_env else None,
+        resolver=resolver,
     )
-    physical = resolver.bundle.physical_mapping
-    written: list[tuple[str, str]] = []
-    for target_var in writes.ops:
-        key = _coll_key_for(target_var)
-        write = writes.stored_write(target_var, keep_fields_for(bind_vars[key], physical))
-        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
-        written.append((f"SET/REMOVE on {target_var}", bind_vars[key]))
-
-    for dc in delete_clauses:
-        is_detach = dc.DETACH() is not None
-        for de in dc.oC_Expression() or []:
-            del_var = _compile_expression(de, bind_vars)
-            if var_env:
-                del_var = _rewrite_vars(del_var, var_env)
-            # Expression must resolve to a simple variable for collection lookup.
-            simple = del_var.strip()
-            if not re.fullmatch(r"\w+", simple):
-                raise CoreError(
-                    "DELETE after WITH only supports a simple MATCH-bound variable",
-                    code="NOT_IMPLEMENTED",
-                )
-            if is_detach:
-                for idx, ec in enumerate(resolver.all_edge_collections()):
-                    ec_key = _pick_bind_key("@detachEdge", bind_vars)
-                    bind_vars[ec_key] = ec
-                    ec_ref = _aql_collection_ref(ec_key)
-                    de_edge = f"_de{idx}"
-                    lines.append(
-                        f"  LET _edgeRm{idx} = (FOR {de_edge} IN 1..1 ANY {simple} {ec_ref} "
-                        f"REMOVE {de_edge} IN {ec_ref})"
-                    )
-                    written.append((f"DETACH DELETE {simple} (its {ec} edges)", ec))
-            lines.append(f"  REMOVE {simple} IN {_coll_ref_for(simple)}")
-            written.append((f"DELETE {simple}", bind_vars[_coll_key_for(simple)]))
-
-    _refuse_repeated_collections(written)
 
     ret = tail.oC_Return()
     if ret is not None:

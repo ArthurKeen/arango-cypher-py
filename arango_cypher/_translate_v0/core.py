@@ -79,6 +79,7 @@ from .naming import (
     _strip_label_backticks,
 )
 from .pattern_reversal import from_bound_end
+from .pipeline_writes import append_midquery_writes, refuse_after_write, split_writes
 from .scopes import outer_bound_names
 from .semantic_check import check_semantics
 from .shortest_path import (
@@ -1743,8 +1744,8 @@ def _translate_multi_part_query(
         )
     if is_create_pipeline(mpq):
         return translate_create_pipeline(mpq, resolver=resolver, bind_vars=bind_vars)
-    if mpq.oC_UpdatingClause():
-        raise CoreError("Updating clauses are not supported in v0", code="UNSUPPORTED")
+    # SET / REMOVE / DELETE before a WITH write mid-pipeline (pipeline_writes).
+    split_writes(mpq.oC_UpdatingClause() or [])
 
     reading_clauses = mpq.oC_ReadingClause() or []
     if not reading_clauses and imports is None:
@@ -1761,7 +1762,25 @@ def _translate_multi_part_query(
     children = list(mpq.children or [])
     if imports is not None:
         children.remove(mpq.oC_With(0))  # the importing WITH: var_env holds the imports
+    pending_writes: list[CypherParser.OC_UpdatingClauseContext] = []
+    wrote = False
     for child in children:
+        if isinstance(child, CypherParser.OC_UpdatingClauseContext):
+            pending_writes.append(child)
+            continue
+        if pending_writes:  # a part's writes end at its WITH
+            var_env = append_midquery_writes(
+                pending_writes,
+                lines=lines,
+                var_env=var_env,
+                bind_vars=bind_vars,
+                resolver=resolver,
+                forbidden_vars=forbidden_vars,
+                already_wrote=wrote,
+            )
+            pending_writes, wrote = [], True
+        if wrote and isinstance(child, CypherParser.OC_ReadingClauseContext) and child.oC_Unwind() is None:
+            raise refuse_after_write("MATCH or CALL")
         if isinstance(child, CypherParser.OC_WithContext):
             if not seen_match:
                 raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
@@ -1823,6 +1842,8 @@ def _translate_multi_part_query(
     # Reading clauses after the last WITH (MATCH … WITH … [OPTIONAL] MATCH /
     # UNWIND … RETURN …), in order.
     tail_reading = tail.oC_ReadingClause() or []
+    if wrote and (tail.oC_UpdatingClause() or any(rc.oC_Unwind() is None for rc in tail_reading)):
+        raise refuse_after_write("A write, MATCH or CALL")
     rel_type_exprs: dict[str, str] = {}
     for rc in tail_reading:
         tail_call = subquery_call(rc)
