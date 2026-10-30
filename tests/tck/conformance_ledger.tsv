@@ -1595,7 +1595,7 @@ correct_rejection	expressions/graph/Graph9/[5] `properties()` failing on an inte
 correct_rejection	expressions/graph/Graph9/[6] `properties()` failing on a string literal
 correct_rejection	expressions/graph/Graph9/[7] `properties()` failing on a list of booleans
 translatable	expressions/list/List1/[1] Indexing into literal list
-translate_fail	expressions/list/List1/[2] Indexing into nested literal lists
+translatable	expressions/list/List1/[2] Indexing into nested literal lists
 translatable	expressions/list/List1/[3] Use list lookup based on parameters when there is no type information
 translatable	expressions/list/List1/[4] Use list lookup based on parameters when there is lhs type information
 translatable	expressions/list/List1/[5] Use list lookup based on parameters when there is rhs type information
@@ -1725,7 +1725,7 @@ translatable	expressions/list/List5/[16] IN should return true when LHS and RHS 
 translatable	expressions/list/List5/[17] IN should return true when LHS and RHS contain a nested list
 translatable	expressions/list/List5/[18] IN should return false when LHS contains a nested list and type mismatch on RHS - singleton version
 translatable	expressions/list/List5/[19] IN should return false when LHS contains a nested list and type mismatch on RHS
-translate_fail	expressions/list/List5/[1] IN should work with nested list subscripting
+translatable	expressions/list/List5/[1] IN should work with nested list subscripting
 translatable	expressions/list/List5/[20] IN should return null if LHS and RHS are null
 translatable	expressions/list/List5/[21] IN should return null if LHS and RHS are null - list version
 translatable	expressions/list/List5/[22] IN should return null when LHS and RHS both ultimately contain null, even if LHS and RHS are of different types (nested list and flat list)
@@ -1736,7 +1736,7 @@ translatable	expressions/list/List5/[26] IN should return true if correct list f
 translatable	expressions/list/List5/[27] IN should return true if correct list found despite null being another element within containing list
 translatable	expressions/list/List5/[28] IN should return false if no match can be found, despite nulls
 translatable	expressions/list/List5/[29] IN should return null if comparison with null is required, list version
-translate_fail	expressions/list/List5/[2] IN should work with nested literal list subscripting
+translatable	expressions/list/List5/[2] IN should work with nested literal list subscripting
 translatable	expressions/list/List5/[30] IN should return false if different length lists compared, even if the extra element is null
 translatable	expressions/list/List5/[31] IN should return null when comparing two so-called identical lists where one element is null
 translatable	expressions/list/List5/[32] IN should return true with previous null match, list version
@@ -1747,7 +1747,7 @@ translatable	expressions/list/List5/[36] IN should return false for the empty li
 translatable	expressions/list/List5/[37] IN should work with an empty list in the presence of other list elements: matching
 translatable	expressions/list/List5/[38] IN should work with an empty list in the presence of other list elements: not matching
 translatable	expressions/list/List5/[39] IN should work with an empty list when comparing nested lists
-translate_fail	expressions/list/List5/[3] IN should work with list slices
+translatable	expressions/list/List5/[3] IN should work with list slices
 translatable	expressions/list/List5/[40] IN should return null if comparison with null is required for empty list
 translatable	expressions/list/List5/[41] IN should return true when LHS and RHS contain nested list with multiple empty lists
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid='foo']
@@ -1755,7 +1755,7 @@ correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-lis
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid=123]
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid=true]
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid={x: []}]
-translate_fail	expressions/list/List5/[4] IN should work with literal list slices
+translatable	expressions/list/List5/[4] IN should work with literal list slices
 translatable	expressions/list/List5/[5] IN should return false when matching a number with a string
 translatable	expressions/list/List5/[6] IN should return false when matching a number with a string - list version
 translatable	expressions/list/List5/[7] IN should return false when types of LHS and RHS don't match - singleton list
