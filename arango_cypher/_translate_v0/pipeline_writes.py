@@ -161,8 +161,8 @@ def split_writes(
         else:
             kind = type(clause.getChild(0)).__name__.removeprefix("OC_").removesuffix("Context").upper()
             raise CoreError(
-                f"{kind} before WITH in a query with MATCH is not "
-                "supported; only SET, REMOVE and DELETE may write mid-pipeline",
+                f"{kind} before WITH is not supported here: only SET, REMOVE and DELETE may write "
+                "before a WITH, unless every write of the query is a CREATE",
                 code="UNSUPPORTED",
             )
     return sets, deletes, removes

@@ -145,3 +145,15 @@ def test_create_then_set_or_remove_is_folded_into_the_insert(
 def test_cypher_string_escapes_mean_the_same_in_aql(db: Any, literal: str, expected: str) -> None:
     rows = _run(db, f"RETURN {literal} AS x")
     assert rows == [{"x": expected}]
+
+
+def test_set_after_merge_writes_on_match_and_on_create(db: Any) -> None:
+    """SET after a node MERGE was dropped from the AQL; it is now written
+    whether the MERGE matched (users/a) or created (name 'c') the node."""
+    _run(db, "MERGE (n:User {name: 'a'}) SET n.seen = true")
+    assert _doc(db, "users", "a") == {"name": "a", "x": 1, "y": 2, "seen": True}
+    _run(db, "MERGE (n:User {name: 'c'}) SET n.seen = true")
+    created = list(
+        db.aql.execute("FOR u IN users FILTER u.name == 'c' RETURN UNSET(u, '_id', '_key', '_rev')")
+    )
+    assert created == [{"name": "c", "seen": True}]

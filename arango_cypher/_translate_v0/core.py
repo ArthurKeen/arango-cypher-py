@@ -150,6 +150,7 @@ from .three_valued import (
     _three_valued,
 )
 from .unwind import _translate_standalone_unwind
+from .write_guards import refuse_dropped_writes
 from .writes import (
     _translate_create_query,
     _translate_foreach_query,
@@ -315,7 +316,17 @@ def _translate_single_query(
             else:
                 raise CoreError("Unsupported updating clause", code="UNSUPPORTED")
 
+        # A translator below compiles only its own kind of write: any other
+        # write clause beside it would be dropped from the AQL. Refuse that.
         if foreach_clauses:
+            refuse_dropped_writes(
+                "FOREACH",
+                CREATE=create_clauses,
+                MERGE=merge_clauses,
+                SET=set_clauses,
+                DELETE=delete_clauses,
+                REMOVE=remove_clauses,
+            )
             return _translate_foreach_query(
                 spq,
                 foreach_clauses=foreach_clauses,
@@ -324,11 +335,15 @@ def _translate_single_query(
             )
 
         if merge_clauses:
+            refuse_dropped_writes(
+                "MERGE", CREATE=create_clauses, DELETE=delete_clauses, REMOVE=remove_clauses
+            )
             return _translate_merge_query(
                 spq,
                 merge_clauses=merge_clauses,
                 resolver=resolver,
                 bind_vars=bind_vars,
+                trailing_sets=set_clauses,
             )
 
         if create_clauses and delete_clauses:
@@ -1952,6 +1967,10 @@ def _translate_multi_part_query(
         delete_clauses = [uc.oC_Delete() for uc in tail_updating if uc.oC_Delete() is not None]
         remove_clauses = [uc.oC_Remove() for uc in tail_updating if uc.oC_Remove() is not None]
         if set_clauses or delete_clauses or remove_clauses:
+            # A FOREACH beside them would be left out of the AQL.
+            refuse_dropped_writes(
+                "SET/DELETE/REMOVE", FOREACH=[uc for uc in tail_updating if uc.oC_Foreach() is not None]
+            )
             if tail_reading:
                 raise CoreError(
                     "MATCH after WITH before SET/DELETE/REMOVE is not supported",

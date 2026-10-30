@@ -160,8 +160,11 @@ class TestTranslation:
             _aql(cypher)
         assert exc.value.code == "UNSUPPORTED"
 
-    def test_removing_a_label_is_skipped_as_before(self) -> None:
-        assert "UPDATE" not in _aql("MATCH (n:User) REMOVE n:Admin")
+    def test_removing_a_label_without_a_labels_field_is_refused(self) -> None:
+        # It used to be left out of the AQL without a word.
+        with pytest.raises(CoreError, match="REMOVE of a label") as exc:
+            _aql("MATCH (n:User) REMOVE n:Admin")
+        assert exc.value.code == "UNSUPPORTED"
 
     def test_a_parenthesised_variable_is_a_variable(self) -> None:
         assert "UPDATE n WITH {z: 4}" in _aql("MATCH (n:User) SET (n).z = 4")

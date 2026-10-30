@@ -818,11 +818,12 @@ stores several per node; an unlabeled node MERGEs within the one collection
 unlabeled nodes live in; a RETURN after MERGE may aggregate, sort and page.
 MERGE refuses to rebind a variable bound before it, a null property value, an
 action on an undefined variable, and a whole-map `SET r = …`/`+= …` action,
-which it used to drop; it also refuses a MERGE or RETURN that reads a variable
-a CREATE in the same query part declares (`CREATE (a), (b) MERGE
-(a)-[:X]->(b)`), and a MERGE of a named path, both of which produced AQL
-reading a Cypher variable as a collection); `FOREACH` (with `SET`, and — newly — `CREATE` /
-`DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
+which it used to drop; it also refuses a MERGE of a named path, which never
+bound the path, and an ON CREATE / ON MATCH item on a variable the MERGE does
+not write, which was written onto the merged node or relationship instead. A
+`SET n.p = v` after a node MERGE joins both the INSERT and the UPDATE
+document, after the ON CREATE / ON MATCH items; any other SET after a MERGE
+is refused); `FOREACH` (with `SET`, and — newly — `CREATE` / `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
 (including identity aliases such as `WITH p AS x`, and relationship variables
 from traversals).
 
@@ -845,6 +846,18 @@ match with no rows still succeeds and returning the entity itself or its
 `type()` stays allowed (`_deleted_entities_read` in `deletes.py`). AQL
 forbids reading a collection after writing it (ERR 1579), which deleting
 inside the matching loop did as soon as a pattern matched more than one row.
+
+**No write is dropped.** The single-part router hands a query part to one
+translator by the kind of write it sees (FOREACH, MERGE, CREATE, DELETE,
+SET/REMOVE), and each compiles only its own clauses. A write of another kind
+beside it (`CREATE (:X) MERGE (:X)`, `MERGE (n) REMOVE n.x`, `MATCH (a) SET
+a.x = 1 FOREACH (…)`, a FOREACH beside SET/DELETE after a WITH) used to be left
+out of the AQL without an error; it is refused (`UNSUPPORTED`,
+`refuse_dropped_writes`). So are the other parts a write compiler silently
+skipped: an UNWIND, CALL or OPTIONAL MATCH before a FOREACH, a second FOREACH,
+a RETURN after a FOREACH, a whole-map or label SET inside one, an OPTIONAL
+MATCH before CREATE/MERGE (compiled as a MATCH, so its unmatched rows lost
+their write), and `REMOVE n:Label` where the mapping keeps no labels array.
 
 `SET`, `REMOVE` and `DELETE` may also stand before a WITH (`MATCH (n) SET
 n.num = n.num + 1 WITH n WHERE n.num % 2 = 0 RETURN n.num`, `MATCH (n) WITH n,
