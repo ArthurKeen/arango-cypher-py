@@ -140,6 +140,13 @@ class TestTranslation:
         out = translate("WITH [1, 2, 3] AS l RETURN size(l) AS s", mapping=self.mapping)
         assert "s: 3" in out.aql
 
+    def test_unaliased_folded_literal_is_not_used_as_a_bare_key(self) -> None:
+        # ``x > d`` folds to ``false``; a bare ``false`` key is AQL ERR 1501.
+        out = translate("WITH 1 AS x, 2 AS d RETURN x > d, x = d, x < d", mapping=self.mapping)
+        returned = out.aql.rsplit("RETURN", 1)[1]
+        assert "false:" not in returned and "true:" not in returned
+        assert "expr1: false" in returned and "expr3: true" in returned
+
     def test_error_is_deferred_to_evaluation(self) -> None:
         out = translate("RETURN 1 / 0 AS x", mapping=self.mapping)
         assert "FAIL(@cv0)" in out.aql

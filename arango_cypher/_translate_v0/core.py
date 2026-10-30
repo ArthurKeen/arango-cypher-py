@@ -66,6 +66,7 @@ from .multi_type import (
     resolve_multi_type,
 )
 from .naming import (
+    _AQL_RESERVED,
     _affix_name,
     _aql_bind_name,
     _aql_collection_ref,
@@ -4266,7 +4267,9 @@ def _infer_key(expr: str) -> str | None:
     if re.fullmatch(r"[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)+", expr):
         return expr.split(".")[-1].strip()
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr):
-        return expr
+        # A folded constant compiles to ``true`` / ``false`` / ``null``: a
+        # reserved word is not a usable bare object key (ERR 1501).
+        return None if expr.lower() in _AQL_RESERVED else expr
     m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\(", expr)
     if m:
         return m.group(1)
