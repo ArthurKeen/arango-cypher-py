@@ -23,6 +23,7 @@ scenario leaves a passing outcome, and when an improvement is not recorded.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -48,7 +49,9 @@ _HEADER = (
     f"# Passing outcomes: {', '.join(sorted(PASSING_OUTCOMES))}\n"
 )
 
-DEFAULT_DB_NAME = "tck_execution_ledger_db"
+#: Every scenario resets the graph collections, so two concurrent runs (two
+#: worktrees, one server) must not share a database: set ``TCK_DB_NAME``.
+DEFAULT_DB_NAME = os.environ.get("TCK_DB_NAME") or "tck_execution_ledger_db"
 
 
 def build_execution_ledger(*, db_name: str = DEFAULT_DB_NAME) -> dict[str, str]:
