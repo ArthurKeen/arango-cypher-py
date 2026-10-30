@@ -1225,8 +1225,8 @@ corpora). The plan, research and baseline are in
     gap filed upstream (arangodb-schema-analyzer #21 property types, #43
     supertypes, #44 domain/range of multi-label relationships, #46 sparse
     properties); anything else fails. Labels, collections, styles, type values
-    and relationship types already agree. The test needs the optional
-    analyzer and is skipped without it.
+    and relationship types already agree. CI's integration job installs the
+    analyzer extra, so the diff runs on every push.
 - **LDBC-3 Outcome ledger.** Each operation × layout records `parses`,
   `translates`, `executes` and `matches_oracle`, or a terminal state with a
   reason:
@@ -1257,13 +1257,15 @@ corpora). The plan, research and baseline are in
     generated from them and conformance-checked, never hand-copied.
   - **Implementation:** `tests/ldbc/bench.py` (the runner; a cell whose row
     counts differ from the oracle's is `rows_differ`, not timed),
-    `tests/ldbc/report.py` (rendering, conformance check, run comparison) and
-    `.github/workflows/ldbc-bench.yml` (nightly and on demand, ArangoDB 3.12,
-    non-blocking; results are an artifact).
+    `tests/ldbc/report.py` (rendering, conformance check, run comparison).
+    Timed runs happen on the benchmark VM only (plan §10, decision 11): the
+    repository is public, so no numbers go into CI artifacts. CI runs the
+    runner as a smoke test (`tests/integration/test_ldbc_bench_live.py`).
 - **LDBC-7 Fair use.** Every published number carries "These are not LDBC
   Benchmark Results" and attribution. The harness is never described as an
   implementation of an LDBC Benchmark. Until product signs off, benchmark
-  numbers stay internal (CI artifacts) and only the method is published.
+  numbers stay internal (on the benchmark VM; never in this public
+  repository's CI artifacts) and only the method is published.
 - **LDBC-8 Scale.**
   - CI uses SF0.003, downloaded on demand and cached. Each data set is
     verified against a pinned **content digest**: a SHA-256 over each entity's
@@ -1271,10 +1273,12 @@ corpora). The plan, research and baseline are in
     rebuilds the sample archives with fresh Spark part-file names while the
     rows stay the same. A digest mismatch stops the run
     (`tests/ldbc/datasets.py`).
-  - Performance runs use SF0.1 (nightly, non-blocking) and SF1 or larger
-    (manual).
-  - SF1 and above run on an Arango Platform deployment or a cloud VM, on
-    ArangoDB 3.12. CI's correctness tiers stay on 3.11.
+  - Performance runs use SF0.1 and SF1 or larger, on a dedicated cloud VM
+    running ArangoDB 3.12. CI's correctness tiers stay on 3.11.
+  - LDBC publishes no SF0.1 data set for the BI layout this harness loads (BI
+    starts at SF1), so SF0.1 is generated with LDBC's data generator pinned to
+    the commit of the samples, and verified by content digest like the
+    downloads.
   - Each workload is loaded in its reference timestamp encoding: epoch-ms for
     Interactive, ISO-8601 for BI.
 - **LDBC-9 Database lifecycle.** A run owns the databases it starts and

@@ -405,7 +405,7 @@ verbatim file, add a corrected variant, and file an issue upstream (WP-32).
 | D4 | Oracle | **Neo4j 5.x, pinned to `5.26.27-community`**, runs the verbatim queries on the same data and parameters. Results are **recorded as committed snapshots** for SF0.003, so the integration tier needs no Neo4j. A `RUN_CROSS` job re-verifies them against live Neo4j. | (a) LDBC driver validation mode: Java, heavy, and still needs a reference run. (b) PostgreSQL reference: an independent second oracle, worth adding for disputed cases (§9). |
 | D5 | Timestamp encoding | **Load each workload in its reference encoding.** Interactive uses epoch-ms numbers; BI uses ISO-8601 strings, declared temporal in the mapping. Neo4j gets the same encoding the reference expects. | One encoding for both. Rejected: the Interactive queries do arithmetic on timestamps and the BI queries use temporal accessors. |
 | D6 | Data in repo | **Download on demand, verified against pinned content digests** (SHA-256 over each entity's sorted, decompressed rows; LDBC republishes the archives with new part-file names, so archive hashes are not stable), cached under `~/.cache/arango-cypher/ldbc/` and `actions/cache` in CI. Only mappings, parameters and snapshots are committed. | Vendor the 2.4 MB sample. Smaller CI surface, but it is a generated artifact with its own provenance. |
-| D7 | Scale factors | **SF0.003 in CI** (integration tier). **SF0.1 nightly and SF1 manual** for performance. SF10 runs ad hoc on dedicated hardware. | SF0.1 in CI (~30 MB; slower to load). |
+| D7 | Scale factors | **SF0.003 in CI** (integration tier). **SF0.1 and SF1 on the benchmark VM** for performance (decisions 11, 12; SF0.1 nightly was the original plan). SF10 runs ad hoc on dedicated hardware. | SF0.1 in CI (~30 MB; slower to load). |
 | D8 | Supertype modeling (the biggest design choice) | Extend the **conceptual** schema with `supertypes` / `subtypeOf` **in arango-query-core** (fix upstream, don't fork). Physically: **LPG** uses a `labelsField` array (`"Message" IN n.labels`) with an array index. **PG** treats the supertype as the union of its members' collections: an `IS_SAME_COLLECTION` any-of filter on traversal targets, and a branch union for scan starts. The benchmark then *measures* what that union costs. **Decided 2026-10-26: this, staged (LPG first, then the PG union).** | (a) Require a hybrid layout for supertypes (a `message` collection plus a type field), which dodges the PG question. (b) Expand supertype queries into `UNION ALL` at the Cypher level. |
 | D9 | GDS / APOC queries (IC14 BI10 BI15 BI19 BI20) | **Report as out-of-subset verbatim.** Add `arango` dialect variants (weighted shortest path via `K_SHORTEST_PATHS`/`arango.shortest_path`) with *results* checked against a pure-Cypher or SQL reference where feasible. | Exclude entirely. |
 | D10 | Performance comparison | Report per query × layout × SF: translation time, plus Arango execution p50/p95/p99. Neo4j on identical container limits is **indicative only** and carries the disclaimer. A hand-written AQL baseline for a subset measures the "transpilation tax" (WP-44). **Decided 2026-10-26:** SF1+ runs on an Arango Platform deployment or a cloud VM on 3.12, and the numbers stay internal. | Arango only. |
@@ -902,12 +902,11 @@ reach `matches_oracle`. **Achieved 2026-10-29.**
   disclaimer and attribution. A conformance test checks that every number in
   the doc matches a committed summary JSON (the published-results conformance
   pattern), so the prose cannot drift.
-- **CI:** a `ldbc-bench.yml` workflow:
-  - `workflow_dispatch` for SF0.1 and SF1;
-  - an optional nightly at SF0.1, non-blocking.
+- **Where it runs:** the dedicated benchmark VM (decisions 9 and 11). CI
+  only runs it as a smoke test.
 
 - **Status (2026-10-29): the runner is implemented** (`tests/ldbc/bench.py`,
-  `tests/ldbc/report.py`, `.github/workflows/ldbc-bench.yml`).
+  `tests/ldbc/report.py`).
   - It times translation (cold and warm) and execution (server-side from the
     cursor statistics, and client) per read operation × layout × binding,
     after warm-up, with `TIMEOUT` past `--timeout`. The query results cache is
@@ -920,10 +919,10 @@ reach `matches_oracle`. **Achieved 2026-10-29.**
   - `report.py` renders Markdown with the disclaimer and attribution, checks
     a document against its run (conformance), and compares two runs: plan
     changes, server p50 moves beyond ×1.5 above 5 ms, and outcome changes.
-  - The workflow runs nightly and on demand on ArangoDB 3.12.12, uploads the
-    JSON and the report as an artifact, and writes the comparison with the
-    last successful run to the job summary. It runs SF0.003 until the SF0.1
-    data set and bindings are added (LDBC-8).
+  - A nightly GitHub workflow ran it twice on ArangoDB 3.12.12 (72 of 72
+    cells timed). It was removed on 2026-10-30 (decision 11): this repository
+    is public, so its artifacts would have published the numbers; those two
+    runs were deleted.
 
 #### WP-44: Optimisation loop and baselines (L, open-ended)
 - **Scope:**
@@ -1026,9 +1025,20 @@ Decided by the maintainer on 2026-10-29, closing out correctness:
    Revisit only for a weighted-path performance comparison (IC14 first).
 9. **Performance environment.** SF1 runs on a dedicated cloud VM, both engines
    under identical limits, for reproducible comparative numbers; one run on an
-   Arango Platform deployment checks the result. SF0.1 runs nightly in CI,
-   non-blocking: plan-shape changes and large p50 moves are flagged, since
-   shared runners make p99 unreliable.
+   Arango Platform deployment checks the result. (SF0.1 nightly in CI was
+   withdrawn by decision 11.)
 10. **Hybrid layout (D2): after the performance work.** It is not part of the
     PRD's LDBC-2 (PG and LPG), so LDBC closes without it; it then adds a third
     layout to the benchmark and its own correctness ledger column.
+
+Decided by the maintainer on 2026-10-30:
+
+11. **Benchmark numbers on the VM only, for now.** The repository is public,
+    so CI artifacts are readable by any signed-in GitHub user. Timed runs
+    happen on the benchmark VM; CI runs the runner only as a smoke test.
+12. **SF0.1 is generated with LDBC's data generator** (Datagen, pinned to the
+    commit of the SF0.003 samples), since LDBC publishes no SF0.1 BI data set.
+    It is cached and verified by content digest; its bindings are chosen
+    against Neo4j and committed, like SF0.003's.
+13. **CI installs the schema analyzer** in the integration job, so the live
+    acquisition tests and the LDBC live mapping diff run on every push.
