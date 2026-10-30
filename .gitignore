@@ -41,6 +41,8 @@ htmlcov/
 # Distribution / Packaging
 *.tar.gz
 *.zip
+# The IANA tz database the temporal library embeds (scripts/build_tzdata.sh).
+!arango_cypher/temporal/zoneinfo.zip
 
 # Ruff / Linting cache
 .ruff_cache/
