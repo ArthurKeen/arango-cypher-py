@@ -81,8 +81,18 @@ def test_merge_refusals():
     )
 
 
+@pytest.mark.usefixtures("without_constant_folding")
 def test_keys_hides_fields_only_of_stored_documents():
-    """A map (no ``_id``) keeps every key, ``type`` included; a document hides its fields."""
+    """A map (no ``_id``) keeps every key, ``type`` included; a document hides its fields.
+
+    Folding is off so the literal map exercises the run-time lowering a
+    data-dependent map takes; folded, ``keys({a: 1, type: 2})`` is ``['a', 'type']``.
+    """
     out = translate("RETURN keys({a: 1, type: 2}) AS k", mapping=mapping_bundle_for("lpg"))
     assert "HAS(_v, '_id') ? ATTRIBUTES(_v)[* FILTER CURRENT NOT IN [" in out.aql
     assert ": ATTRIBUTES(_v))" in out.aql
+
+
+def test_keys_of_a_literal_map_folds_to_every_key():
+    out = translate("RETURN keys({a: 1, type: 2}) AS k", mapping=mapping_bundle_for("lpg"))
+    assert out.bind_vars["cv0"] == ["a", "type"]
