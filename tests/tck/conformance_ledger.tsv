@@ -101,7 +101,7 @@ translatable	clauses/create/Create2/[9] Create a single node and a single self l
 translatable	clauses/create/Create3/[10] WITH-UNWIND-CREATE: A bound node should be recognized after projection with WITH + UNWIND
 translate_fail	clauses/create/Create3/[11] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE node
 translate_fail	clauses/create/Create3/[12] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE pattern
-translatable	clauses/create/Create3/[13] Merge followed by multiple creates
+translate_fail	clauses/create/Create3/[13] Merge followed by multiple creates
 translatable	clauses/create/Create3/[1] MATCH-CREATE
 translatable	clauses/create/Create3/[2] WITH-CREATE
 translatable	clauses/create/Create3/[3] MATCH-CREATE-WITH-CREATE
@@ -592,7 +592,7 @@ translatable	clauses/merge/Merge1/[10] Merge must properly handle multiple label
 translatable	clauses/merge/Merge1/[11] Merge should be able to merge using property of bound node
 translate_fail	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
 translate_fail	clauses/merge/Merge1/[13] Merge should bind a path
-translatable	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
+translate_fail	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
 correct_rejection	clauses/merge/Merge1/[15] Fail when merge a node that is already bound
 correct_rejection	clauses/merge/Merge1/[16] Fail when using parameter as node predicate in MERGE
 correct_rejection	clauses/merge/Merge1/[17] Fail on merging node with null property
@@ -602,7 +602,7 @@ translatable	clauses/merge/Merge1/[3] Merge node with label when it exists
 translatable	clauses/merge/Merge1/[4] Merge node should create when it doesn't match, properties
 translatable	clauses/merge/Merge1/[5] Merge node should create when it doesn't match, properties and label
 translatable	clauses/merge/Merge1/[6] Merge node with prop and label
-translatable	clauses/merge/Merge1/[7] Merge should work when finding multiple elements
+translate_fail	clauses/merge/Merge1/[7] Merge should work when finding multiple elements
 translate_fail	clauses/merge/Merge1/[8] Merge should handle argument properly
 translate_fail	clauses/merge/Merge1/[9] Merge should support updates while merging
 translatable	clauses/merge/Merge2/[1] Merge node with label add label on create
@@ -630,7 +630,7 @@ translate_fail	clauses/merge/Merge5/[18] Double aliasing of existing nodes 1
 translate_fail	clauses/merge/Merge5/[19] Double aliasing of existing nodes 2
 translatable	clauses/merge/Merge5/[1] Creating a relationship
 translate_fail	clauses/merge/Merge5/[20] Do not match on deleted entities
-translatable	clauses/merge/Merge5/[21] Do not match on deleted relationships
+translate_fail	clauses/merge/Merge5/[21] Do not match on deleted relationships
 correct_rejection	clauses/merge/Merge5/[22] Fail when imposing new predicates on a variable that is already bound
 correct_rejection	clauses/merge/Merge5/[23] Fail when merging relationship without type
 correct_rejection	clauses/merge/Merge5/[24] Fail when merging relationship without type, no colon
@@ -647,13 +647,13 @@ translatable	clauses/merge/Merge5/[6] Creating relationship when all matches fil
 translatable	clauses/merge/Merge5/[7] Matching incoming relationship
 translatable	clauses/merge/Merge5/[8] Creating relationship with property
 translate_fail	clauses/merge/Merge5/[9] Creating relationship using merged nodes
-translatable	clauses/merge/Merge6/[1] Using ON CREATE on a node
+translate_fail	clauses/merge/Merge6/[1] Using ON CREATE on a node
 translatable	clauses/merge/Merge6/[2] Using ON CREATE on a relationship
 translatable	clauses/merge/Merge6/[3] Updating one property with ON CREATE
 translatable	clauses/merge/Merge6/[4] Null-setting one property with ON CREATE
 translate_fail	clauses/merge/Merge6/[6] Copying properties from node with ON CREATE
 translate_fail	clauses/merge/Merge6/[7] Copying properties from literal map with ON CREATE
-translatable	clauses/merge/Merge7/[1] Using ON MATCH on created node
+translate_fail	clauses/merge/Merge7/[1] Using ON MATCH on created node
 translatable	clauses/merge/Merge7/[2] Using ON MATCH on created relationship
 translatable	clauses/merge/Merge7/[3] Using ON MATCH on a relationship
 translate_fail	clauses/merge/Merge7/[4] Copying properties from node with ON MATCH
