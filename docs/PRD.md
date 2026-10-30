@@ -748,7 +748,12 @@ the ids of the deleted nodes and relationships are collected from it
 rows deleted once), and for `DETACH DELETE` so are the ids of every edge
 touching a deleted node; then each collection is written by one `REMOVE`
 over the ids that live in it: edges first, then nodes, including every
-member collection of a supertype. A `RETURN` reads the matched rows. AQL
+member collection of a supertype. A `RETURN` reads the matched rows; a row
+that reads a property or the labels (`labels()`, `properties()`, `keys()`)
+of a node or relationship the query deleted fails with Neo4j's
+`DeletedEntityAccess`, through a per-row `FILTER v == null OR FAIL(…)`, so a
+match with no rows still succeeds and returning the entity itself or its
+`type()` stays allowed (`_deleted_entities_read` in `deletes.py`). AQL
 forbids reading a collection after writing it (ERR 1579), which deleting
 inside the matching loop did as soon as a pattern matched more than one row.
 

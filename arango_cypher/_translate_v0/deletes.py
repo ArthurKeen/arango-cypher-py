@@ -18,7 +18,10 @@ matched rows. Then:
    every edge collection;
 3. each collection is written once: one ``REMOVE`` per edge collection, then
    one per node collection, each over the ids that live in it;
-4. a ``RETURN`` reads the matched rows, as Cypher's does.
+4. a ``RETURN`` reads the matched rows, as Cypher's does. A row that reads a
+   property or the labels of an entity the query deleted fails, as Neo4j's
+   ``DeletedEntityAccess`` does: at run time, row by row, so a match with no
+   rows still succeeds (``_deleted_entities_read``).
 
 Every read happens before the first write, and no collection is written
 twice.
@@ -33,9 +36,18 @@ from arango_query_core import AqlQuery, CoreError, MappingResolver
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
+from .literals import _aql_string_literal
 from .naming import _aql_collection_ref, _pick_bind_key, _strip_label_backticks
+from .semantic_expr import bare_variable
 
 _BARE_VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|`[^`]+`")
+
+#: Functions that read a node's or relationship's stored data (``type()``,
+#: ``id()`` and returning the entity itself do not, and stay allowed).
+_DATA_READING_FUNCTIONS = frozenset({"labels", "properties", "keys"})
+_DELETED_ENTITY_ACCESS = _aql_string_literal(
+    "DeletedEntityAccess: the query reads a property or the labels of a node or relationship it deleted"
+)
 
 
 def _core(name: str) -> Any:
@@ -216,8 +228,43 @@ def translate_delete_query(
     lines.append("FOR _row IN _matched")
     for name in [*nodes, *rels]:
         lines.append(f"  LET {name} = _row.{name}")
+    read = _deleted_entities_read(ret.oC_ProjectionBody(), {*deleted_nodes, *deleted_rels})
+    for name in [*nodes, *rels]:
+        if _strip_label_backticks(name) in read:
+            # null: an OPTIONAL MATCH that matched nothing, which Neo4j reads as null.
+            lines.append(f"  FILTER {name} == null OR FAIL({_DELETED_ENTITY_ACCESS})")
     _core("_append_return")(ret.oC_ProjectionBody(), lines=lines, bind_vars=bind_vars)
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _deleted_entities_read(body: Any, deleted: set[str]) -> set[str]:
+    """The deleted variables whose properties or labels *body* reads.
+
+    A property lookup (``n.name``) or ``labels(n)``/``properties(n)``/
+    ``keys(n)`` of a deleted variable is Neo4j's ``DeletedEntityAccess``;
+    returning ``n`` itself or ``type(r)`` is not (TCK Return2 [14]).
+    """
+    names = {_strip_label_backticks(name) for name in deleted}
+    found: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, CypherParser.OC_PropertyOrLabelsExpressionContext) and node.oC_PropertyLookup():
+            variable = node.oC_Atom().oC_Variable()
+            name = _strip_label_backticks(variable.getText().strip()) if variable is not None else None
+            if name in names:
+                found.add(name)
+        elif isinstance(node, CypherParser.OC_FunctionInvocationContext):
+            args = node.oC_Expression()
+            function = node.oC_FunctionName().getText().strip().lower()
+            if function in _DATA_READING_FUNCTIONS and len(args) == 1:
+                name = bare_variable(args[0])
+                if name in names:
+                    found.add(name)
+        for i in range(node.getChildCount() if hasattr(node, "getChildCount") else 0):
+            walk(node.getChild(i))
+
+    walk(body)
+    return found
 
 
 def _removal(ids: str, collection: str, coll_key: str, bind_vars: dict[str, Any]) -> str:
