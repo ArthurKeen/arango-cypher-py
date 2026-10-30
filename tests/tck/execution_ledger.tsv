@@ -1454,29 +1454,29 @@ passed	expressions/comparison/Comparison1/[5] Comparing relationships to relatio
 passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=['a'], rhs=[1], result=false]
 passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[1, 2], rhs=[1], result=false]
 passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[[1], [2, 3]], rhs=[[1], [null]], result=false]
-execution_failure	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[[1], [2]], rhs=[[1], [null]], result=null]
+passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[[1], [2]], rhs=[[1], [null]], result=null]
 passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[[1]], rhs=[[1], [null]], result=false]
-execution_failure	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[null], rhs=[1], result=null]
+passed	expressions/comparison/Comparison1/[6] Comparing lists to lists [lhs=[null], rhs=[1], result=null]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 'a', l: 2}, rhs={k: 'a', l: 2}, result=true]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 'abc'}, rhs={k: 'abc'}, result=true]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: 1, l: 1}, result=null]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: null, l: 1}, result=null]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: null, l: null}, result=null]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: 1, l: 1}, result=null]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: null, l: 1}, result=null]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1, l: null}, rhs={k: null, l: null}, result=null]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1.0}, rhs={k: 1.0}, result=true]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1}, rhs={k: 1, l: null}, result=false]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1}, rhs={k: 1, l: null}, result=false]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1}, rhs={k: 1}, result=true]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1}, rhs={k: null}, result=null]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null, l: 1}, rhs={l: 1}, result=false]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={k: null, l: null}, result=false]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={k: null}, result=null]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={}, result=false]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: 1}, rhs={k: null}, result=null]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null, l: 1}, rhs={l: 1}, result=false]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={k: null, l: null}, result=false]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={k: null}, result=null]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: null}, rhs={}, result=false]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={k: true}, rhs={k: true}, result=true]
-execution_failure	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={}, rhs={k: null}, result=false]
+passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={}, rhs={k: null}, result=false]
 passed	expressions/comparison/Comparison1/[7] Comparing maps to maps [lhs={}, rhs={}, result=true]
-execution_failure	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs='a']
-execution_failure	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=0.0 / 0.0]
-execution_failure	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=1.0]
-execution_failure	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=1]
+passed	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs='a']
+passed	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=0.0 / 0.0]
+passed	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=1.0]
+passed	expressions/comparison/Comparison1/[8] Equality and inequality of NaN [lhs=0.0 / 0.0, rhs=1]
 passed	expressions/comparison/Comparison1/[9] Equality between strings and numbers [lhs='1', rhs=1, result=false]
 passed	expressions/comparison/Comparison1/[9] Equality between strings and numbers [lhs='1.0', rhs=1.0, result=false]
 passed	expressions/comparison/Comparison1/[9] Equality between strings and numbers [lhs=1, rhs=1.0, result=true]
@@ -1487,17 +1487,17 @@ execution_failure	expressions/comparison/Comparison2/[3] Comparing across types 
 execution_failure	expressions/comparison/Comparison2/[3] Comparing across types yields null, except numbers [operator=<=, lhs=1, rhs=3.14]
 execution_failure	expressions/comparison/Comparison2/[3] Comparing across types yields null, except numbers [operator=>, lhs=3.14, rhs=1]
 execution_failure	expressions/comparison/Comparison2/[3] Comparing across types yields null, except numbers [operator=>=, lhs=3.14, rhs=1]
-execution_failure	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 'a'], rhs=[1, null], result=null]
+passed	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 'a'], rhs=[1, null], result=null]
 passed	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 0], rhs=[1], result=true]
-execution_failure	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 2], rhs=[1, null], result=null]
+passed	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 2], rhs=[1, null], result=null]
 passed	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, 2], rhs=[3, null], result=false]
 passed	expressions/comparison/Comparison2/[4] Comparing lists [lhs=[1, null], rhs=[1], result=true]
 passed	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs='a', result=null]
-execution_failure	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=0.0 / 0.0, result=false]
-execution_failure	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=1, result=false]
-execution_failure	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=1.0, result=false]
-execution_failure	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs='1', rhs=1, result=null]
-execution_failure	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs='1.0', rhs=1.0, result=null]
+passed	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=0.0 / 0.0, result=false]
+passed	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=1, result=false]
+passed	expressions/comparison/Comparison2/[5] Comparing NaN [lhs=0.0 / 0.0, rhs=1.0, result=false]
+passed	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs='1', rhs=1, result=null]
+passed	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs='1.0', rhs=1.0, result=null]
 passed	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs=1, rhs=1.0, result=false]
 passed	expressions/comparison/Comparison2/[6] Comparability between numbers and strings [lhs=1.0, rhs=1.0, result=false]
 passed	expressions/comparison/Comparison3/[1] Handling numerical ranges 1
@@ -1595,7 +1595,7 @@ correct_rejection	expressions/graph/Graph9/[5] `properties()` failing on an inte
 correct_rejection	expressions/graph/Graph9/[6] `properties()` failing on a string literal
 correct_rejection	expressions/graph/Graph9/[7] `properties()` failing on a list of booleans
 passed	expressions/list/List1/[1] Indexing into literal list
-translation_failure	expressions/list/List1/[2] Indexing into nested literal lists
+passed	expressions/list/List1/[2] Indexing into nested literal lists
 passed	expressions/list/List1/[3] Use list lookup based on parameters when there is no type information
 passed	expressions/list/List1/[4] Use list lookup based on parameters when there is lhs type information
 passed	expressions/list/List1/[5] Use list lookup based on parameters when there is rhs type information
@@ -1623,8 +1623,8 @@ passed	expressions/list/List11/[1] Create list from `range()` with default step 
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-10, end=0, list=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-1234, end=-1234, list=[-1234]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=-1236, end=-1234, list=[-1236, -1235, -1234]]
-execution_failure	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=-1, list=[]]
-execution_failure	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=-123, list=[]]
+passed	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=-1, list=[]]
+passed	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=-123, list=[]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=0, list=[0]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=1, list=[0, 1]]
 passed	expressions/list/List11/[1] Create list from `range()` with default step [start=0, end=10, list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]
@@ -1639,16 +1639,16 @@ passed	expressions/list/List11/[2] Create list from `range()` with explicitly gi
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=-2000, end=0, step=1298, list=[-2000, -702]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=-3412, end=1381, step=1298, list=[-3412, -2114, -816, 482]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-1, step=-1, list=[0, -1]]
-execution_failure	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-1, step=1, list=[]]
+passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-1, step=1, list=[]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-10, step=-1, list=[0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-10, step=-3, list=[0, -3, -6, -9]]
-execution_failure	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-123, step=1, list=[]]
+passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-123, step=1, list=[]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-20, step=-2, list=[0, -2, -4, -6, -8, -10, -12, -14, -16, -18, -20]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=-2000, step=-1298, list=[0, -1298]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=0, step=-1, list=[0]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=0, step=1, list=[0]]
-execution_failure	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=-1, list=[]]
-execution_failure	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=-123, list=[]]
+passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=-1, list=[]]
+passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=-123, list=[]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=1, list=[0, 1]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=1, step=2, list=[0]]
 passed	expressions/list/List11/[2] Create list from `range()` with explicitly given step [start=0, end=10, step=1, list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]
@@ -1701,18 +1701,18 @@ passed	expressions/list/List2/[5] List slice with empty range
 passed	expressions/list/List2/[6] List slice with negative range
 passed	expressions/list/List2/[7] List slice with invalid range
 passed	expressions/list/List2/[8] List slice with exceeding range
-execution_failure	expressions/list/List2/[9] List slice with null range [lower=, upper=null]
-execution_failure	expressions/list/List2/[9] List slice with null range [lower=1, upper=null]
-execution_failure	expressions/list/List2/[9] List slice with null range [lower=null, upper=3]
-execution_failure	expressions/list/List2/[9] List slice with null range [lower=null, upper=]
-execution_failure	expressions/list/List2/[9] List slice with null range [lower=null, upper=null]
+passed	expressions/list/List2/[9] List slice with null range [lower=, upper=null]
+passed	expressions/list/List2/[9] List slice with null range [lower=1, upper=null]
+passed	expressions/list/List2/[9] List slice with null range [lower=null, upper=3]
+passed	expressions/list/List2/[9] List slice with null range [lower=null, upper=]
+passed	expressions/list/List2/[9] List slice with null range [lower=null, upper=null]
 passed	expressions/list/List3/[1] Equality between list and literal should return false
-execution_failure	expressions/list/List3/[2] Equality of lists of different length should return false despite nulls
+passed	expressions/list/List3/[2] Equality of lists of different length should return false despite nulls
 passed	expressions/list/List3/[3] Equality between different lists with null should return false
-execution_failure	expressions/list/List3/[4] Equality between almost equal lists with null should return null
+passed	expressions/list/List3/[4] Equality between almost equal lists with null should return null
 passed	expressions/list/List3/[5] Equality of nested lists of different length should return false despite nulls
 passed	expressions/list/List3/[6] Equality between different nested lists with null should return false
-execution_failure	expressions/list/List3/[7] Equality between almost equal nested lists with null should return null
+passed	expressions/list/List3/[7] Equality between almost equal nested lists with null should return null
 passed	expressions/list/List4/[1] Concatenating lists of same type
 passed	expressions/list/List4/[2] Concatenating a list with a scalar of same type
 passed	expressions/list/List5/[10] IN should return true when types of LHS and RHS match - list
@@ -1725,37 +1725,37 @@ passed	expressions/list/List5/[16] IN should return true when LHS and RHS contai
 passed	expressions/list/List5/[17] IN should return true when LHS and RHS contain a nested list
 passed	expressions/list/List5/[18] IN should return false when LHS contains a nested list and type mismatch on RHS - singleton version
 passed	expressions/list/List5/[19] IN should return false when LHS contains a nested list and type mismatch on RHS
-translation_failure	expressions/list/List5/[1] IN should work with nested list subscripting
+execution_failure	expressions/list/List5/[1] IN should work with nested list subscripting
 passed	expressions/list/List5/[20] IN should return null if LHS and RHS are null
-execution_failure	expressions/list/List5/[21] IN should return null if LHS and RHS are null - list version
-execution_failure	expressions/list/List5/[22] IN should return null when LHS and RHS both ultimately contain null, even if LHS and RHS are of different types (nested list and flat list)
-execution_failure	expressions/list/List5/[23] IN with different length lists should return false despite nulls
+passed	expressions/list/List5/[21] IN should return null if LHS and RHS are null - list version
+passed	expressions/list/List5/[22] IN should return null when LHS and RHS both ultimately contain null, even if LHS and RHS are of different types (nested list and flat list)
+passed	expressions/list/List5/[23] IN with different length lists should return false despite nulls
 passed	expressions/list/List5/[24] IN should return true if match despite nulls
-execution_failure	expressions/list/List5/[25] IN should return null if comparison with null is required
+passed	expressions/list/List5/[25] IN should return null if comparison with null is required
 passed	expressions/list/List5/[26] IN should return true if correct list found despite other lists having nulls
 passed	expressions/list/List5/[27] IN should return true if correct list found despite null being another element within containing list
 passed	expressions/list/List5/[28] IN should return false if no match can be found, despite nulls
-execution_failure	expressions/list/List5/[29] IN should return null if comparison with null is required, list version
-translation_failure	expressions/list/List5/[2] IN should work with nested literal list subscripting
-execution_failure	expressions/list/List5/[30] IN should return false if different length lists compared, even if the extra element is null
-execution_failure	expressions/list/List5/[31] IN should return null when comparing two so-called identical lists where one element is null
+passed	expressions/list/List5/[29] IN should return null if comparison with null is required, list version
+execution_failure	expressions/list/List5/[2] IN should work with nested literal list subscripting
+passed	expressions/list/List5/[30] IN should return false if different length lists compared, even if the extra element is null
+passed	expressions/list/List5/[31] IN should return null when comparing two so-called identical lists where one element is null
 passed	expressions/list/List5/[32] IN should return true with previous null match, list version
-execution_failure	expressions/list/List5/[33] IN should return false if different length lists with nested elements compared, even if the extra element is null
-execution_failure	expressions/list/List5/[34] IN should return null if comparison with null is required, list version 2
+passed	expressions/list/List5/[33] IN should return false if different length lists with nested elements compared, even if the extra element is null
+passed	expressions/list/List5/[34] IN should return null if comparison with null is required, list version 2
 passed	expressions/list/List5/[35] IN should work with an empty list
 passed	expressions/list/List5/[36] IN should return false for the empty list if the LHS and RHS types differ
 passed	expressions/list/List5/[37] IN should work with an empty list in the presence of other list elements: matching
 passed	expressions/list/List5/[38] IN should work with an empty list in the presence of other list elements: not matching
 passed	expressions/list/List5/[39] IN should work with an empty list when comparing nested lists
-translation_failure	expressions/list/List5/[3] IN should work with list slices
-execution_failure	expressions/list/List5/[40] IN should return null if comparison with null is required for empty list
+execution_failure	expressions/list/List5/[3] IN should work with list slices
+passed	expressions/list/List5/[40] IN should return null if comparison with null is required for empty list
 passed	expressions/list/List5/[41] IN should return true when LHS and RHS contain nested list with multiple empty lists
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid='foo']
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid=123.4]
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid=123]
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid=true]
 correct_rejection	expressions/list/List5/[42] Failing when using IN on a non-list literal [invalid={x: []}]
-translation_failure	expressions/list/List5/[4] IN should work with literal list slices
+execution_failure	expressions/list/List5/[4] IN should work with literal list slices
 passed	expressions/list/List5/[5] IN should return false when matching a number with a string
 passed	expressions/list/List5/[6] IN should return false when matching a number with a string - list version
 passed	expressions/list/List5/[7] IN should return false when types of LHS and RHS don't match - singleton list
@@ -1765,7 +1765,7 @@ passed	expressions/list/List6/[10] Get node degree via size of pattern comprehen
 passed	expressions/list/List6/[1] Return list size
 passed	expressions/list/List6/[2] Setting and returning the size of a list property
 passed	expressions/list/List6/[3] Concatenating and returning the size of literal lists
-execution_failure	expressions/list/List6/[4] `size()` on null list
+passed	expressions/list/List6/[4] `size()` on null list
 correct_rejection	expressions/list/List6/[5] Fail for `size()` on paths
 correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--()]
 correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--(a)]
@@ -1811,7 +1811,7 @@ passed	expressions/literals/Literals3/[4] Return a positive hexadecimal zero
 passed	expressions/literals/Literals3/[5] Return a negative hexadecimal zero
 passed	expressions/literals/Literals3/[6] Return a short negative hexadecimal integer
 passed	expressions/literals/Literals3/[7] Return a long negative hexadecimal integer
-execution_failure	expressions/literals/Literals3/[8] Return the smallest hexadecimal integer
+passed	expressions/literals/Literals3/[8] Return the smallest hexadecimal integer
 execution_failure	expressions/literals/Literals3/[9] Return a lower case hexadecimal integer
 correct_rejection	expressions/literals/Literals4/[10] Fail on a too small octal integer
 translation_failure	expressions/literals/Literals4/[1] Return a short positive octal integer
@@ -2147,12 +2147,12 @@ passed	expressions/precedence/Precedence3/[2] List element access takes preceden
 passed	expressions/precedence/Precedence3/[3] List slicing takes precedence over list concatenation
 execution_failure	expressions/precedence/Precedence3/[4] List appending takes precedence over list element containment
 execution_failure	expressions/precedence/Precedence3/[5] List concatenation takes precedence over list element containment
-execution_failure	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=<, right=null, wrong=false]
-execution_failure	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=<=, right=null, wrong=false]
+passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=<, right=null, wrong=false]
+passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=<=, right=null, wrong=false]
 passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=<>, right=true, wrong=false]
 passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp==, right=false, wrong=true]
-execution_failure	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=>, right=null, wrong=true]
-execution_failure	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=>=, right=null, wrong=true]
+passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=>, right=null, wrong=true]
+passed	expressions/precedence/Precedence3/[6] List element containment takes precedence over comparison operator [comp=>=, right=null, wrong=true]
 passed	expressions/precedence/Precedence4/[1] Null predicate takes precedence over comparison operator [null1=NOT NULL, comp==, null2=NULL, right=false, wrong=true]
 passed	expressions/precedence/Precedence4/[1] Null predicate takes precedence over comparison operator [null1=NULL, comp=<>, null2=NOT NULL, right=true, wrong=false]
 passed	expressions/precedence/Precedence4/[1] Null predicate takes precedence over comparison operator [null1=NULL, comp=<>, null2=NULL, right=false, wrong=true]
@@ -2165,14 +2165,14 @@ passed	expressions/precedence/Precedence4/[3] Null predicate takes precedence ov
 passed	expressions/precedence/Precedence4/[3] Null predicate takes precedence over binary boolean operator [truth1=true, op=XOR, truth2=false, null=NULL, right=true, wrong=false]
 passed	expressions/precedence/Precedence4/[3] Null predicate takes precedence over binary boolean operator [truth1=true, op=XOR, truth2=null, null=NOT NULL, right=true, wrong=false]
 passed	expressions/precedence/Precedence4/[4] String predicate takes precedence over binary boolean operator
-execution_failure	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=false]
 passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[34, 0, null, 5, 900], condition=x < 10, result=false]
-execution_failure	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
+passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
 passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[4, 0, null, -15, 9], condition=x < 10, result=false]
 passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=false]
-execution_failure	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier1/[10] None quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier1/[11] None quantifier with IS NULL predicate [list=[0, null], result=false]
 passed	expressions/quantifier/Quantifier1/[11] None quantifier with IS NULL predicate [list=[0], result=true]
 passed	expressions/quantifier/Quantifier1/[11] None quantifier with IS NULL predicate [list=[2, null], result=false]
@@ -2268,63 +2268,63 @@ passed	expressions/quantifier/Quantifier1/[7] None quantifier on list literal co
 passed	expressions/quantifier/Quantifier1/[7] None quantifier on list literal containing maps [list=[{a: 4}, {a: 2, b: 5}], condition=x.a = 2, result=false]
 passed	expressions/quantifier/Quantifier1/[7] None quantifier on list literal containing maps [list=[{a: 4}, {a: 4}, {a: 4}], condition=x.a = 2, result=true]
 passed	expressions/quantifier/Quantifier1/[7] None quantifier on list literal containing maps [list=[{a: 4}], condition=x.a = 2, result=true]
-execution_failure	expressions/quantifier/Quantifier1/[8] None quantifier on list containing nodes
+passed	expressions/quantifier/Quantifier1/[8] None quantifier on list containing nodes
 passed	expressions/quantifier/Quantifier1/[9] None quantifier on list containing relationships
-execution_failure	expressions/quantifier/Quantifier10/[1] Single quantifier is always false if the predicate is statically false and the list is not empty
-execution_failure	expressions/quantifier/Quantifier10/[2] Single quantifier is always false if the predicate is statically true and the list has more than one element
+passed	expressions/quantifier/Quantifier10/[1] Single quantifier is always false if the predicate is statically false and the list is not empty
+passed	expressions/quantifier/Quantifier10/[2] Single quantifier is always false if the predicate is statically true and the list has more than one element
 passed	expressions/quantifier/Quantifier10/[3] Single quantifier is always true if the predicate is statically true and the list has exactly one non-null element
-execution_failure	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier11/[1] Any quantifier is always false if the predicate is statically false and the list is not empty
-execution_failure	expressions/quantifier/Quantifier11/[2] Any quantifier is always true if the predicate is statically true and the list is not empty
-execution_failure	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x < 7]
-execution_failure	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x = 2]
-execution_failure	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x >= 3]
-execution_failure	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier12/[1] All quantifier is always false if the predicate is statically false and the list is not empty
-execution_failure	expressions/quantifier/Quantifier12/[2] All quantifier is always true if the predicate is statically true and the list is not empty
-execution_failure	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x < 7]
+passed	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x = 2]
+passed	expressions/quantifier/Quantifier10/[4] Single quantifier is always equal whether the size of the list filtered with same the predicate is one [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier11/[1] Any quantifier is always false if the predicate is statically false and the list is not empty
+passed	expressions/quantifier/Quantifier11/[2] Any quantifier is always true if the predicate is statically true and the list is not empty
+passed	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x % 2 = 0]
+passed	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x % 3 = 0]
+passed	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x < 7]
+passed	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x = 2]
+passed	expressions/quantifier/Quantifier11/[3] Any quantifier is always true if the single or the all quantifier is true [operands=x IN list WHERE x >= 3]
+passed	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x < 7]
+passed	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x = 2]
+passed	expressions/quantifier/Quantifier11/[4] Any quantifier is always equal the boolean negative of the none quantifier [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x < 7]
+passed	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x = 2]
+passed	expressions/quantifier/Quantifier11/[5] Any quantifier is always equal the boolean negative of the all quantifier on the boolean negative of the predicate [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x < 7]
+passed	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x = 2]
+passed	expressions/quantifier/Quantifier11/[6] Any quantifier is always equal whether the size of the list filtered with same the predicate is grater zero [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier12/[1] All quantifier is always false if the predicate is statically false and the list is not empty
+passed	expressions/quantifier/Quantifier12/[2] All quantifier is always true if the predicate is statically true and the list is not empty
+passed	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x < 7]
+passed	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x = 2]
+passed	expressions/quantifier/Quantifier12/[3] All quantifier is always equal the none quantifier on the boolean negative of the predicate [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x < 7]
+passed	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x = 2]
+passed	expressions/quantifier/Quantifier12/[4] All quantifier is always equal the boolean negative of the any quantifier on the boolean negative of the predicate [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x < 7]
+passed	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x = 2]
+passed	expressions/quantifier/Quantifier12/[5] All quantifier is always equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[34, 0, null, 5, 900], condition=x < 10, result=false]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
 passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[4, 0, null, -15, 9], condition=x < 10, result=false]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier2/[10] Single quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier2/[11] Single quantifier with IS NULL predicate [list=[0, null], result=true]
 passed	expressions/quantifier/Quantifier2/[11] Single quantifier with IS NULL predicate [list=[0], result=false]
 passed	expressions/quantifier/Quantifier2/[11] Single quantifier with IS NULL predicate [list=[2, null], result=true]
@@ -2421,16 +2421,16 @@ passed	expressions/quantifier/Quantifier2/[7] Single quantifier on list literal 
 passed	expressions/quantifier/Quantifier2/[7] Single quantifier on list literal containing maps [list=[{a: 4}, {a: 2, b: 5}], condition=x.a = 2, result=true]
 passed	expressions/quantifier/Quantifier2/[7] Single quantifier on list literal containing maps [list=[{a: 4}, {a: 4}, {a: 4}], condition=x.a = 2, result=false]
 passed	expressions/quantifier/Quantifier2/[7] Single quantifier on list literal containing maps [list=[{a: 4}], condition=x.a = 2, result=false]
-execution_failure	expressions/quantifier/Quantifier2/[8] Single quantifier on list containing nodes
+passed	expressions/quantifier/Quantifier2/[8] Single quantifier on list containing nodes
 passed	expressions/quantifier/Quantifier2/[9] Single quantifier on list containing relationships
-execution_failure	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=true]
 passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[34, 0, null, 5, 900], condition=x < 10, result=true]
-execution_failure	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
+passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=null]
 passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[4, 0, null, -15, 9], condition=x < 10, result=true]
 passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=true]
-execution_failure	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier3/[10] Any quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier3/[11] Any quantifier with IS NULL predicate [list=[0, null], result=true]
 passed	expressions/quantifier/Quantifier3/[11] Any quantifier with IS NULL predicate [list=[0], result=false]
 passed	expressions/quantifier/Quantifier3/[11] Any quantifier with IS NULL predicate [list=[2, null], result=true]
@@ -2526,16 +2526,16 @@ passed	expressions/quantifier/Quantifier3/[7] Any quantifier on list literal con
 passed	expressions/quantifier/Quantifier3/[7] Any quantifier on list literal containing maps [list=[{a: 4}, {a: 2, b: 5}], condition=x.a = 2, result=true]
 passed	expressions/quantifier/Quantifier3/[7] Any quantifier on list literal containing maps [list=[{a: 4}, {a: 4}, {a: 4}], condition=x.a = 2, result=false]
 passed	expressions/quantifier/Quantifier3/[7] Any quantifier on list literal containing maps [list=[{a: 4}], condition=x.a = 2, result=false]
-execution_failure	expressions/quantifier/Quantifier3/[8] Any quantifier on list containing nodes
+passed	expressions/quantifier/Quantifier3/[8] Any quantifier on list containing nodes
 passed	expressions/quantifier/Quantifier3/[9] Any quantifier on list containing relationships
 passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[0, null], condition=x = 2, result=false]
-execution_failure	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[2, null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[34, 0, null, 5, 900], condition=x < 10, result=false]
 passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[34, 10, null, 15, 900], condition=x < 10, result=false]
-execution_failure	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[4, 0, null, -15, 9], condition=x < 10, result=null]
-execution_failure	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
-execution_failure	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[4, 0, null, -15, 9], condition=x < 10, result=null]
+passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null, 2], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null, null], condition=x = 2, result=null]
+passed	expressions/quantifier/Quantifier4/[10] All quantifier on lists containing nulls [list=[null], condition=x = 2, result=null]
 passed	expressions/quantifier/Quantifier4/[11] All quantifier with IS NULL predicate [list=[0, null], result=false]
 passed	expressions/quantifier/Quantifier4/[11] All quantifier with IS NULL predicate [list=[0], result=false]
 passed	expressions/quantifier/Quantifier4/[11] All quantifier with IS NULL predicate [list=[2, null], result=false]
@@ -2631,7 +2631,7 @@ passed	expressions/quantifier/Quantifier4/[7] All quantifier on list literal con
 passed	expressions/quantifier/Quantifier4/[7] All quantifier on list literal containing maps [list=[{a: 4}, {a: 2, b: 5}], condition=x.a = 2, result=false]
 passed	expressions/quantifier/Quantifier4/[7] All quantifier on list literal containing maps [list=[{a: 4}, {a: 4}, {a: 4}], condition=x.a = 2, result=false]
 passed	expressions/quantifier/Quantifier4/[7] All quantifier on list literal containing maps [list=[{a: 4}], condition=x.a = 2, result=false]
-execution_failure	expressions/quantifier/Quantifier4/[8] All quantifier on list containing nodes
+passed	expressions/quantifier/Quantifier4/[8] All quantifier on list containing nodes
 passed	expressions/quantifier/Quantifier4/[9] All quantifier on list containing relationships
 passed	expressions/quantifier/Quantifier5/[1] None quantifier can nest itself and other quantifiers on nested lists [condition=all(y IN x WHERE y = 'abc'), result=false]
 passed	expressions/quantifier/Quantifier5/[1] None quantifier can nest itself and other quantifiers on nested lists [condition=all(y IN x WHERE y = 'def'), result=true]
@@ -2752,23 +2752,23 @@ passed	expressions/quantifier/Quantifier8/[5] All quantifier is equal whether th
 passed	expressions/quantifier/Quantifier8/[5] All quantifier is equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x < 7]
 passed	expressions/quantifier/Quantifier8/[5] All quantifier is equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x = 2]
 passed	expressions/quantifier/Quantifier8/[5] All quantifier is equal whether the size of the list filtered with same the predicate is equal the size of the unfiltered list [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier9/[1] None quantifier is always true if the predicate is statically false and the list is not empty
-execution_failure	expressions/quantifier/Quantifier9/[2] None quantifier is always false if the predicate is statically true and the list is not empty
-execution_failure	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x >= 3]
-execution_failure	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x % 2 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x % 3 = 0]
-execution_failure	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x < 7]
-execution_failure	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x = 2]
-execution_failure	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier9/[1] None quantifier is always true if the predicate is statically false and the list is not empty
+passed	expressions/quantifier/Quantifier9/[2] None quantifier is always false if the predicate is statically true and the list is not empty
+passed	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x < 7]
+passed	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x = 2]
+passed	expressions/quantifier/Quantifier9/[3] None quantifier is always equal the boolean negative of the any quantifier [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x < 7]
+passed	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x = 2]
+passed	expressions/quantifier/Quantifier9/[4] None quantifier is always equal the all quantifier on the boolean negative of the predicate [predicate=x >= 3]
+passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x % 2 = 0]
+passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x % 3 = 0]
+passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x < 7]
+passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x = 2]
+passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal whether the size of the list filtered with same the predicate is zero [predicate=x >= 3]
 passed	expressions/string/String1/[1] `substring()` with default second argument
 passed	expressions/string/String10/[1] Finding exact matches with non-proper substring
 passed	expressions/string/String10/[2] Finding substring of string

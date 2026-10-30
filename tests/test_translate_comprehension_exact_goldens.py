@@ -5,6 +5,11 @@ import pytest
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# These pin how constructs lower to AQL using literal inputs, which compile-time
+# folding would evaluate first (tests/test_const_eval.py covers folding).
+pytestmark = pytest.mark.usefixtures("without_constant_folding")
+
+
 COMPREHENSION_IDS = [f"C{n}" for n in range(500, 505)] + [f"C{n}" for n in range(510, 512)]
 
 

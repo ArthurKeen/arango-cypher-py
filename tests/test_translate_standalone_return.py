@@ -13,6 +13,10 @@ from arango_query_core import CoreError
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# These pin how constructs lower to AQL using literal inputs, which compile-time
+# folding would evaluate first (tests/test_const_eval.py covers folding).
+pytestmark = pytest.mark.usefixtures("without_constant_folding")
+
 
 @pytest.fixture
 def mapping():

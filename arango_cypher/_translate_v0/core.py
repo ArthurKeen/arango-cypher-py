@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from types import MappingProxyType
 from typing import Any
 
 from arango_query_core import (
@@ -36,6 +37,7 @@ from .calls import (
     _translate_standalone_in_query_call,
 )
 from .columns import _active_cypher_column_names, object_key, written_column
+from .const_eval import _const_env, bind_with_constants, try_fold
 from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
 from .deletes import translate_delete_query
 from .distinct_order import append_distinct_return, live_sort_terms, order_keeping_collect
@@ -55,6 +57,7 @@ from .inserts import (
 )
 from .label_tests import label_test
 from .literals import _aql_string_from_cypher, _aql_string_literal
+from .local_scopes import local_aql_name, quantifier_aql, rename_local
 from .multi_type import (
     MULTI_TYPE_SEPARATOR,
     _is_edge_collection_value,
@@ -167,6 +170,7 @@ def translate_v0(
     user_vars_token = _active_user_vars.set([])
     user_params_token = _active_user_params.set(frozenset(params or {}))
     temporal_token = _temporal_vars.set({})
+    const_token = _const_env.set(MappingProxyType({}))
 
     try:
         result = _translate_v0_inner(
@@ -195,6 +199,7 @@ def translate_v0(
         _active_user_vars.reset(user_vars_token)
         _active_user_params.reset(user_params_token)
         _temporal_vars.reset(temporal_token)
+        _const_env.reset(const_token)
         _active_path_vars.reset(path_token)
         _active_warnings.reset(warn_token)
         _active_resolver.reset(res_token)
@@ -1532,9 +1537,12 @@ def _translate_computational_multi_part(
         if var_env:
             expr = _rewrite_vars(expr, var_env)
         var = uw.oC_Variable().getText().strip()
-        lines.append(f"FOR {var} IN {expr}")
-        var_env[var] = var
-        forbidden.add(var)
+        # Cypher may re-bind a name a WITH dropped (UNWIND l AS x … WITH l
+        # UNWIND l AS x); AQL may not reassign a variable (ERR 1511).
+        aql_var = _pick_fresh_var(var, forbidden_vars=forbidden)
+        lines.append(f"FOR {aql_var} IN {expr}")
+        var_env[var] = aql_var
+        forbidden.add(aql_var)
 
     def _emit_reading(rc: CypherParser.OC_ReadingClauseContext) -> None:
         call = subquery_call(rc)
@@ -3380,7 +3388,9 @@ def _apply_with(
     """Compile a WITH stage; see :func:`_apply_with_projection`. Tracks the
     variables it binds to temporal values, whose ``.year`` etc. are lowered."""
     during, after = bind_with(with_ctx)
+    consts_during, consts_after = bind_with_constants(with_ctx)
     token = _temporal_vars.set(during)
+    const_token = _const_env.set(consts_during)
     try:
         env = _apply_with_projection(
             with_ctx,
@@ -3391,8 +3401,10 @@ def _apply_with(
         )
     except BaseException:
         _temporal_vars.reset(token)
+        _const_env.reset(const_token)
         raise
     _temporal_vars.set(after)
+    _const_env.set(consts_after)
     return env
 
 
@@ -5604,37 +5616,25 @@ def _compile_quantifier(
     bind_vars: dict[str, Any],
 ) -> str:
     """Compile a list quantifier — ``any``/``all``/``none``/``single`` —
-    ``<kind>(x IN <list> WHERE <pred>)`` to an AQL count-subquery test:
-
-    * ``any``    → ``LENGTH(FOR x IN list FILTER pred RETURN 1) > 0``
-    * ``none``   → ``… == 0``
-    * ``single`` → ``… == 1``
-    * ``all``    → ``LENGTH(FOR x IN list FILTER NOT (pred) RETURN 1) == 0``
-
-    The bound variable is the subquery loop variable, so the predicate
-    references it directly. A missing ``WHERE`` defaults the predicate to
-    ``true`` (``any`` = non-empty, ``all`` = always true, ``none`` = empty,
-    ``single`` = exactly one). NOTE: AQL treats a ``null`` predicate as false,
-    so Cypher's three-valued semantics for ``null`` list elements are not
-    reproduced exactly — correct for the common (non-null) case.
+    ``<kind>(x IN <list> WHERE <pred>)`` with Cypher's three-valued result:
+    the predicate is evaluated per element as a value and the true / false /
+    null counts decide (``local_scopes.quantifier_aql``). A missing ``WHERE``
+    defaults the predicate to ``true``.
     """
+    owner = filt_expr.parentCtx
     id_in_coll = filt_expr.oC_IdInColl()
     var_name = id_in_coll.oC_Variable().getText().strip()
+    aql_var = local_aql_name(var_name, owner)
     list_expr = _compile_expression(id_in_coll.oC_Expression(), bind_vars)
     where = filt_expr.oC_Where()
-    cond = _compile_where(where.oC_Expression(), bind_vars) if where is not None else "true"
-
-    if kind == "all":
-        body = f"FOR {var_name} IN {list_expr} FILTER NOT ({cond}) RETURN 1"
-        return f"(LENGTH({body}) == 0)"
-    body = f"FOR {var_name} IN {list_expr} FILTER {cond} RETURN 1"
-    if kind == "any":
-        return f"(LENGTH({body}) > 0)"
-    if kind == "none":
-        return f"(LENGTH({body}) == 0)"
-    if kind == "single":
-        return f"(LENGTH({body}) == 1)"
-    raise CoreError(f"Unsupported quantifier: {kind}", code="UNSUPPORTED")
+    predicate = _compile_value(where.oC_Expression(), bind_vars) if where is not None else "true"
+    return quantifier_aql(
+        kind,
+        owner=owner,
+        var=aql_var,
+        list_aql=list_expr,
+        predicate=rename_local(predicate, var_name, aql_var),
+    )
 
 
 def _reduce_additive_terms(body_ctx: CypherParser.OC_ExpressionContext) -> Any | None:
@@ -5674,7 +5674,8 @@ def _compile_reduce(
     acc_var = ctx.oC_Variable().getText().strip()
     exprs = ctx.oC_Expression()  # [init, body]
     id_in_coll = ctx.oC_IdInColl()
-    x_var = id_in_coll.oC_Variable().getText().strip()
+    cypher_x_var = id_in_coll.oC_Variable().getText().strip()
+    x_var = local_aql_name(cypher_x_var, ctx)
     init_aql = _compile_expression(exprs[0], bind_vars)
     list_aql = _compile_expression(id_in_coll.oC_Expression(), bind_vars)
 
@@ -5700,7 +5701,7 @@ def _compile_reduce(
     if len(acc_indices) != 1:
         raise unsupported  # accumulator must appear exactly once, as a bare term
     rest = [t for i, t in enumerate(terms) if i != acc_indices[0]]
-    rest_aql_parts = [_compile_expression(t, bind_vars) for t in rest]
+    rest_aql_parts = [rename_local(_compile_expression(t, bind_vars), cypher_x_var, x_var) for t in rest]
     # The per-element value must not itself reference the accumulator.
     if any(acc_pattern.search(part) for part in rest_aql_parts):
         raise unsupported
@@ -5725,18 +5726,19 @@ def _compile_list_comprehension(
     """
     filt_expr = ctx.oC_FilterExpression()
     id_in_coll = filt_expr.oC_IdInColl()
-    var_name = id_in_coll.oC_Variable().getText().strip()
+    cypher_var = id_in_coll.oC_Variable().getText().strip()
+    var_name = local_aql_name(cypher_var, ctx)
     list_expr = _compile_expression(id_in_coll.oC_Expression(), bind_vars)
 
     where = filt_expr.oC_Where()
     filter_clause = ""
     if where is not None:
-        cond = _compile_where(where.oC_Expression(), bind_vars)
+        cond = rename_local(_compile_where(where.oC_Expression(), bind_vars), cypher_var, var_name)
         filter_clause = f" FILTER {cond}"
 
     map_expr = ctx.oC_Expression()
     if map_expr is not None:
-        projection = _compile_expression(map_expr, bind_vars)
+        projection = rename_local(_compile_expression(map_expr, bind_vars), cypher_var, var_name)
     else:
         projection = var_name
 
@@ -5883,6 +5885,13 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
     if aggregate_var is not None:
         # An aggregate nested in a projection: see ``_hoist_nested_aggregates``.
         return aggregate_var
+
+    folded = try_fold(ctx, bind_vars, shadowed=_enclosing_local_vars(ctx))
+    if folded is not None:
+        # A constant expression, evaluated with Cypher's semantics: see ``const_eval``.
+        aql, value = folded
+        two_valued = isinstance(value, bool)
+        return _test_truth(aql, mode, two_valued=two_valued) if mode is not None else aql
 
     if isinstance(ctx, CypherParser.OC_ExpressionContext):
         return _compile_expression(ctx.oC_OrExpression(), bind_vars)

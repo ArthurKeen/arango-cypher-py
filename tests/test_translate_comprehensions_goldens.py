@@ -10,6 +10,11 @@ import yaml
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# These pin how constructs lower to AQL using literal inputs, which compile-time
+# folding would evaluate first (tests/test_const_eval.py covers folding).
+pytestmark = pytest.mark.usefixtures("without_constant_folding")
+
+
 _CASES_FILE = Path(__file__).resolve().parent / "fixtures" / "cases_v03" / "comprehensions.yml"
 _CASES = yaml.safe_load(_CASES_FILE.read_text(encoding="utf-8"))
 

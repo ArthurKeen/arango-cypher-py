@@ -121,7 +121,8 @@ def test_raw_arithmetic_truncates_integer_division() -> None:
     ("left", "lt", "right", "rt", "expected"),
     [
         ("[1]", LIST, "[2]", LIST, "APPEND([1], [2])"),
-        ("[1]", LIST, "null", "null", "PUSH([1], null)"),
+        # A null operand makes + null, lists included (Neo4j 5.26).
+        ("[1]", LIST, "null", "null", "null"),
         ("n.l", LIST, "1", INT, "((n.l == null) ? null : PUSH(n.l, 1))"),
         ("1", INT, "n.l", LIST, "((n.l == null) ? null : UNSHIFT(n.l, 1))"),
         ("null", "null", "1", INT, "null"),

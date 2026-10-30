@@ -123,7 +123,10 @@ def test_a_filter_on_arithmetic(db: Any, mapping: MappingBundle) -> None:
         ("[1] + [2]", [1, 2]),
         ("[1] + 2", [1, 2]),
         ("0 + [1]", [0, 1]),
-        ("[1] + null", [1, None]),
+        # Neo4j 5.26: a null operand makes + null, lists included.
+        ("[1] + null", None),
+        ("null + [1]", None),
+        ("[1] + [null]", [1, None]),
         ("null + 1", None),
         ("'a' + null", None),
         ("-null", None),
