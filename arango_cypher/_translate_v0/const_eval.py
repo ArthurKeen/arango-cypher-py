@@ -574,10 +574,15 @@ class Evaluator:
         if source is None:
             return None
         body = ctx.oC_Expression(1)
+
+        def step(item: Any) -> Callable[[], Any]:
+            def run() -> Any:
+                return self._with_binding(name, item, lambda: self.eval(body))
+
+            return run
+
         for item in source:
-            acc = self._with_binding(
-                acc_name, acc, lambda item=item: self._with_binding(name, item, lambda: self.eval(body))
-            )
+            acc = self._with_binding(acc_name, acc, step(item))
         return acc
 
     def _function(self, ctx: CypherParser.OC_FunctionInvocationContext) -> Any:

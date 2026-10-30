@@ -344,18 +344,26 @@ def add(a: Any, b: Any) -> Any:
     if isinstance(a, str) and isinstance(b, str):
         return a + b
     if isinstance(a, str) and (is_number(b) or isinstance(b, bool)):
-        return a + to_string(b)
+        return a + _text(b)
     if isinstance(b, str) and (is_number(a) or isinstance(a, bool)):
-        return to_string(a) + b
+        return _text(a) + b
     kind = _kind_of(a, b)
     if kind is not None:
         result = kind.add(a, b)
         if result is not NotImplemented:
             return result
         if isinstance(a, str) or isinstance(b, str):
-            return to_string(a) + to_string(b)
+            return _text(a) + _text(b)
     _numeric(a, b, "+")
     return _arith_result(a + b, a, b)
+
+
+def _text(v: Any) -> str:
+    """``toString`` of a value already known not to be null."""
+    text = to_string(v)
+    if text is None:
+        raise ValueError("_text() of null")
+    return text
 
 
 def subtract(a: Any, b: Any) -> Any:

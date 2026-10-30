@@ -1765,7 +1765,7 @@ passed	expressions/list/List6/[10] Get node degree via size of pattern comprehen
 passed	expressions/list/List6/[1] Return list size
 passed	expressions/list/List6/[2] Setting and returning the size of a list property
 passed	expressions/list/List6/[3] Concatenating and returning the size of literal lists
-execution_failure	expressions/list/List6/[4] `size()` on null list
+passed	expressions/list/List6/[4] `size()` on null list
 correct_rejection	expressions/list/List6/[5] Fail for `size()` on paths
 correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--()]
 correct_rejection	expressions/list/List6/[6] Fail for `size()` on pattern predicates [pattern=()--(a)]
