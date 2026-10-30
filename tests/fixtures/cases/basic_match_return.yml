@@ -301,7 +301,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          RETURN {n: LENGTH([1,2,3])}
+          RETURN {n: 3}
       bind_vars:
         "@collection": users
 

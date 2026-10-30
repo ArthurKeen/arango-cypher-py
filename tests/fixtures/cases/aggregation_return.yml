@@ -132,7 +132,7 @@ cases:
     expected:
       aql: |
         FOR n IN @@collection
-          LIMIT (5 + 5)
+          LIMIT 10
           RETURN n
       bind_vars:
         "@collection": persons

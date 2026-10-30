@@ -36,3 +36,17 @@ def _reset_tenant_plan_cache():
 
     reset_plan_cache()
     yield
+
+
+@pytest.fixture
+def without_constant_folding():
+    """Translate without compile-time folding (``const_eval``).
+
+    For tests that pin how a construct lowers to AQL using literal inputs:
+    with folding on, ``any(x IN [1, 2] WHERE x > 1)`` is evaluated to
+    ``true`` and the lowering a data-dependent list takes is never exercised.
+    """
+    from arango_cypher._translate_v0.const_eval import constant_folding
+
+    with constant_folding(False):
+        yield

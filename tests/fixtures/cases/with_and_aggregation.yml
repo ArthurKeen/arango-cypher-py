@@ -254,7 +254,7 @@ cases:
       aql: |
         FOR u IN @@collection
           LET x = null
-          FILTER (x == null)
+          FILTER true
           SORT (u.id == null), u.id
           LIMIT 2
           RETURN u.id

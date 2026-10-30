@@ -12,6 +12,10 @@ import pytest
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# These pin how constructs lower to AQL using literal inputs, which compile-time
+# folding would evaluate first (tests/test_const_eval.py covers folding).
+pytestmark = pytest.mark.usefixtures("without_constant_folding")
+
 
 @pytest.mark.parametrize("case_id", [f"C{n}" for n in range(829, 835)])
 def test_translate_arithmetic_goldens(corpus_cases, case_id: str):
