@@ -611,7 +611,16 @@ guard on LPG; a pair with no path yields no row, as in a MATCH. The path is
 any type and direction, minimum length 0 or 1; relationship properties are
 refused. The grammar is regenerated with `scripts/regen_antlr.sh`. Aggregates follow Cypher's null semantics:
 `count(x)`, `count(DISTINCT x)` and `collect(x)` skip nulls, and `sum()` over
-no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
+no rows is 0. `percentileDisc(x, p)` and `percentileCont(x, p)` gather `x`
+like `collect()` and compute Neo4j's definition over the sorted non-null
+values after grouping (`percentiles.py`); a `p` outside [0, 1] fails each
+group with `NumberOutOfRange`. `min()`/`max()` of a value the query shows to
+be a string, or an element of a list of mixed types, are gathered the same
+way and pick the least/greatest value in Cypher's order (strings by code
+point, types by rank); `min`/`max` of anything else, a property above all,
+stay AQL aggregates. An `ORDER BY` item may use an aggregate the projection
+computes (`RETURN u.city, count(*) AS c ORDER BY count(*)`), which reads that
+item's value; any other aggregate there is refused (`UNSUPPORTED`). The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
 An `UNWIND` before the first `MATCH` of such a pipeline is refused
 (`NOT_IMPLEMENTED`). An unaliased variable is returned under its Cypher name

@@ -43,7 +43,7 @@ from antlr4 import ParserRuleContext
 from .._antlr.CypherParser import CypherParser
 from .semantic_aggregation import check_aggregation
 from .semantic_errors import semantic_error
-from .semantic_expr import ExpressionChecker, Scope, bare_variable, variable_name
+from .semantic_expr import ExpressionChecker, Scope, bare_variable, sole_operand, variable_name
 from .semantic_types import (
     LIST,
     NODE,
@@ -241,6 +241,7 @@ class _QueryChecker:
         for item in items_ctx.oC_ProjectionItem():
             expr = item.oC_Expression()
             t = self.expr.visit(expr, scope)
+            self._record_extreme_argument(expr, scope)
             name = _projection_name(item, keyword)
             aliased = item.oC_Variable() is not None
             all_named = all_named and (aliased or bare_variable(expr) is not None)
@@ -267,6 +268,19 @@ class _QueryChecker:
         # A column named by its expression text is compared to no other: how
         # an engine spells that text is not something to reject a UNION over.
         return projected, _Columns(list(names), star=star, comparable=all_named)
+
+    def _record_extreme_argument(self, expr: ParserRuleContext, scope: Scope) -> None:
+        """For an item that is one ``min()``/``max()`` call, note its argument's type.
+
+        The translator orders strings and mixed types for it as Cypher does
+        (``sort_keys.extreme_spec``).
+        """
+        call = sole_operand(expr, _P.OC_FunctionInvocationContext)
+        if not isinstance(call, _P.OC_FunctionInvocationContext):
+            return
+        args = call.oC_Expression()
+        if call.oC_FunctionName().getText().strip().lower() in ("min", "max") and len(args) == 1:
+            record_sort_type(expr, self.expr.visit(args[0], scope))
 
     # -- patterns -----------------------------------------------------------
 

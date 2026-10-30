@@ -1,0 +1,37 @@
+version: 1
+cases:
+- id: C1117
+  name: percentileDisc gathers values and picks Neo4j's rank
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (u:User) RETURN percentileDisc(u.age, 0.5) AS p
+  expected:
+    aql: "FOR u IN @@collection\n  COLLECT _collect_group = 1 INTO _collect_rows = {p: u.age}\n  LET p = FIRST(LET _pp = 0.5 LET _ps = SORTED(REMOVE_VALUE(_collect_rows[*].p, null)) LET _pc = LENGTH(_ps) LET _pf = _pp * _pc RETURN _pp == null ? null : (NOT IS_NUMBER(_pp) OR _pp < 0 OR _pp > 1) ? FAIL(\"NumberOutOfRange: a percentile must be a number between 0.0 and 1.0\") : _pc == 0 ? null : (_pc == 1 OR _pp == 1) ? _ps[_pc - 1] : _ps[(_pf != FLOOR(_pf) OR _pf == 0) ? FLOOR(_pf) : FLOOR(_pf) - 1])\n  RETURN p"
+    bind_vars:
+      '@collection': users
+- id: C1118
+  name: percentileCont interpolates, grouped by a key
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (u:User) RETURN u.city AS city, percentileCont(u.age, $p) AS p
+  expected:
+    aql: "FOR u IN @@collection\n  COLLECT city = u.city INTO _collect_rows = {p_g1: u.age}\n  LET p_g1 = FIRST(LET _pp = @p LET _ps = SORTED(REMOVE_VALUE(_collect_rows[*].p_g1, null)) LET _pc = LENGTH(_ps) LET _pf = _pp * (_pc - 1) RETURN _pp == null ? null : (NOT IS_NUMBER(_pp) OR _pp < 0 OR _pp > 1) ? FAIL(\"NumberOutOfRange: a percentile must be a number between 0.0 and 1.0\") : _pc == 0 ? null : (_pc == 1 OR _pp == 1 OR FLOOR(_pf) == CEIL(_pf)) ? _ps[FLOOR(_pf)] : _ps[FLOOR(_pf)] * (CEIL(_pf) - _pf) + _ps[CEIL(_pf)] * (_pf - FLOOR(_pf)))\n  RETURN {city: city, p: p_g1}"
+    bind_vars:
+      '@collection': users
+- id: C1119
+  name: min over strings orders by code point
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: UNWIND ['a', 'B'] AS s RETURN min(s) AS m
+  expected:
+    aql: "FOR s IN ['a','B']\n  COLLECT _collect_group = 1 INTO _collect_rows = {m: s}\n  LET m = FIRST(FOR _ev IN REMOVE_VALUE(_collect_rows[*].m, null) SORT [(IS_OBJECT(_ev) ? (HAS(_ev, '_from') ? 2 : HAS(_ev, '_id') ? 1 : (HAS(_ev, 'nodes') AND HAS(_ev, 'edges')) ? 4 : 0) : TRANSLATE(TYPENAME(_ev), {\"null\": 8, \"bool\": 6, \"number\": 7, \"string\": 5, \"array\": 3}, 0)), (IS_STRING(_ev) ? TO_HEX(_ev) : ((IS_OBJECT(_ev) AND HAS(_ev, '_id')) ? _ev._id : _ev))] ASC LIMIT 1 RETURN _ev)\n  RETURN m"
+    bind_vars: {}
+- id: C1120
+  name: ORDER BY an aggregate the projection computes reads its variable
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (u:User) RETURN u.city AS city, count(*) AS c ORDER BY count(*) DESC, u.city
+  expected:
+    aql: "FOR u IN @@collection\n  COLLECT city = u.city AGGREGATE _c_rows = SUM(1)\n  LET c = NOT_NULL(_c_rows, 0)\n  SORT (c == null) DESC, c DESC, (city == null), city\n  RETURN {city: city, c: c}"
+    bind_vars:
+      '@collection': users

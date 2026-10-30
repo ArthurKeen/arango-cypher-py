@@ -28,7 +28,7 @@ import re
 from contextvars import ContextVar
 from typing import Any
 
-from .semantic_types import LIST, SType
+from .semantic_types import LIST, STRING, SType
 
 #: ORDER BY sort-item contexts (by ``id``) -> the type the semantic pass
 #: shows for them, for the translation running in this context.
@@ -74,9 +74,13 @@ def _rank(value: str) -> str:
     )
 
 
-def _within_rank(value: str) -> str:
-    """What orders two values of one rank: a node or relationship by its id."""
-    return f"((IS_OBJECT({value}) AND HAS({value}, '_id')) ? {value}._id : {value})"
+def _within_rank(value: str, *, code_points: bool = False) -> str:
+    """What orders two values of one rank: a node or relationship by its id;
+    with *code_points*, a string by the hex of its UTF-8 bytes."""
+    plain = f"((IS_OBJECT({value}) AND HAS({value}, '_id')) ? {value}._id : {value})"
+    if not code_points:
+        return plain
+    return f"(IS_STRING({value}) ? TO_HEX({value}) : {plain})"
 
 
 def cypher_sort_key(expr: str) -> str:
@@ -104,3 +108,32 @@ def read_grouping_keys(expr: str, grouped: dict[str, str]) -> str:
         key = grouped[source]
         expr = re.sub(pattern, lambda _match: key, expr)  # noqa: B023 - used at once
     return expr
+
+
+_EXTREME_CALL = re.compile(r"^(min|max)\s*\((.*)\)$", re.IGNORECASE | re.DOTALL)
+
+
+def extreme_spec(text: str, ctx: Any) -> dict[str, Any] | None:
+    """A ``collect``-shaped spec for ``min(x)``/``max(x)`` that must order as Cypher.
+
+    AQL's ``MIN``/``MAX`` compare strings by ICU collation (``'a'`` before
+    ``'B'``) and mixed types in AQL's type order. When the semantic pass shows
+    the argument to be a string, or an element of a mixed list, the call is
+    gathered like ``collect()`` and finished by :func:`extreme_value`; any
+    other ``min``/``max`` (a property, a number) keeps AQL's aggregate.
+    """
+    value_type = (SORT_VALUE_TYPES.get() or {}).get(id(ctx))
+    if value_type is None or not (value_type.kind == STRING or value_type.mixed):
+        return None
+    m = _EXTREME_CALL.match(text.strip())
+    if m is None:
+        return None
+    return {"inner": m.group(2).strip(), "distinct": False, "slice": None, "extreme": m.group(1).lower()}
+
+
+def extreme_value(values: str, which: str) -> str:
+    """The least (``min``) or greatest (``max``) non-null value of *values*, in
+    Cypher's order: across types by rank, strings by code point."""
+    key = f"[{_rank('_ev')}, {_within_rank('_ev', code_points=True)}]"
+    direction = "ASC" if which == "min" else "DESC"
+    return f"FIRST(FOR _ev IN REMOVE_VALUE({values}, null) SORT {key} {direction} LIMIT 1 RETURN _ev)"

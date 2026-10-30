@@ -15,7 +15,14 @@ from arango_query_core import (
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
-from .aggregates import aggregate_variable, aggregate_variables, lower_aggregate, nested_aggregates
+from .aggregates import (
+    aggregate_key,
+    aggregate_variable,
+    aggregate_variables,
+    lower_aggregate,
+    nested_aggregates,
+    sort_aggregates,
+)
 from .arithmetic import (
     STRING,
     _numeric_type,
@@ -79,6 +86,7 @@ from .naming import (
     _strip_label_backticks,
 )
 from .pattern_reversal import from_bound_end
+from .percentiles import parse_percentile, percentile_value
 from .pipeline_writes import append_midquery_writes, refuse_after_write, split_writes
 from .scopes import outer_bound_names
 from .semantic_check import check_semantics
@@ -89,7 +97,14 @@ from .shortest_path import (
     refuse_unbound_shortest_path,
     shortest_path_pattern,
 )
-from .sort_keys import SORT_VALUE_TYPES, cypher_sort_key, needs_cypher_sort_key, read_grouping_keys
+from .sort_keys import (
+    SORT_VALUE_TYPES,
+    cypher_sort_key,
+    extreme_spec,
+    extreme_value,
+    needs_cypher_sort_key,
+    read_grouping_keys,
+)
 from .state import (
     TranslateOptions,
     _active_case_insensitive_inline,
@@ -3195,17 +3210,20 @@ def _compile_cypher_fragment(text: str, bind_vars: dict[str, Any]) -> str:
     return _compile_expression(projection_item.oC_Expression(), bind_vars)
 
 
-def _parse_collect(expr_text: str) -> dict[str, Any] | None:
+def _parse_collect(expr_text: str, ctx: Any = None) -> dict[str, Any] | None:
     """Parse a ``collect(...)`` projection, including ``DISTINCT`` and an
     optional trailing subscript/slice (``collect(DISTINCT x)[0..5]``).
 
     Returns ``{"inner", "distinct", "slice"}`` where ``slice`` is ``None``,
     ``("index", expr_text)``, or ``("slice", start_text|None, end_text|None)``.
-    Returns ``None`` if *expr_text* is not a collect call.
+    Returns ``None`` if *expr_text* is not a collect call. A percentile call,
+    and a ``min``/``max`` the projection item *ctx* shows must order as Cypher
+    does, are gathered the same way (``percentile``/``extreme`` in the spec).
     """
     t = expr_text.strip()
     if not t[:7].lower() == "collect":
-        return None
+        # percentileDisc/Cont, ordered min/max: a collect finished after grouping.
+        return parse_percentile(t) or (extreme_spec(t, ctx) if ctx is not None else None)
     i = 7
     while i < len(t) and t[i].isspace():
         i += 1
@@ -3254,6 +3272,9 @@ def _compile_collect_inner(spec: dict[str, Any], bind_vars: dict[str, Any]) -> d
     """
     compiled = dict(spec)
     compiled["inner"] = _compile_cypher_fragment(spec["inner"], bind_vars)
+    if spec.get("percentile") is not None:
+        kind, p_text = spec["percentile"]
+        compiled["percentile"] = (kind, _compile_cypher_fragment(p_text, bind_vars))
     return compiled
 
 
@@ -3267,6 +3288,11 @@ def _collect_post_expr(raw_var: str, spec: dict[str, Any]) -> str:
     common non-negative literal bounds; a negative slice bound is a known
     limitation (documented in the coverage plan).
     """
+    if spec.get("percentile") is not None:
+        kind, p = spec["percentile"]
+        return percentile_value(raw_var, kind, p)
+    if spec.get("extreme") is not None:
+        return extreme_value(raw_var, spec["extreme"])
     e = f"REMOVE_VALUE({raw_var}, null)"
     if spec.get("distinct"):
         e = f"UNIQUE({e})"
@@ -3488,6 +3514,8 @@ def _apply_with_projection(
     # COLLECT variables of those aggregates, which are not projected.
     compiled_post: list[tuple[str, str, str]] = []  # (cypher_var, aql_var, expr)
     hidden: set[str] = set()
+    # Each whole-item aggregate's Cypher text -> its variable, for ORDER BY.
+    aggregate_items: dict[str, str] = {}
     pre_existing = set(forbidden_vars)
 
     def pick_name(cypher_var: str) -> str:
@@ -3509,13 +3537,14 @@ def _apply_with_projection(
         expr_txt_for_agg = _rewrite_vars(expr_txt, incoming_env) if incoming_env else expr_txt
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
 
-        collect_spec = _parse_collect(expr_txt_for_agg)
+        collect_spec = _parse_collect(expr_txt_for_agg, expr_ctx)
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             cypher_var = alias or f"collected{len(compiled_collects) + 1}"
             aql_var = pick_name(cypher_var)
             forbidden_vars.add(aql_var)
             compiled_collects.append((cypher_var, aql_var, collect_spec))
+            aggregate_items[aggregate_key(expr_txt)] = aql_var
             continue
 
         agg = _compile_agg_expr(expr_txt_for_agg, bind_vars)
@@ -3527,6 +3556,7 @@ def _apply_with_projection(
             aql_var = pick_name(cypher_var)
             forbidden_vars.add(aql_var)
             compiled_agg.append((cypher_var, aql_var, agg_expr))
+            aggregate_items[aggregate_key(expr_txt)] = aql_var
             continue
 
         nested = _hoist_nested_aggregates(
@@ -3596,7 +3626,7 @@ def _apply_with_projection(
     env.update({cy: aql for cy, aql, _ in compiled_post})
     # After a COLLECT only its keys remain: ORDER BY a grouping key's own
     # expression (``WITH a.name AS name … ORDER BY a.name``) reads the key.
-    grouped = {expr: aql for _, aql, expr in compiled_nonagg if expr != aql}
+    grouped = _grouped_expression_vars(compiled_nonagg)
     if order_ctx is not None and incoming_env is not None:
         projected = set(env) | {cy for cy, _, _ in compiled_collects if cy not in hidden}
         _refuse_out_of_scope_sort_vars(order_ctx, visible=set(incoming_env) | projected)
@@ -3619,7 +3649,12 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
+            lines.append(
+                "  "
+                + _compile_order_by(
+                    order_ctx, bind_vars, var_env=env, grouped=grouped, aggregates=aggregate_items
+                )
+            )
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3648,7 +3683,12 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
+            lines.append(
+                "  "
+                + _compile_order_by(
+                    order_ctx, bind_vars, var_env=env, grouped=grouped, aggregates=aggregate_items
+                )
+            )
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3749,13 +3789,16 @@ def _compile_order_by(
     aliases: dict[str, str] | None = None,
     alias_types: dict[str, str | None] | None = None,
     grouped: dict[str, str] | None = None,
+    aggregates: dict[str, str] | None = None,
 ) -> str:
     """``SORT`` for an ORDER BY. A sort item that is exactly a projection
     alias in *aliases* sorts by that alias's expression, even where a
     variable has the same name (``RETURN a.name AS a ORDER BY a``), and
     *alias_types* gives that expression's static type. After a ``COLLECT``,
     *grouped* maps each grouping key's source expression to the key variable,
-    which is all the sort can still read (WithOrderBy2 [22]-[24])."""
+    which is all the sort can still read (WithOrderBy2 [22]-[24]), and
+    *aggregates* each aggregate the projection computes to its variable, so
+    ``ORDER BY max(n.age)`` reads the projected ``max(n.age)``."""
     items = order_ctx.oC_SortItem() or []
     if not items:
         raise CoreError("ORDER BY requires at least one sort item", code="UNSUPPORTED")
@@ -3767,7 +3810,8 @@ def _compile_order_by(
             expr = aliases[text]
             static_type = (alias_types or {}).get(text)
         else:
-            expr = _compile_expression(it.oC_Expression(), bind_vars)
+            with aggregate_variables(sort_aggregates(it.oC_Expression(), aggregates)):
+                expr = _compile_expression(it.oC_Expression(), bind_vars)
             if grouped:
                 expr = read_grouping_keys(expr, grouped)
             if var_env:
@@ -4174,6 +4218,8 @@ def _append_return_aggregation(
         live_names.add(name)
         return name
 
+    # Each whole-item aggregate's Cypher text -> its variable, for ORDER BY.
+    return_aggregates: dict[str, str] = {}
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
@@ -4185,12 +4231,13 @@ def _append_return_aggregation(
         if var_env:
             expr_txt = _rewrite_vars(expr_txt, var_env)
 
-        collect_spec = _parse_collect(expr_txt)
+        collect_spec = _parse_collect(expr_txt, expr_ctx)
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
             key = claim_key(alias or f"expr{idx}", expr_txt, used_keys)
             compiled_collects.append((key, _alloc(key), collect_spec))
+            return_aggregates[aggregate_key(expr_ctx.getText())] = compiled_collects[-1][1]
             continue
 
         agg = _compile_agg_expr(expr_txt, bind_vars)
@@ -4201,6 +4248,7 @@ def _append_return_aggregation(
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
             key = claim_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
             compiled_agg.append((key, _alloc(key), agg_expr))
+            return_aggregates[aggregate_key(expr_ctx.getText())] = compiled_agg[-1][1]
             continue
 
         nested = _hoist_nested_aggregates(
@@ -4287,7 +4335,16 @@ def _append_return_aggregation(
             agg_env[cypher_level.get(expr, expr)] = aql
 
     if order_ctx is not None:
-        lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=agg_env))
+        lines.append(
+            "  "
+            + _compile_order_by(
+                order_ctx,
+                bind_vars,
+                var_env=agg_env,
+                grouped=_grouped_expression_vars(compiled_nonagg),
+                aggregates=return_aggregates,
+            )
+        )
     _append_skip_limit(lines, skip_value, limit_value)
 
     columns = {k: aql for k, aql, _ in compiled_nonagg + compiled_agg + compiled_post}
