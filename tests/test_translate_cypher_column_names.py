@@ -57,6 +57,14 @@ def _last_line(q: str, **kw) -> str:
             "RETURN {expr1: 3, expr2: 'a'}",
             "RETURN {\"1 + 2\": 3, \"'a'\": 'a'}",
         ),
+        # a column named by a reserved word is never a bare key (ERR 1501),
+        # nor is a key inferred from a folded true / false / null
+        ("RETURN true, null", "RETURN {expr1: true, expr2: null}", 'RETURN {"true": true, "null": null}'),
+        (
+            "WITH 1 AS x, 2 AS d RETURN x > d, x = d",
+            "RETURN {expr1: false, expr2: false}",
+            'RETURN {"x > d": false, "x = d": false}',
+        ),
     ],
 )
 def test_both_modes(query: str, default: str, written: str):

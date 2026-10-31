@@ -19,6 +19,7 @@ import re
 from contextvars import ContextVar
 from typing import Any
 
+from .naming import _AQL_RESERVED
 from .state import _object_rows
 
 #: ``TranslateOptions.cypher_column_names`` of the running translation.
@@ -53,5 +54,9 @@ def written_column(item: Any) -> str | None:
 
 
 def object_key(name: str) -> str:
-    """*name* as an AQL object key: bare when it is an identifier, else a string."""
-    return name if _AQL_IDENTIFIER.fullmatch(name) else json.dumps(name)
+    """*name* as an AQL object key: bare when it is an identifier AQL does not
+    reserve, else a string (``RETURN true`` names its column ``true``, and a
+    bare ``true`` key is ERR 1501)."""
+    if _AQL_IDENTIFIER.fullmatch(name) and name.lower() not in _AQL_RESERVED:
+        return name
+    return json.dumps(name)

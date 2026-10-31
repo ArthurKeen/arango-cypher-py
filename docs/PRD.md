@@ -1006,6 +1006,38 @@ Copied to AQL as attribute access, `n.creationDate.year` read a stored
 timestamp's attribute and returned `null`, which is why accessors were refused
 until this lowering.
 
+**Temporal value library** (`arango_cypher/temporal/`, TCK full-court press).
+Cypher's six temporal types (`Date`, `LocalTime`, `Time`, `LocalDateTime`,
+`DateTime`, `Duration`) with Neo4j's java.time semantics, in pure Python at
+nanosecond precision for years ±999,999,999, with no dependency on the
+translator. It is the evaluator that constant temporal expressions are folded
+with at compile time. It is ported from arango-gql-gateway's
+`internal/temporal`, which passes every TCK Temporal1–10 scenario.
+- API: `construct(kind, arg)` (string in every ISO form Neo4j accepts, map of
+  fields and selections, or conversion), `truncate`, `from_epoch` /
+  `from_epoch_millis`, `duration_between(a, b, unit)`, `add` / `subtract` /
+  `multiply` / `divide`, `compare` / `equals`, `get_property` (every Neo4j
+  accessor) and `to_string`. `str(value)` is java.time's form, which the TCK
+  expects.
+- Errors are `TemporalError` subclasses carrying the Neo4j error name
+  (`InvalidArgumentValue`, `InvalidArgumentType`, `UnsupportedTemporalUnit`,
+  `NumberOutOfRange`). Clock forms (`date()`, `datetime.statement()`,
+  `localtime({timezone: z})`) raise `NotConstant`.
+- Named zones resolve from an embedded IANA tz database built without
+  backzone (`zoneinfo.zip`, `scripts/build_tzdata.sh`), so results match Java
+  and do not depend on the host.
+- `tests/test_temporal_tck_tables.py` evaluates every Temporal1–10 scenario
+  through the library: 999 of 1,004 rows reproduce. The other 5 read the clock.
+- The compile-time evaluator folds constant temporal expressions with it
+  (`_translate_v0/const_temporal.py`): temporal functions, operators,
+  accessors and `toString` on values known at translate time. The result is
+  bound as its Neo4j string form, and an invalid construction becomes
+  `FAIL()`. A temporal expression over data or parameters still lowers through
+  `temporal.py`. On ArangoDB, 965 of the 1,004 `expressions/temporal`
+  scenarios pass. What remains needs a runtime temporal engine: accessors and
+  arithmetic on stored values (Temporal5, Temporal8). It also needs the
+  statement clock (`duration.inSeconds(date(), date())`, Temporal10 [12]).
+
 **A pattern whose last node is bound is read from that node.** In a MATCH
 after WITH or an OPTIONAL MATCH, `(m:Message)-[:HAS_TAG]->(tag)` with `tag`
 already bound is compiled reversed (`… INBOUND tag …`), each relationship's

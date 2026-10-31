@@ -26,6 +26,7 @@ returns null with a warning).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -377,9 +378,27 @@ def comparison_operands(left_ctx: Any, left: str, right_ctx: Any, right: str) ->
     return _on_time_line(left, lk), _on_time_line(right, rk)
 
 
+#: A value ``const_eval`` folded (``@cv0``) — the only computed temporal that
+#: can print with a zone name (the run-time lowering emits AQL ISO strings).
+_FOLDED_BIND = re.compile(r"@cv\d+")
+
+
 def _on_time_line(operand: str, kind: tuple[str, str] | None) -> str:
+    """*operand* as epoch milliseconds.
+
+    A folded DateTime in a named zone prints as ``…+01:00[Europe/Berlin]``
+    (Neo4j's form), and AQL's ``DATE_TIMESTAMP`` reads that suffix as
+    invalid: null, and a filter that silently matches nothing. The offset
+    already fixes the instant, so a folded value's zone name is dropped first
+    (once per query: it is a bind variable). Other operands keep the plain
+    form; a stored value carries a zone name only if a query wrote one — a
+    known gap (PRD §8, temporal values).
+    """
     if kind is not None and kind == ("property", "epoch_ms"):
         return operand
+    if _FOLDED_BIND.fullmatch(operand.strip()):
+        # Only a string can carry a zone name; an epoch number passes through.
+        return f'DATE_TIMESTAMP(IS_STRING({operand}) ? FIRST(SPLIT({operand}, "[")) : {operand})'
     return f"DATE_TIMESTAMP({operand})"
 
 

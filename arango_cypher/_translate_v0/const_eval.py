@@ -26,9 +26,13 @@ from types import MappingProxyType
 from typing import Any
 
 from .._antlr.CypherParser import CypherParser
+from . import const_temporal
 from . import cypher_functions as fns
 from . import cypher_values as cv
 from .cypher_values import CypherEvalError, NotConstant
+
+# Temporal values and functions (date(), duration.between(), d.week, …).
+const_temporal.install()
 
 #: Cypher variables bound to translate-time constants by a ``WITH`` (name →
 #: value).  ``_apply_with`` maintains it like ``_temporal_vars``.
@@ -52,6 +56,12 @@ def constant_folding(enabled: bool) -> Iterator[None]:
         yield
     finally:
         _folding_enabled = previous
+
+
+def folding_enabled() -> bool:
+    """Whether translations fold constants (the translation cache keys on
+    it: the AQL differs)."""
+    return _folding_enabled
 
 
 def const_env() -> Mapping[str, Any]:

@@ -10,6 +10,11 @@ import pytest
 from arango_cypher import translate
 from tests.helpers.mapping_fixtures import mapping_bundle_for
 
+# These pin how temporal constructs lower to AQL using literal inputs, which
+# compile-time folding would evaluate first (tests/test_const_temporal.py
+# covers folding).
+pytestmark = pytest.mark.usefixtures("without_constant_folding")
+
 
 @pytest.mark.parametrize("case_id", [f"C{n}" for n in range(877, 881)])
 def test_translate_temporal_arithmetic_goldens(corpus_cases, case_id: str):
