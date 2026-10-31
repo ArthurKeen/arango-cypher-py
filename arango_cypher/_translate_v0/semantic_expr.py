@@ -33,6 +33,7 @@ from antlr4 import ParserRuleContext
 
 from .._antlr.CypherParser import CypherParser
 from .arithmetic import _interleaved_op
+from .literals import parse_integer_literal
 from .naming import _strip_label_backticks
 from .semantic_errors import semantic_error, type_error
 from .semantic_types import (
@@ -587,13 +588,7 @@ def _number_type(ctx: CypherParser.OC_NumberLiteralContext) -> SType:
         if math.isinf(float(text)):
             raise semantic_error("FloatingPointOverflow", f"the floating point number {text} is too large")
         return T_FLOAT
-    integer = ctx.oC_IntegerLiteral()
-    if integer.HexInteger() is not None:
-        value = int(text[2:], 16)
-    elif integer.OctalInteger() is not None:
-        value = int(text[1:], 8)
-    else:
-        value = int(text)
+    value = parse_integer_literal(text)
     limit = _MAX_INT + 1 if _negated(ctx) else _MAX_INT
     if value > limit:
         sign = "-" if _negated(ctx) else ""

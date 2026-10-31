@@ -54,3 +54,15 @@ def _compile_type_of_relationship(
             raise CoreError("relTypeField missing for GENERIC_WITH_TYPE", code="INVALID_MAPPING")
         return f"{rel_var}[@relTypeField]"
     return _aql_string_literal(rel_type)
+
+
+def parse_integer_literal(text: str) -> int:
+    """The value of a Cypher integer literal: decimal, ``0x`` hex, ``0o`` or legacy ``0`` octal."""
+    t = text.lower()
+    if t.startswith("0x"):
+        return int(t[2:], 16)
+    if t.startswith("0o"):
+        return int(t[2:], 8)
+    if len(t) > 1 and t.startswith("0"):
+        return int(t[1:], 8)
+    return int(t)

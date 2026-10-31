@@ -44,7 +44,7 @@ from .calls import (
     _translate_standalone_in_query_call,
 )
 from .columns import _active_cypher_column_names, object_key, written_column
-from .const_eval import _const_env, bind_with_constants, try_fold
+from .const_eval import _const_env, aql_number_literal, bind_with_constants, try_fold
 from .conversions import compile_to_boolean, compile_to_float, compile_to_integer, compile_to_string
 from .deletes import translate_delete_query
 from .distinct_order import append_distinct_return, live_sort_terms, order_keeping_collect
@@ -6413,7 +6413,7 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
             t = ctx.oC_BooleanLiteral().getText().lower()
             return "true" if t == "true" else "false"
         if ctx.oC_NumberLiteral() is not None:
-            return ctx.oC_NumberLiteral().getText()
+            return aql_number_literal(ctx.oC_NumberLiteral())
         if ctx.StringLiteral() is not None:
             return _aql_string_from_cypher(ctx.StringLiteral().getText())
         if ctx.NULL() is not None:
