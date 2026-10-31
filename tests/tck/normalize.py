@@ -53,8 +53,8 @@ def normalize_expected_value(text: str) -> Any:
     if s == "false":
         return False
 
-    if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
-        return s[1:-1]
+    if len(s) >= 2 and ((s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"'))):
+        return _unescape_cypher_string(s[1:-1])
 
     if _try_int(s) is not None:
         return _try_int(s)
@@ -77,6 +77,29 @@ def normalize_expected_value(text: str) -> Any:
         return _parse_node_literal(s)
 
     return s
+
+
+_CYPHER_ESCAPES = {"\\": "\\", "'": "'", '"': '"', "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+
+def _unescape_cypher_string(body: str) -> str:
+    """A TCK string cell is a Cypher string literal: ``'\\''`` is ``'``."""
+    out: list[str] = []
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            if nxt in "uU" and i + 6 <= len(body):
+                out.append(chr(int(body[i + 2 : i + 6], 16)))
+                i += 6
+                continue
+            out.append(_CYPHER_ESCAPES.get(nxt.lower() if nxt in "BFNRT" else nxt, "\\" + nxt))
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def normalize_actual_value(value: Any, *, as_node: bool = False, as_rel: bool = False) -> Any:

@@ -30,6 +30,7 @@ from . import const_temporal
 from . import cypher_functions as fns
 from . import cypher_values as cv
 from .cypher_values import CypherEvalError, NotConstant
+from .literals import parse_integer_literal
 
 # Temporal values and functions (date(), duration.between(), d.week, …).
 const_temporal.install()
@@ -263,15 +264,17 @@ def unescape_string_literal(text: str) -> str:
     return "".join(out)
 
 
-def parse_integer_literal(text: str) -> int:
-    t = text.lower()
-    if t.startswith("0x"):
-        return int(t[2:], 16)
-    if t.startswith("0o"):
-        return int(t[2:], 8)
-    if len(t) > 1 and t.startswith("0"):
-        return int(t[1:], 8)
-    return int(t)
+def aql_number_literal(ctx: CypherParser.OC_NumberLiteralContext) -> str:
+    """AQL for a Cypher number literal.
+
+    Hex and octal integers are written in decimal: AQL has no octal literal
+    (``0o17``, ``017``) and its hex literals stop short of 64 bits
+    (``0x7FFFFFFFFFFFFFFF`` is ERR 1501). Decimals pass through unchanged.
+    """
+    text = ctx.getText()
+    if ctx.oC_IntegerLiteral() is None or text.isdigit() and not (len(text) > 1 and text[0] == "0"):
+        return text
+    return str(parse_integer_literal(text))
 
 
 class Evaluator:

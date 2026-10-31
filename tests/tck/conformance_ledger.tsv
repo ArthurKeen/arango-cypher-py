@@ -1814,14 +1814,14 @@ translatable	expressions/literals/Literals3/[7] Return a long negative hexadecim
 translatable	expressions/literals/Literals3/[8] Return the smallest hexadecimal integer
 translatable	expressions/literals/Literals3/[9] Return a lower case hexadecimal integer
 correct_rejection	expressions/literals/Literals4/[10] Fail on a too small octal integer
-parse_rejected	expressions/literals/Literals4/[1] Return a short positive octal integer
-parse_rejected	expressions/literals/Literals4/[2] Return a long positive octal integer
-parse_rejected	expressions/literals/Literals4/[3] Return the largest octal integer
-parse_rejected	expressions/literals/Literals4/[4] Return a positive octal zero
-parse_rejected	expressions/literals/Literals4/[5] Return a negative octal zero
-parse_rejected	expressions/literals/Literals4/[6] Return a short negative octal integer
-parse_rejected	expressions/literals/Literals4/[7] Return a long negative octal integer
-parse_rejected	expressions/literals/Literals4/[8] Return the smallest octal integer
+translatable	expressions/literals/Literals4/[1] Return a short positive octal integer
+translatable	expressions/literals/Literals4/[2] Return a long positive octal integer
+translatable	expressions/literals/Literals4/[3] Return the largest octal integer
+translatable	expressions/literals/Literals4/[4] Return a positive octal zero
+translatable	expressions/literals/Literals4/[5] Return a negative octal zero
+translatable	expressions/literals/Literals4/[6] Return a short negative octal integer
+translatable	expressions/literals/Literals4/[7] Return a long negative octal integer
+translatable	expressions/literals/Literals4/[8] Return the smallest octal integer
 correct_rejection	expressions/literals/Literals4/[9] Fail on a too large octal integer
 translatable	expressions/literals/Literals5/[10] Return a negative zero float without integer digits
 translatable	expressions/literals/Literals5/[11] Return a very long negative float
@@ -1867,7 +1867,7 @@ translatable	expressions/literals/Literals7/[10] Return seven-deep nested empty 
 translatable	expressions/literals/Literals7/[11] Return 20-deep nested empty lists
 translatable	expressions/literals/Literals7/[12] Return 40-deep nested empty lists
 translatable	expressions/literals/Literals7/[13] Return a list containing an empty map
-parse_rejected	expressions/literals/Literals7/[14] Return a list containing multiple integer
+translatable	expressions/literals/Literals7/[14] Return a list containing multiple integer
 translatable	expressions/literals/Literals7/[16] Return a list containing multiple mixed values
 translatable	expressions/literals/Literals7/[17] Return a list containing real and fake nested lists
 translatable	expressions/literals/Literals7/[18] Return a complex list containing multiple mixed and nested values
@@ -1879,11 +1879,11 @@ translatable	expressions/literals/Literals7/[2] Return a list containing a boole
 translatable	expressions/literals/Literals7/[3] Return a list containing a null
 translatable	expressions/literals/Literals7/[4] Return a list containing a integer
 translatable	expressions/literals/Literals7/[5] Return a list containing a hexadecimal integer
-parse_rejected	expressions/literals/Literals7/[6] Return a list containing a octal integer
+translatable	expressions/literals/Literals7/[6] Return a list containing a octal integer
 translatable	expressions/literals/Literals7/[7] Return a list containing a float
 translatable	expressions/literals/Literals7/[8] Return a list containing a string
 translatable	expressions/literals/Literals7/[9] Return a list containing an empty lists
-parse_rejected	expressions/literals/Literals8/[10] Return a map containing a octal integer
+translatable	expressions/literals/Literals8/[10] Return a map containing a octal integer
 translatable	expressions/literals/Literals8/[11] Return a map containing a float
 translatable	expressions/literals/Literals8/[12] Return a map containing a string
 translatable	expressions/literals/Literals8/[13] Return a map containing an empty map

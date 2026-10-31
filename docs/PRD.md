@@ -709,6 +709,8 @@ counts of true, false and null results decide (`all(x IN [1, null] WHERE x > 0)`
 is null, `any(…)` of it is true; a null list gives null;
 `_translate_v0/local_scopes.py`).
 
+**Integer literals** may be decimal, hex (`0x1F`) or octal (`0o17`, and the legacy `017`); all reach AQL in decimal, since AQL has no octal literal and its hex literals stop short of 64 bits (`0x7FFFFFFFFFFFFFFF` is ERR 1501). The grammar accepts `0o` (`grammar/Cypher.g4`, `OctalInteger`); one parser, `literals.parse_integer_literal`, serves the translator, the constant evaluator and the semantic pass.
+
 **Constant expressions are evaluated at translate time**
 (`_translate_v0/const_eval.py`, value rules in `cypher_values.py`, functions in
 `cypher_functions.py`). An expression whose inputs are all known — literals,

@@ -533,7 +533,9 @@ DecimalInteger
  ;
 
 OctalInteger
- : ZeroDigit ( OctDigit )+ ;
+ : ( '0o' ( OctDigit )+ )
+ | ( ZeroDigit ( OctDigit )+ )
+ ;
 
 HexLetter
  : ( 'A' | 'a' )

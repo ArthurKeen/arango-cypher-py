@@ -1797,8 +1797,8 @@ passed	expressions/literals/Literals2/[6] Return a short negative integer
 passed	expressions/literals/Literals2/[7] Return a long negative integer
 passed	expressions/literals/Literals2/[8] Return the smallest integer
 correct_rejection	expressions/literals/Literals2/[9] Fail on a too large integer
-execution_failure	expressions/literals/Literals3/[10] Return a upper case hexadecimal integer
-execution_failure	expressions/literals/Literals3/[11] Return a mixed case hexadecimal integer
+passed	expressions/literals/Literals3/[10] Return a upper case hexadecimal integer
+passed	expressions/literals/Literals3/[11] Return a mixed case hexadecimal integer
 correct_rejection	expressions/literals/Literals3/[12] Fail on an incomplete hexadecimal integer
 correct_rejection	expressions/literals/Literals3/[13] Fail on an hexadecimal literal containing a lower case invalid alphanumeric character
 correct_rejection	expressions/literals/Literals3/[14] Fail on an hexadecimal literal containing a upper case invalid alphanumeric character
@@ -1806,22 +1806,22 @@ correct_rejection	expressions/literals/Literals3/[16] Fail on a too large hexade
 correct_rejection	expressions/literals/Literals3/[17] Fail on a too small hexadecimal integer
 passed	expressions/literals/Literals3/[1] Return a short positive hexadecimal integer
 passed	expressions/literals/Literals3/[2] Return a long positive hexadecimal integer
-execution_failure	expressions/literals/Literals3/[3] Return the largest hexadecimal integer
+passed	expressions/literals/Literals3/[3] Return the largest hexadecimal integer
 passed	expressions/literals/Literals3/[4] Return a positive hexadecimal zero
 passed	expressions/literals/Literals3/[5] Return a negative hexadecimal zero
 passed	expressions/literals/Literals3/[6] Return a short negative hexadecimal integer
 passed	expressions/literals/Literals3/[7] Return a long negative hexadecimal integer
 passed	expressions/literals/Literals3/[8] Return the smallest hexadecimal integer
-execution_failure	expressions/literals/Literals3/[9] Return a lower case hexadecimal integer
+passed	expressions/literals/Literals3/[9] Return a lower case hexadecimal integer
 correct_rejection	expressions/literals/Literals4/[10] Fail on a too small octal integer
-translation_failure	expressions/literals/Literals4/[1] Return a short positive octal integer
-translation_failure	expressions/literals/Literals4/[2] Return a long positive octal integer
-translation_failure	expressions/literals/Literals4/[3] Return the largest octal integer
-translation_failure	expressions/literals/Literals4/[4] Return a positive octal zero
-translation_failure	expressions/literals/Literals4/[5] Return a negative octal zero
-translation_failure	expressions/literals/Literals4/[6] Return a short negative octal integer
-translation_failure	expressions/literals/Literals4/[7] Return a long negative octal integer
-translation_failure	expressions/literals/Literals4/[8] Return the smallest octal integer
+passed	expressions/literals/Literals4/[1] Return a short positive octal integer
+passed	expressions/literals/Literals4/[2] Return a long positive octal integer
+passed	expressions/literals/Literals4/[3] Return the largest octal integer
+passed	expressions/literals/Literals4/[4] Return a positive octal zero
+passed	expressions/literals/Literals4/[5] Return a negative octal zero
+passed	expressions/literals/Literals4/[6] Return a short negative octal integer
+passed	expressions/literals/Literals4/[7] Return a long negative octal integer
+passed	expressions/literals/Literals4/[8] Return the smallest octal integer
 correct_rejection	expressions/literals/Literals4/[9] Fail on a too large octal integer
 passed	expressions/literals/Literals5/[10] Return a negative zero float without integer digits
 passed	expressions/literals/Literals5/[11] Return a very long negative float
@@ -1857,8 +1857,8 @@ correct_rejection	expressions/literals/Literals6/[13] Failing on incorrect unico
 passed	expressions/literals/Literals6/[1] Return a single-quoted empty string
 passed	expressions/literals/Literals6/[2] Return a single-quoted string with one character
 passed	expressions/literals/Literals6/[3] Return a single-quoted string with uft-8 characters
-execution_failure	expressions/literals/Literals6/[4] Return a single-quoted string with escaped single-quoted
-execution_failure	expressions/literals/Literals6/[5] Return a single-quoted string with escaped characters
+passed	expressions/literals/Literals6/[4] Return a single-quoted string with escaped single-quoted
+passed	expressions/literals/Literals6/[5] Return a single-quoted string with escaped characters
 passed	expressions/literals/Literals6/[6] Return a single-quoted string with 100 characters
 passed	expressions/literals/Literals6/[7] Return a single-quoted string with 1000 characters
 passed	expressions/literals/Literals6/[8] Return a single-quoted string with 10000 characters
@@ -1867,7 +1867,7 @@ passed	expressions/literals/Literals7/[10] Return seven-deep nested empty lists
 passed	expressions/literals/Literals7/[11] Return 20-deep nested empty lists
 passed	expressions/literals/Literals7/[12] Return 40-deep nested empty lists
 passed	expressions/literals/Literals7/[13] Return a list containing an empty map
-translation_failure	expressions/literals/Literals7/[14] Return a list containing multiple integer
+passed	expressions/literals/Literals7/[14] Return a list containing multiple integer
 passed	expressions/literals/Literals7/[16] Return a list containing multiple mixed values
 passed	expressions/literals/Literals7/[17] Return a list containing real and fake nested lists
 passed	expressions/literals/Literals7/[18] Return a complex list containing multiple mixed and nested values
@@ -1879,11 +1879,11 @@ passed	expressions/literals/Literals7/[2] Return a list containing a boolean
 passed	expressions/literals/Literals7/[3] Return a list containing a null
 passed	expressions/literals/Literals7/[4] Return a list containing a integer
 passed	expressions/literals/Literals7/[5] Return a list containing a hexadecimal integer
-translation_failure	expressions/literals/Literals7/[6] Return a list containing a octal integer
+passed	expressions/literals/Literals7/[6] Return a list containing a octal integer
 passed	expressions/literals/Literals7/[7] Return a list containing a float
 passed	expressions/literals/Literals7/[8] Return a list containing a string
 passed	expressions/literals/Literals7/[9] Return a list containing an empty lists
-translation_failure	expressions/literals/Literals8/[10] Return a map containing a octal integer
+passed	expressions/literals/Literals8/[10] Return a map containing a octal integer
 passed	expressions/literals/Literals8/[11] Return a map containing a float
 passed	expressions/literals/Literals8/[12] Return a map containing a string
 passed	expressions/literals/Literals8/[13] Return a map containing an empty map
