@@ -43,11 +43,15 @@ class SType:
     ``elem`` is the element type when every element has it (``ANY`` when they
     differ or are not shown); ``items`` is the per-position element types of a
     list literal, kept so that ``[n, 1][1]`` is known to be an integer.
+    ``mixed`` marks an ``ANY`` that is one element of a list the query shows
+    holds values of several types (``UNWIND [1, 'a'] AS x``): such a value
+    needs Cypher's cross-type order when sorted (``sort_keys``).
     """
 
     kind: str
     elem: SType | None = None
     items: tuple[SType, ...] | None = None
+    mixed: bool = False
 
     @property
     def known(self) -> bool:
@@ -119,6 +123,8 @@ def common_type(types: list[SType]) -> SType:
 def element_type(t: SType) -> SType:
     """The type of one element of *t* when *t* is iterated (UNWIND, ``x IN``)."""
     if t.kind == LIST:
+        if t.items and len({item.kind for item in t.items if item.kind != NULL}) > 1:
+            return SType(ANY, mixed=True)
         return t.elem or T_ANY
     if t.kind == NULL:
         return T_NULL

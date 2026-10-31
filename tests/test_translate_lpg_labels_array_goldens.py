@@ -75,10 +75,12 @@ def test_merge_refusals():
     ):
         with pytest.raises(CoreError):
             translate(q, mapping=mapping_bundle_for("lpg"))
-    # A variable named later in the query is not bound for the MERGE.
-    translate(
-        "MERGE (t:User {id: 42}) CREATE (f:Doc) CREATE (t)-[:FOLLOWS]->(f)", mapping=mapping_bundle_for("lpg")
-    )
+    # A CREATE beside a MERGE used to be dropped from the AQL: refused now.
+    with pytest.raises(CoreError, match="CREATE beside MERGE"):
+        translate(
+            "MERGE (t:User {id: 42}) CREATE (f:Doc) CREATE (t)-[:FOLLOWS]->(f)",
+            mapping=mapping_bundle_for("lpg"),
+        )
 
 
 @pytest.mark.usefixtures("without_constant_folding")

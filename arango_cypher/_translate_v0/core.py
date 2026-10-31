@@ -15,7 +15,14 @@ from arango_query_core import (
 
 from .._antlr.CypherParser import CypherParser
 from ..parser import parse_cypher
-from .aggregates import aggregate_variable, aggregate_variables, lower_aggregate, nested_aggregates
+from .aggregates import (
+    aggregate_key,
+    aggregate_variable,
+    aggregate_variables,
+    lower_aggregate,
+    nested_aggregates,
+    sort_aggregates,
+)
 from .arithmetic import (
     STRING,
     _numeric_type,
@@ -79,6 +86,8 @@ from .naming import (
     _strip_label_backticks,
 )
 from .pattern_reversal import from_bound_end
+from .percentiles import parse_percentile, percentile_value
+from .pipeline_writes import append_midquery_writes, refuse_after_write, split_writes
 from .scopes import outer_bound_names
 from .semantic_check import check_semantics
 from .shortest_path import (
@@ -87,6 +96,14 @@ from .shortest_path import (
     refuse_shortest_path_in_writes,
     refuse_unbound_shortest_path,
     shortest_path_pattern,
+)
+from .sort_keys import (
+    SORT_VALUE_TYPES,
+    cypher_sort_key,
+    extreme_spec,
+    extreme_value,
+    needs_cypher_sort_key,
+    read_grouping_keys,
 )
 from .state import (
     TranslateOptions,
@@ -101,6 +118,7 @@ from .state import (
     _object_rows,
     _temporal_vars,
 )
+from .string_predicates import compile_string_predicate
 from .subqueries import (
     compile_subquery_call,
     has_subquery_call,
@@ -132,6 +150,7 @@ from .three_valued import (
     _three_valued,
 )
 from .unwind import _translate_standalone_unwind
+from .write_guards import refuse_dropped_writes
 from .writes import (
     _translate_create_query,
     _translate_foreach_query,
@@ -172,6 +191,7 @@ def translate_v0(
     user_params_token = _active_user_params.set(frozenset(params or {}))
     temporal_token = _temporal_vars.set({})
     const_token = _const_env.set(MappingProxyType({}))
+    sort_types_token = SORT_VALUE_TYPES.set({})
 
     try:
         result = _translate_v0_inner(
@@ -197,6 +217,7 @@ def translate_v0(
         )
         return result
     finally:
+        SORT_VALUE_TYPES.reset(sort_types_token)
         _active_user_vars.reset(user_vars_token)
         _active_user_params.reset(user_params_token)
         _temporal_vars.reset(temporal_token)
@@ -295,7 +316,17 @@ def _translate_single_query(
             else:
                 raise CoreError("Unsupported updating clause", code="UNSUPPORTED")
 
+        # A translator below compiles only its own kind of write: any other
+        # write clause beside it would be dropped from the AQL. Refuse that.
         if foreach_clauses:
+            refuse_dropped_writes(
+                "FOREACH",
+                CREATE=create_clauses,
+                MERGE=merge_clauses,
+                SET=set_clauses,
+                DELETE=delete_clauses,
+                REMOVE=remove_clauses,
+            )
             return _translate_foreach_query(
                 spq,
                 foreach_clauses=foreach_clauses,
@@ -304,11 +335,15 @@ def _translate_single_query(
             )
 
         if merge_clauses:
+            refuse_dropped_writes(
+                "MERGE", CREATE=create_clauses, DELETE=delete_clauses, REMOVE=remove_clauses
+            )
             return _translate_merge_query(
                 spq,
                 merge_clauses=merge_clauses,
                 resolver=resolver,
                 bind_vars=bind_vars,
+                trailing_sets=set_clauses,
             )
 
         if create_clauses and delete_clauses:
@@ -603,6 +638,18 @@ def _emit_single_hop(
         lines.append(f"    FILTER {f}")
 
 
+def _self_loop_direction(direction: str, *, back_to_start: bool, rel_range: tuple[int, int]) -> str:
+    """OUTBOUND for an undirected single hop back to the node it starts from.
+
+    Such a hop (``(n)-[r]-(n)``) matches only self-loops, and an ANY
+    traversal yields each loop twice (once per direction) where Cypher
+    matches it once (Match3 [12]).
+    """
+    if direction == "ANY" and back_to_start and rel_range == (1, 1):
+        return "OUTBOUND"
+    return direction
+
+
 def _emit_merged_hops(
     hops: list[_HopMeta],
     *,
@@ -666,7 +713,9 @@ def _emit_merged_hops(
             edge_filter_ref = h.rel_var
         else:
             edge_filter_ref = edge_ref
-        path_edge_vars.append(h.rel_var)
+        # A named path reads an unnamed edge from the traversal path: no
+        # variable holds it (``MATCH p = ()-->()-->()``, Delete3 [1]).
+        path_edge_vars.append(h.rel_var if needs_edge_let else edge_ref)
 
         _emit_vertex_filters_for_hop(h, lines=lines, bind_vars=bind_vars, resolver=resolver)
         _emit_edge_type_filters_for_hop(
@@ -950,6 +999,12 @@ def _try_compile_edge_only_scan(
     else:  # DEDICATED_COLLECTION
         rel_type_exprs[rel_var] = _dedicated_rel_type_expr(rel_type, rel_var, resolver)
 
+    if _relationship_direction(rel_pat) == "ANY":
+        # An undirected pattern matches an edge once per orientation, a
+        # self-loop once (CountingSubgraphMatches1 [3]): one row per side.
+        side = _pick_fresh_var("_side", forbidden_vars={rel_var})
+        lines.append(f"  FOR {side} IN ({rel_var}._from == {rel_var}._to ? [0] : [0, 1])")
+
     for f in _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars):
         lines.append(f"  FILTER {f}")
 
@@ -1222,6 +1277,7 @@ def _translate_match_body(
 
     # --- Phase 1: pre-process chains into _HopMeta list ---
     hops: list[_HopMeta] = []
+    hop_start = u_var  # the Cypher node each hop leaves from
     for chain in chains:
         rel_pat = chain.oC_RelationshipPattern()
         v_node = chain.oC_NodePattern()
@@ -1249,7 +1305,11 @@ def _translate_match_body(
         forbidden_vars.add(rel_var)
 
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
-        direction = _relationship_direction(rel_pat)
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_bound and v_var == hop_start,
+            rel_range=rel_range,
+        )
 
         if direction == "ANY" and rel_type:
             stats_dir = resolver.preferred_traversal_direction(rel_type)
@@ -1316,6 +1376,7 @@ def _translate_match_body(
 
         if not v_bound:
             forbidden_vars.add(v_var)
+        hop_start = v_var
 
     # --- Phase 2: group consecutive mergeable hops ---
     groups: list[list[int]] = []
@@ -1743,8 +1804,8 @@ def _translate_multi_part_query(
         )
     if is_create_pipeline(mpq):
         return translate_create_pipeline(mpq, resolver=resolver, bind_vars=bind_vars)
-    if mpq.oC_UpdatingClause():
-        raise CoreError("Updating clauses are not supported in v0", code="UNSUPPORTED")
+    # SET / REMOVE / DELETE before a WITH write mid-pipeline (pipeline_writes).
+    split_writes(mpq.oC_UpdatingClause() or [])
 
     reading_clauses = mpq.oC_ReadingClause() or []
     if not reading_clauses and imports is None:
@@ -1761,7 +1822,25 @@ def _translate_multi_part_query(
     children = list(mpq.children or [])
     if imports is not None:
         children.remove(mpq.oC_With(0))  # the importing WITH: var_env holds the imports
+    pending_writes: list[CypherParser.OC_UpdatingClauseContext] = []
+    wrote = False
     for child in children:
+        if isinstance(child, CypherParser.OC_UpdatingClauseContext):
+            pending_writes.append(child)
+            continue
+        if pending_writes:  # a part's writes end at its WITH
+            var_env = append_midquery_writes(
+                pending_writes,
+                lines=lines,
+                var_env=var_env,
+                bind_vars=bind_vars,
+                resolver=resolver,
+                forbidden_vars=forbidden_vars,
+                already_wrote=wrote,
+            )
+            pending_writes, wrote = [], True
+        if wrote and isinstance(child, CypherParser.OC_ReadingClauseContext) and child.oC_Unwind() is None:
+            raise refuse_after_write("MATCH or CALL")
         if isinstance(child, CypherParser.OC_WithContext):
             if not seen_match:
                 raise CoreError("MATCH is required before WITH in v0 subset", code="UNSUPPORTED")
@@ -1823,6 +1902,8 @@ def _translate_multi_part_query(
     # Reading clauses after the last WITH (MATCH … WITH … [OPTIONAL] MATCH /
     # UNWIND … RETURN …), in order.
     tail_reading = tail.oC_ReadingClause() or []
+    if wrote and (tail.oC_UpdatingClause() or any(rc.oC_Unwind() is None for rc in tail_reading)):
+        raise refuse_after_write("A write, MATCH or CALL")
     rel_type_exprs: dict[str, str] = {}
     for rc in tail_reading:
         tail_call = subquery_call(rc)
@@ -1886,6 +1967,10 @@ def _translate_multi_part_query(
         delete_clauses = [uc.oC_Delete() for uc in tail_updating if uc.oC_Delete() is not None]
         remove_clauses = [uc.oC_Remove() for uc in tail_updating if uc.oC_Remove() is not None]
         if set_clauses or delete_clauses or remove_clauses:
+            # A FOREACH beside them would be left out of the AQL.
+            refuse_dropped_writes(
+                "SET/DELETE/REMOVE", FOREACH=[uc for uc in tail_updating if uc.oC_Foreach() is not None]
+            )
             if tail_reading:
                 raise CoreError(
                     "MATCH after WITH before SET/DELETE/REMOVE is not supported",
@@ -2578,7 +2663,9 @@ def _compile_match_from_bound(
         if part.oC_AnonymousPatternPart() is None:
             raise CoreError("Named paths in a MATCH after WITH are not supported", code="UNSUPPORTED")
         # Read from the bound end when only the last node is bound (pattern_reversal).
-        elem = from_bound_end(part.oC_AnonymousPatternPart().oC_PatternElement(), out_env)
+        written = part.oC_AnonymousPatternPart().oC_PatternElement()
+        elem = from_bound_end(written, out_env)
+        path_name = part.oC_Variable().getText().strip() if part.oC_Variable() is not None else None
         has_chain = _compile_bound_part(
             elem,
             resolver=resolver,
@@ -2587,6 +2674,8 @@ def _compile_match_from_bound(
             out_env=out_env,
             rel_type_exprs=rel_type_exprs,
             lines=lines,
+            path_name=path_name,
+            reversed_part=elem is not written,
         )
         any_chain = any_chain or has_chain
 
@@ -2617,9 +2706,18 @@ def _compile_bound_part(
     out_env: dict[str, str],
     rel_type_exprs: dict[str, str],
     lines: list[str],
+    path_name: str | None = None,
+    reversed_part: bool = False,
 ) -> bool:
     """Compile one pattern part of a MATCH after WITH into *lines*, extending
-    *out_env* with the variables it binds. Returns whether it has relationships."""
+    *out_env* with the variables it binds. Returns whether it has relationships.
+
+    *path_name* names the part's path (``OPTIONAL MATCH p = (a)-->(b)``): it is
+    bound to ``{nodes, edges}`` as in a leading MATCH, a variable-length hop
+    contributing its traversal's vertices and edges. *reversed_part* says the
+    part is compiled from its bound end (``pattern_reversal``), so the path
+    is reversed back to the order it was written in.
+    """
     node = elem.oC_NodePattern()
     if node is None:
         raise CoreError("Only node patterns are supported in v0", code="UNSUPPORTED")
@@ -2692,7 +2790,12 @@ def _compile_bound_part(
         for f in tail_props:
             lines.append(f"    FILTER {f}")
 
+    node_segments: list[str] = [f"[{u_aql}]"]
+    edge_segments: list[str] = []
     if not chains:
+        _bind_bound_path(
+            path_name, node_segments, edge_segments, out_env, forbidden_vars, lines, reversed_part
+        )
         return False
 
     current_aql = u_aql
@@ -2739,12 +2842,11 @@ def _compile_bound_part(
         forbidden_vars.add(v_aql)
         forbidden_vars.add(r_aql)
 
-        direction = _relationship_direction(rel_pat)
-        # An undirected single hop back to its own start node matches only
-        # self-loops, and an ANY traversal yields each loop twice (once per
-        # direction), where Cypher matches it once.
-        if direction == "ANY" and v_is_backref and out_env[v_cy] == current_aql and rel_range == (1, 1):
-            direction = "OUTBOUND"
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_is_backref and out_env[v_cy] == current_aql,
+            rel_range=rel_range,
+        )
         # Resolve an unlabeled (non-back-reference) endpoint of a typed
         # relationship from the relationship's domain/range.
         if not v_labels and not v_is_backref and rel_type:
@@ -2783,9 +2885,26 @@ def _compile_bound_part(
                 )
 
         rmin, rmax = rel_range
+        trav_vars = f"{v_aql}, {r_aql}"
+        named_list = rel_named and not r_is_backref and rel_range != (1, 1)
+        hop_path: str | None = None
+        if rel_range != (1, 1) and (path_name is not None or named_list):
+            hop_path = _pick_fresh_var("_hop_path", forbidden_vars=forbidden_vars)
+            trav_vars += f", {hop_path}"
+            node_segments.append(f"SLICE({hop_path}.vertices, 1)")
+            edge_segments.append(f"{hop_path}.edges")
+        else:
+            node_segments.append(f"[{v_aql}]")
+            edge_segments.append(f"[{r_aql}]")
         lines.append(
-            f"  FOR {v_aql}, {r_aql} IN {rmin}..{rmax} {direction} {current_aql} {_aql_collection_ref(edge_key)}"
+            f"  FOR {trav_vars} IN {rmin}..{rmax} {direction} {current_aql} {_aql_collection_ref(edge_key)}"
         )
+        if named_list and hop_path is not None:
+            # A named variable-length relationship is the list of its edges
+            # (Match9 [9]), not the traversal's last edge.
+            rel_list = _pick_fresh_var(_affix_name(r_aql, suffix="_list"), forbidden_vars=forbidden_vars)
+            lines.append(f"    LET {rel_list} = {hop_path}.edges")
+            out_env[rel_cy] = rel_list
 
         v_filters: list[str] = []
         if coll_filter is not None:
@@ -2840,7 +2959,30 @@ def _compile_bound_part(
 
         current_aql = out_env[v_cy] if v_is_backref else v_aql
 
+    _bind_bound_path(path_name, node_segments, edge_segments, out_env, forbidden_vars, lines, reversed_part)
     return True
+
+
+def _bind_bound_path(
+    path_name: str | None,
+    node_segments: list[str],
+    edge_segments: list[str],
+    out_env: dict[str, str],
+    forbidden_vars: set[str],
+    lines: list[str],
+    reversed_part: bool,
+) -> None:
+    """Bind *path_name* (if any) to the ``{nodes, edges}`` of a bound part."""
+    if path_name is None:
+        return
+    path_aql = _pick_fresh_var(path_name, forbidden_vars=forbidden_vars)
+    nodes = f"FLATTEN([{', '.join(node_segments)}])"
+    edges = f"FLATTEN([{', '.join(edge_segments)}])" if edge_segments else "[]"
+    if reversed_part:
+        nodes, edges = f"REVERSE({nodes})", f"REVERSE({edges})"
+    lines.append(f"    LET {path_aql} = {{nodes: {nodes}, edges: {edges}}}")
+    out_env[path_name] = path_aql
+    _active_path_vars.get()[path_name] = ([], [])
 
 
 def _compile_match_pipeline(
@@ -3005,7 +3147,11 @@ def _compile_match_pipeline(
             raise CoreError("Relationship variable must not shadow node variables", code="UNSUPPORTED")
 
         r_prop_filters = _compile_relationship_pattern_properties(rel_pat, var=rel_var, bind_vars=bind_vars)
-        direction = _relationship_direction(rel_pat)
+        direction = _self_loop_direction(
+            _relationship_direction(rel_pat),
+            back_to_start=v_bound and v_var == current_var,
+            rel_range=rel_range,
+        )
 
         if direction == "ANY" and rel_type:
             stats_dir = resolver.preferred_traversal_direction(rel_type)
@@ -3171,17 +3317,20 @@ def _compile_cypher_fragment(text: str, bind_vars: dict[str, Any]) -> str:
     return _compile_expression(projection_item.oC_Expression(), bind_vars)
 
 
-def _parse_collect(expr_text: str) -> dict[str, Any] | None:
+def _parse_collect(expr_text: str, ctx: Any = None) -> dict[str, Any] | None:
     """Parse a ``collect(...)`` projection, including ``DISTINCT`` and an
     optional trailing subscript/slice (``collect(DISTINCT x)[0..5]``).
 
     Returns ``{"inner", "distinct", "slice"}`` where ``slice`` is ``None``,
     ``("index", expr_text)``, or ``("slice", start_text|None, end_text|None)``.
-    Returns ``None`` if *expr_text* is not a collect call.
+    Returns ``None`` if *expr_text* is not a collect call. A percentile call,
+    and a ``min``/``max`` the projection item *ctx* shows must order as Cypher
+    does, are gathered the same way (``percentile``/``extreme`` in the spec).
     """
     t = expr_text.strip()
     if not t[:7].lower() == "collect":
-        return None
+        # percentileDisc/Cont, ordered min/max: a collect finished after grouping.
+        return parse_percentile(t) or (extreme_spec(t, ctx) if ctx is not None else None)
     i = 7
     while i < len(t) and t[i].isspace():
         i += 1
@@ -3230,6 +3379,9 @@ def _compile_collect_inner(spec: dict[str, Any], bind_vars: dict[str, Any]) -> d
     """
     compiled = dict(spec)
     compiled["inner"] = _compile_cypher_fragment(spec["inner"], bind_vars)
+    if spec.get("percentile") is not None:
+        kind, p_text = spec["percentile"]
+        compiled["percentile"] = (kind, _compile_cypher_fragment(p_text, bind_vars))
     return compiled
 
 
@@ -3243,6 +3395,11 @@ def _collect_post_expr(raw_var: str, spec: dict[str, Any]) -> str:
     common non-negative literal bounds; a negative slice bound is a known
     limitation (documented in the coverage plan).
     """
+    if spec.get("percentile") is not None:
+        kind, p = spec["percentile"]
+        return percentile_value(raw_var, kind, p)
+    if spec.get("extreme") is not None:
+        return extreme_value(raw_var, spec["extreme"])
     e = f"REMOVE_VALUE({raw_var}, null)"
     if spec.get("distinct"):
         e = f"UNIQUE({e})"
@@ -3464,6 +3621,8 @@ def _apply_with_projection(
     # COLLECT variables of those aggregates, which are not projected.
     compiled_post: list[tuple[str, str, str]] = []  # (cypher_var, aql_var, expr)
     hidden: set[str] = set()
+    # Each whole-item aggregate's Cypher text -> its variable, for ORDER BY.
+    aggregate_items: dict[str, str] = {}
     pre_existing = set(forbidden_vars)
 
     def pick_name(cypher_var: str) -> str:
@@ -3485,13 +3644,14 @@ def _apply_with_projection(
         expr_txt_for_agg = _rewrite_vars(expr_txt, incoming_env) if incoming_env else expr_txt
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
 
-        collect_spec = _parse_collect(expr_txt_for_agg)
+        collect_spec = _parse_collect(expr_txt_for_agg, expr_ctx)
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             cypher_var = alias or f"collected{len(compiled_collects) + 1}"
             aql_var = pick_name(cypher_var)
             forbidden_vars.add(aql_var)
             compiled_collects.append((cypher_var, aql_var, collect_spec))
+            aggregate_items[aggregate_key(expr_txt)] = aql_var
             continue
 
         agg = _compile_agg_expr(expr_txt_for_agg, bind_vars)
@@ -3503,6 +3663,7 @@ def _apply_with_projection(
             aql_var = pick_name(cypher_var)
             forbidden_vars.add(aql_var)
             compiled_agg.append((cypher_var, aql_var, agg_expr))
+            aggregate_items[aggregate_key(expr_txt)] = aql_var
             continue
 
         nested = _hoist_nested_aggregates(
@@ -3570,6 +3731,9 @@ def _apply_with_projection(
     env = {cy: aql for cy, aql, _ in compiled_nonagg}
     env.update({cy: aql for cy, aql, _ in compiled_agg if cy not in hidden})
     env.update({cy: aql for cy, aql, _ in compiled_post})
+    # After a COLLECT only its keys remain: ORDER BY a grouping key's own
+    # expression (``WITH a.name AS name … ORDER BY a.name``) reads the key.
+    grouped = _grouped_expression_vars(compiled_nonagg)
     if order_ctx is not None and incoming_env is not None:
         projected = set(env) | {cy for cy, _, _ in compiled_collects if cy not in hidden}
         _refuse_out_of_scope_sort_vars(order_ctx, visible=set(incoming_env) | projected)
@@ -3592,7 +3756,12 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env))
+            lines.append(
+                "  "
+                + _compile_order_by(
+                    order_ctx, bind_vars, var_env=env, grouped=grouped, aggregates=aggregate_items
+                )
+            )
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3621,7 +3790,12 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         if order_ctx is not None:
-            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env))
+            lines.append(
+                "  "
+                + _compile_order_by(
+                    order_ctx, bind_vars, var_env=env, grouped=grouped, aggregates=aggregate_items
+                )
+            )
         _append_skip_limit(lines, skip_value, limit_value)
         _active_user_vars.set(list(env.keys()))
         return env
@@ -3643,6 +3817,9 @@ def _apply_with_projection(
         if with_filter:
             lines.append(f"  FILTER {with_filter}")
         lines.extend(restore_order)
+        if order_ctx is not None:
+            lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=env, grouped=grouped))
+            order_ctx = None
     else:
         for _, aql, expr in compiled_nonagg:
             if aql != expr:
@@ -3718,11 +3895,17 @@ def _compile_order_by(
     var_env: dict[str, str] | None = None,
     aliases: dict[str, str] | None = None,
     alias_types: dict[str, str | None] | None = None,
+    grouped: dict[str, str] | None = None,
+    aggregates: dict[str, str] | None = None,
 ) -> str:
     """``SORT`` for an ORDER BY. A sort item that is exactly a projection
     alias in *aliases* sorts by that alias's expression, even where a
     variable has the same name (``RETURN a.name AS a ORDER BY a``), and
-    *alias_types* gives that expression's static type."""
+    *alias_types* gives that expression's static type. After a ``COLLECT``,
+    *grouped* maps each grouping key's source expression to the key variable,
+    which is all the sort can still read (WithOrderBy2 [22]-[24]), and
+    *aggregates* each aggregate the projection computes to its variable, so
+    ``ORDER BY max(n.age)`` reads the projected ``max(n.age)``."""
     items = order_ctx.oC_SortItem() or []
     if not items:
         raise CoreError("ORDER BY requires at least one sort item", code="UNSUPPORTED")
@@ -3734,10 +3917,19 @@ def _compile_order_by(
             expr = aliases[text]
             static_type = (alias_types or {}).get(text)
         else:
-            expr = _compile_expression(it.oC_Expression(), bind_vars)
+            with aggregate_variables(sort_aggregates(it.oC_Expression(), aggregates)):
+                expr = _compile_expression(it.oC_Expression(), bind_vars)
+            if grouped:
+                expr = read_grouping_keys(expr, grouped)
             if var_env:
                 expr = _rewrite_vars(expr, var_env)
         descending = it.DESC() is not None or it.DESCENDING() is not None
+        if needs_cypher_sort_key(it.oC_Expression()):
+            # Type-ranked key: Cypher's order across types, nulls included.
+            ranked = cypher_sort_key(expr)
+            ascending = it.ASC() is not None or it.ASCENDING() is not None
+            parts.append(f"{ranked} DESC" if descending else f"{ranked} ASC" if ascending else ranked)
+            continue
         key = _code_point_sort_key(expr, static_type)
         if not _is_obvious_non_null(expr):
             # Cypher sorts null after every value ascending and before every
@@ -4133,6 +4325,8 @@ def _append_return_aggregation(
         live_names.add(name)
         return name
 
+    # Each whole-item aggregate's Cypher text -> its variable, for ORDER BY.
+    return_aggregates: dict[str, str] = {}
     for it in items:
         expr_ctx = it.oC_Expression()
         alias = it.oC_Variable().getText().strip() if it.oC_Variable() is not None else None
@@ -4144,12 +4338,13 @@ def _append_return_aggregation(
         if var_env:
             expr_txt = _rewrite_vars(expr_txt, var_env)
 
-        collect_spec = _parse_collect(expr_txt)
+        collect_spec = _parse_collect(expr_txt, expr_ctx)
         if collect_spec is not None:
             collect_spec = _compile_collect_inner(collect_spec, bind_vars)
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
             key = claim_key(alias or f"expr{idx}", expr_txt, used_keys)
             compiled_collects.append((key, _alloc(key), collect_spec))
+            return_aggregates[aggregate_key(expr_ctx.getText())] = compiled_collects[-1][1]
             continue
 
         agg = _compile_agg_expr(expr_txt, bind_vars)
@@ -4160,6 +4355,7 @@ def _append_return_aggregation(
             idx = len(compiled_nonagg) + len(compiled_agg) + len(compiled_collects) + 1
             key = claim_key(alias or fn_key or f"expr{idx}", expr_txt, used_keys)
             compiled_agg.append((key, _alloc(key), agg_expr))
+            return_aggregates[aggregate_key(expr_ctx.getText())] = compiled_agg[-1][1]
             continue
 
         nested = _hoist_nested_aggregates(
@@ -4246,7 +4442,16 @@ def _append_return_aggregation(
             agg_env[cypher_level.get(expr, expr)] = aql
 
     if order_ctx is not None:
-        lines.append("  " + _compile_order_by(order_ctx, bind_vars, var_env=agg_env))
+        lines.append(
+            "  "
+            + _compile_order_by(
+                order_ctx,
+                bind_vars,
+                var_env=agg_env,
+                grouped=_grouped_expression_vars(compiled_nonagg),
+                aggregates=return_aggregates,
+            )
+        )
     _append_skip_limit(lines, skip_value, limit_value)
 
     columns = {k: aql for k, aql, _ in compiled_nonagg + compiled_agg + compiled_post}
@@ -6118,20 +6323,27 @@ def _compile_expression(ctx: Any, bind_vars: dict[str, Any]) -> str:
                     code="UNSUPPORTED",
                 )
             sop = string_ops[0]
-            rhs = _compile_value(sop.oC_PropertyOrLabelsExpression(), bind_vars)
+            rhs_ctx = sop.oC_PropertyOrLabelsExpression()
+            rhs = _compile_value(rhs_ctx, bind_vars)
             if sop.STARTS() is not None:
-                test = f"STARTS_WITH({base}, {rhs})"
+                kind = "starts"
             elif sop.ENDS() is not None:
-                test = f"RIGHT({base}, LENGTH({rhs})) == {rhs}"
+                kind = "ends"
             elif sop.CONTAINS() is not None:
-                test = f"CONTAINS({base}, {rhs})"
+                kind = "contains"
             elif "=~" in sop.getText():
-                test = f"REGEX_TEST({base}, {rhs})"
+                kind = "regex"
             else:
                 raise CoreError("Unknown string operator", code="UNSUPPORTED")
-            # AQL reads a null operand as "" (CONTAINS('abc', null) is true);
-            # in Cypher the test is null.
-            return _three_valued(test, f"NOT {test}", (base, rhs), mode)
+            # Null unless both operands are strings (string_predicates).
+            return compile_string_predicate(
+                kind,
+                base,
+                rhs,
+                base_is_string=_static_type(ctx.oC_PropertyOrLabelsExpression()) == STRING,
+                rhs_is_string=_static_type(rhs_ctx) == STRING,
+                mode=mode,
+            )
 
         return base
 

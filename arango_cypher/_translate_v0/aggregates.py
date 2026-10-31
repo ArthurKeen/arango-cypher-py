@@ -69,7 +69,9 @@ def lower_aggregate(aql: str, agg_expr: str, reserve: Callable[[str], str]) -> t
 
 #: Cypher aggregate functions the translator lowers (see ``_compile_agg_expr``
 #: and ``_parse_collect`` in ``core``).
-AGGREGATE_FUNCTIONS = frozenset({"count", "sum", "avg", "min", "max", "collect"})
+AGGREGATE_FUNCTIONS = frozenset(
+    {"count", "sum", "avg", "min", "max", "collect", "percentiledisc", "percentilecont"}
+)
 
 # While a projection that nests aggregates compiles, each aggregate call's
 # parse-tree node (by ``id``) maps to the variable the COLLECT binds it to.
@@ -149,3 +151,26 @@ def aggregate_variable(node: Any) -> str | None:
     """The COLLECT variable that stands for aggregate *node*, if one does."""
     variables = _AGGREGATE_VARS.get()
     return variables.get(id(node)) if variables else None
+
+
+def aggregate_key(text: str) -> str:
+    """How an aggregate's Cypher text is matched: without whitespace."""
+    return "".join(text.split())
+
+
+def sort_aggregates(expr_ctx: Any, aggregates: dict[str, str] | None) -> dict[int, str]:
+    """The aggregate calls in an ORDER BY item, each standing for the variable
+    of the projection item that computes it (``RETURN max(x) AS m ORDER BY
+    max(x) + 1``). An aggregate the projection does not compute is refused:
+    its group would need an aggregate of its own.
+    """
+    variables: dict[int, str] = {}
+    for node in nested_aggregates(expr_ctx):
+        variable = (aggregates or {}).get(aggregate_key(node.getText()))
+        if variable is None:
+            raise CoreError(
+                f"ORDER BY {node.getText()}: an aggregate the projection does not compute is not supported",
+                code="UNSUPPORTED",
+            )
+        variables[id(node)] = variable
+    return variables

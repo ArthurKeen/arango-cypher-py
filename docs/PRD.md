@@ -611,7 +611,16 @@ guard on LPG; a pair with no path yields no row, as in a MATCH. The path is
 any type and direction, minimum length 0 or 1; relationship properties are
 refused. The grammar is regenerated with `scripts/regen_antlr.sh`. Aggregates follow Cypher's null semantics:
 `count(x)`, `count(DISTINCT x)` and `collect(x)` skip nulls, and `sum()` over
-no rows is 0. The clauses of a `WITH` pipeline compile in query order, so a
+no rows is 0. `percentileDisc(x, p)` and `percentileCont(x, p)` gather `x`
+like `collect()` and compute Neo4j's definition over the sorted non-null
+values after grouping (`percentiles.py`); a `p` outside [0, 1] fails each
+group with `NumberOutOfRange`. `min()`/`max()` of a value the query shows to
+be a string, or an element of a list of mixed types, are gathered the same
+way and pick the least/greatest value in Cypher's order (strings by code
+point, types by rank); `min`/`max` of anything else, a property above all,
+stay AQL aggregates. An `ORDER BY` item may use an aggregate the projection
+computes (`RETURN u.city, count(*) AS c ORDER BY count(*)`), which reads that
+item's value; any other aggregate there is refused (`UNSUPPORTED`). The clauses of a `WITH` pipeline compile in query order, so a
 `MATCH` or `UNWIND` between two `WITH`s reads the rows of the `WITH` before it.
 An `UNWIND` before the first `MATCH` of such a pipeline is refused
 (`NOT_IMPLEMENTED`). An unaliased variable is returned under its Cypher name
@@ -636,9 +645,23 @@ property the mapping declares `string` does too, but only when its value is a
 string at run time (`IS_STRING(x) ? TO_HEX(x) : x`), since the declaration is
 not checked against the data. A value of unknown type keeps AQL's order
 in both, so sorting and comparing agree (TCK WithOrderBy1 [45]) and a range
-filter on it can still use an index. `RETURN type(r)` on its own is a
+filter on it can still use an index. `ORDER BY` a value the query shows to
+be a list (`UNWIND [[1], ['a']] AS l … ORDER BY l`, `collect(…)`), or an
+element of a list of mixed types (`UNWIND [1, 'a', null] AS x`), sorts in
+Cypher's cross-type order — maps, nodes, relationships, lists, paths,
+strings, booleans, numbers, null last ascending — lists element by element:
+the key is `[type rank, value]`, a list's elements keyed the same way one
+level deep (`sort_keys.py`; the semantic pass records each sort item's type).
+Every other sort, a property above all, keeps the plain key an index can
+serve. After a `COLLECT`, an `ORDER BY` on a grouping key's own expression
+(`WITH a.name AS name, count(*) AS c ORDER BY a.name`) reads the key.
+`RETURN type(r)` on its own is a
 scalar column. An undirected single hop from a node back to itself matches each
-self-loop once.
+self-loop once, in every pattern position, and an undirected pattern with both
+ends anonymous (`MATCH ()--()`, an edge-collection scan) yields each edge once
+per orientation and a self-loop once. An undirected hop between two *different*
+variables still yields a self-loop twice (an ANY traversal visits it in both
+directions), where Cypher matches it once (TCK Match3 [11]/[15]/[16]): known gap.
 `CALL { … }` subqueries (`arango_cypher/_translate_v0/subqueries.py`): for
 each incoming row the body runs once, and the row continues once per row it
 returns, with its columns added; a row whose body returns nothing is dropped.
@@ -668,7 +691,11 @@ Predicates follow Cypher's three-valued logic (true / false / null), which
 AQL's two-valued operators do not: AQL's `null == null` and `null != 'x'` are
 true, and `NOT null` is true. A comparison (`=`, `<>`, `<`, …), `IN` or
 string operator (`STARTS WITH`, `ENDS WITH`, `CONTAINS`, `=~`) with a null
-operand is null, so `WHERE n.x = null` and `WHERE n.x = $p` with a null `$p`
+operand is null — a string operator with any operand that is not a string
+is null too (`1 CONTAINS 1`; AQL's string functions would convert it), each
+operand the query does not show to be a string being guarded by `IS_STRING`;
+every string contains `''` (AQL's `CONTAINS(x, '')` is false), and `NOT x ENDS
+WITH y` negates the whole test (`string_predicates.py`) — so `WHERE n.x = null` and `WHERE n.x = $p` with a null `$p`
 match nothing, and `WHERE NOT n.name = 'b'` and `WHERE n.name <> 'b'` drop
 rows whose `name` is null. `NOT` of null is null. A predicate in a filter
 (`WHERE`, a comprehension's or quantifier's `WHERE`, a `CASE WHEN` condition)
@@ -763,7 +790,11 @@ and a named variable-length relationship is its list of edges. A named path
 pattern is the pattern predicate itself. In MATCH, a named path is bound for a
 single node (`MATCH p = (a)` is `{nodes: [a], edges: []}`) and before a `WITH`
 (`MATCH p = (a)-[*]->(b) WITH p …`), where each hop's traversal path
-contributes its vertices and edges in pattern order.
+contributes its vertices and edges in pattern order; and in an `OPTIONAL MATCH`
+or a `MATCH` after a `WITH` (`OPTIONAL MATCH p = (a)-[:X]->(b)`, null when
+nothing matches), in the order the pattern is written even when it is compiled
+from its bound end. There a named variable-length relationship is its list of
+edges too.
 
 An aggregate may be nested in a projection expression (`head(collect(x))`,
 `100 * count(*) + count(x)`, `list + collect(x)`, `[y IN collect(x) | …]`):
@@ -787,8 +818,12 @@ stores several per node; an unlabeled node MERGEs within the one collection
 unlabeled nodes live in; a RETURN after MERGE may aggregate, sort and page.
 MERGE refuses to rebind a variable bound before it, a null property value, an
 action on an undefined variable, and a whole-map `SET r = …`/`+= …` action,
-which it used to drop); `FOREACH` (with `SET`, and — newly — `CREATE` /
-`DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
+which it used to drop; it also refuses a MERGE of a named path, which never
+bound the path, and an ON CREATE / ON MATCH item on a variable the MERGE does
+not write, which was written onto the merged node or relationship instead. A
+`SET n.p = v` after a node MERGE joins both the INSERT and the UPDATE
+document, after the ON CREATE / ON MATCH items; any other SET after a MERGE
+is refused); `FOREACH` (with `SET`, and — newly — `CREATE` / `DELETE`); and `WITH … SET`/`DELETE`/`REMOVE` on MATCH-bound document variables
 (including identity aliases such as `WITH p AS x`, and relationship variables
 from traversals).
 
@@ -800,7 +835,10 @@ the ids of the deleted nodes and relationships are collected from it
 rows deleted once), and for `DETACH DELETE` so are the ids of every edge
 touching a deleted node; then each collection is written by one `REMOVE`
 over the ids that live in it: edges first, then nodes, including every
-member collection of a supertype. A `RETURN` reads the matched rows; a row
+member collection of a supertype. `DETACH DELETE p` of a named path removes
+its nodes and relationships (and, detaching, every edge touching its nodes);
+`DELETE p` without DETACH is refused, since the check that its nodes keep no
+other relationship is not made. A `RETURN` reads the matched rows; a row
 that reads a property or the labels (`labels()`, `properties()`, `keys()`)
 of a node or relationship the query deleted fails with Neo4j's
 `DeletedEntityAccess`, through a per-row `FILTER v == null OR FAIL(…)`, so a
@@ -808,6 +846,29 @@ match with no rows still succeeds and returning the entity itself or its
 `type()` stays allowed (`_deleted_entities_read` in `deletes.py`). AQL
 forbids reading a collection after writing it (ERR 1579), which deleting
 inside the matching loop did as soon as a pattern matched more than one row.
+
+**No write is dropped.** The single-part router hands a query part to one
+translator by the kind of write it sees (FOREACH, MERGE, CREATE, DELETE,
+SET/REMOVE), and each compiles only its own clauses. A write of another kind
+beside it (`CREATE (:X) MERGE (:X)`, `MERGE (n) REMOVE n.x`, `MATCH (a) SET
+a.x = 1 FOREACH (…)`, a FOREACH beside SET/DELETE after a WITH) used to be left
+out of the AQL without an error; it is refused (`UNSUPPORTED`,
+`refuse_dropped_writes`). So are the other parts a write compiler silently
+skipped: an UNWIND, CALL or OPTIONAL MATCH before a FOREACH, a second FOREACH,
+a RETURN after a FOREACH, a whole-map or label SET inside one, an OPTIONAL
+MATCH before CREATE/MERGE (compiled as a MATCH, so its unmatched rows lost
+their write), and `REMOVE n:Label` where the mapping keeps no labels array.
+
+`SET`, `REMOVE` and `DELETE` may also stand before a WITH (`MATCH (n) SET
+n.num = n.num + 1 WITH n WHERE n.num % 2 = 0 RETURN n.num`, `MATCH (n) WITH n,
+n.num AS num DELETE n WITH sum(num) AS s RETURN s`; TCK Set6, Remove3,
+Delete6). The writes nest inside the matching loop, and the clauses after them
+read each written variable as the document after the write (`LET n_new =
+NEW`). After such a write the query may filter, project, aggregate and
+`UNWIND`, but a later `MATCH`, `OPTIONAL MATCH`, `CALL` or second write is
+refused (`UNSUPPORTED`): AQL cannot read a collection after writing it in the
+same query (ERR 1579), nor write one twice (`pipeline_writes.py`). `CREATE`
+and `MERGE` before a WITH in a query with MATCH stay refused.
 
 A CREATE may stand before a WITH (`MATCH … CREATE … WITH … UNWIND … MATCH …
 CREATE`, LDBC INS1/4/6/7), with only CREATE as the updating clause. The query

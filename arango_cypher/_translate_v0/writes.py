@@ -25,6 +25,10 @@ from .property_writes import PropertyOp, PropertyWrites, StoredWrite, keep_field
 from .scopes import outer_bound_names
 from .state import _active_resolver
 from .supertypes import union_scan_source
+from .write_guards import (
+    refuse_untranslated_foreach_parts,
+    trailing_set_fields,
+)
 
 
 def _atom_variable(atom: Any) -> str | None:
@@ -102,11 +106,9 @@ def _property_writes(
                 patch = label_write(aql_var, labels, add=is_set, fields=label_fields)
                 writes.add(var, PropertyOp("merge", value=patch))
                 continue
-            if not is_set and item.oC_NodeLabels() is not None:
-                # REMOVE n:Label without a labels field is skipped, as before:
-                # labels are collections or a single type field there, and
-                # removing one is not modelled.
-                continue
+            # SET/REMOVE n:Label without a labels field (labels are collections
+            # or a single type field there) is not modelled. REMOVE used to be
+            # skipped without a word; both are refused.
             if item.oC_NodeLabels() is not None or item.oC_Variable() is None:
                 raise CoreError(f"{verb} of a label ({item.getText()}) is not supported", code="UNSUPPORTED")
             var = target_of(item.oC_Variable().getText().strip())
@@ -192,84 +194,17 @@ def _append_multipart_mutate_tail(
     targets are recovered from the already-built MATCH/WITH AQL so aliased
     document projections (``WITH p AS x``) stay bound to the source collection.
     """
-    if not (set_clauses or delete_clauses or remove_clauses):
-        raise CoreError(
-            "SET/DELETE/REMOVE after WITH requires at least one mutating clause",
-            code="UNSUPPORTED",
-        )
+    from .pipeline_writes import emit_pipeline_writes
 
-    var_collections = _infer_var_collections_from_pipeline(lines)
-    if not var_collections:
-        raise CoreError(
-            "SET/DELETE/REMOVE after WITH requires a document variable from MATCH",
-            code="NOT_IMPLEMENTED",
-        )
-
-    def _coll_key_for(target_var: str) -> str:
-        aql_var = var_env.get(target_var, target_var)
-        key = var_collections.get(aql_var) or var_collections.get(target_var)
-        if key is None:
-            raise CoreError(
-                f"SET/DELETE/REMOVE after WITH targets {target_var!r}, which is not a "
-                "MATCH-bound document variable",
-                code="NOT_IMPLEMENTED",
-            )
-        if key not in bind_vars:
-            raise CoreError(
-                f"Missing collection bind for SET/DELETE/REMOVE target {target_var!r}",
-                code="UNSUPPORTED",
-            )
-        return key
-
-    def _coll_ref_for(target_var: str) -> str:
-        return _aql_collection_ref(_coll_key_for(target_var))
-
-    def _rewrite_target(name: str) -> str:
-        return var_env.get(name, name)
-
-    writes = _property_writes(
-        set_clauses,
-        remove_clauses,
+    emit_pipeline_writes(
+        set_clauses=set_clauses,
+        delete_clauses=delete_clauses,
+        remove_clauses=remove_clauses,
+        lines=lines,
+        var_env=var_env,
         bind_vars=bind_vars,
-        target_of=_rewrite_target,
-        rewrite_value=(lambda value: _rewrite_vars(value, var_env)) if var_env else None,
+        resolver=resolver,
     )
-    physical = resolver.bundle.physical_mapping
-    written: list[tuple[str, str]] = []
-    for target_var in writes.ops:
-        key = _coll_key_for(target_var)
-        write = writes.stored_write(target_var, keep_fields_for(bind_vars[key], physical))
-        lines.append(_stored_write_line(target_var, _aql_collection_ref(key), write))
-        written.append((f"SET/REMOVE on {target_var}", bind_vars[key]))
-
-    for dc in delete_clauses:
-        is_detach = dc.DETACH() is not None
-        for de in dc.oC_Expression() or []:
-            del_var = _compile_expression(de, bind_vars)
-            if var_env:
-                del_var = _rewrite_vars(del_var, var_env)
-            # Expression must resolve to a simple variable for collection lookup.
-            simple = del_var.strip()
-            if not re.fullmatch(r"\w+", simple):
-                raise CoreError(
-                    "DELETE after WITH only supports a simple MATCH-bound variable",
-                    code="NOT_IMPLEMENTED",
-                )
-            if is_detach:
-                for idx, ec in enumerate(resolver.all_edge_collections()):
-                    ec_key = _pick_bind_key("@detachEdge", bind_vars)
-                    bind_vars[ec_key] = ec
-                    ec_ref = _aql_collection_ref(ec_key)
-                    de_edge = f"_de{idx}"
-                    lines.append(
-                        f"  LET _edgeRm{idx} = (FOR {de_edge} IN 1..1 ANY {simple} {ec_ref} "
-                        f"REMOVE {de_edge} IN {ec_ref})"
-                    )
-                    written.append((f"DETACH DELETE {simple} (its {ec} edges)", ec))
-            lines.append(f"  REMOVE {simple} IN {_coll_ref_for(simple)}")
-            written.append((f"DELETE {simple}", bind_vars[_coll_key_for(simple)]))
-
-    _refuse_repeated_collections(written)
 
     ret = tail.oC_Return()
     if ret is not None:
@@ -429,6 +364,14 @@ def _compile_write_reading_clauses(
                     "MATCH after UNWIND is not supported with write clauses",
                     code="NOT_IMPLEMENTED",
                 )
+            if m.OPTIONAL() is not None:
+                # It was compiled as a MATCH: a row it does not match (which
+                # Cypher keeps, null-extended) lost its write without a word.
+                raise CoreError(
+                    "OPTIONAL MATCH before CREATE/MERGE is not supported: its unmatched rows would "
+                    "not be written",
+                    code="UNSUPPORTED",
+                )
             match_clauses.append(m)
         elif uw is not None:
             seen_unwind = True
@@ -480,8 +423,15 @@ def _translate_foreach_query(
     ``FOREACH (x IN list | SET x.prop = val)``
     becomes:
     ``FOR x IN list UPDATE x WITH {prop: val} IN @@collection``
+
+    What this compiler does not compile is refused rather than left out of
+    the AQL: a reading clause other than MATCH (an UNWIND, a CALL, OPTIONAL
+    MATCH's null rows), a RETURN, a second FOREACH (it would nest inside the
+    first and write once per element of both lists), and a SET of a whole
+    map or a label inside the FOREACH.
     """
     reading_clauses = spq.oC_ReadingClause() or []
+    refuse_untranslated_foreach_parts(spq, foreach_clauses)
 
     lines: list[str] = []
 
@@ -543,6 +493,11 @@ def _translate_foreach_query(
                         prop_name = lookups[-1].oC_PropertyKeyName().getText().strip()
                         val = _compile_expression(si.oC_Expression(), bind_vars)
                         update_fields.setdefault(target_var, {})[prop_name] = val
+                    else:
+                        raise CoreError(
+                            f"SET of a whole map or a label inside FOREACH ({si.getText()}) is not supported",
+                            code="UNSUPPORTED",
+                        )
 
                 for target_var, fields in update_fields.items():
                     pairs = ", ".join(f"{k}: {v}" for k, v in fields.items())
@@ -1451,8 +1406,31 @@ def _translate_merge_query(
     merge_clauses: list[CypherParser.OC_MergeContext],
     resolver: MappingResolver,
     bind_vars: dict[str, Any],
+    trailing_sets: list[CypherParser.OC_SetContext] | None = None,
 ) -> AqlQuery:
-    """Translate MERGE clause(s) into AQL UPSERT."""
+    """Translate MERGE clause(s) into AQL UPSERT.
+
+    *trailing_sets* are the SET clauses after the MERGE (``MERGE (n:L {id:
+    1}) SET n.p = $v``): they apply to the merged node whether it was created
+    or matched, so they join both the INSERT and the UPDATE document. Only a
+    single node MERGE takes them; anywhere else they would be dropped, and
+    are refused.
+    """
+    _refuse_untranslated_merge_parts(spq, merge_clauses)
+    trailing_sets = trailing_sets or []
+    if trailing_sets and (
+        len(merge_clauses) != 1
+        or merge_clauses[0]
+        .oC_PatternPart()
+        .oC_AnonymousPatternPart()
+        .oC_PatternElement()
+        .oC_PatternElementChain()
+    ):
+        raise CoreError(
+            "SET after a relationship MERGE or several MERGEs is not supported: it would not be "
+            "written. Use ON CREATE SET / ON MATCH SET, or a separate statement.",
+            code="UNSUPPORTED",
+        )
     if len(merge_clauses) != 1:
         return _translate_multi_merge_query(
             spq,
@@ -1478,7 +1456,7 @@ def _translate_merge_query(
         )
 
     var, _coll_key, coll_ref, search_doc, insert_doc, update_doc = _build_merge_node_docs(
-        node, merge_ctx, resolver=resolver, bind_vars=bind_vars
+        node, merge_ctx, resolver=resolver, bind_vars=bind_vars, trailing_sets=trailing_sets
     )
 
     lines: list[str] = []
@@ -1500,6 +1478,24 @@ def _translate_merge_query(
         )
 
     return AqlQuery(text="\n".join(lines), bind_vars=bind_vars)
+
+
+def _refuse_untranslated_merge_parts(
+    spq: CypherParser.OC_SinglePartQueryContext, merge_clauses: list[CypherParser.OC_MergeContext]
+) -> None:
+    """Refuse what the UPSERT translation would drop instead of compiling.
+
+    A path variable on the MERGE pattern (``MERGE p = (a {num: 1})``) was
+    never bound. A CREATE beside the MERGE (which the AQL also left out) is
+    refused by the router (:func:`write_guards.refuse_dropped_writes`) before this runs.
+    """
+    del spq  # the clauses beside the MERGE are the router's to check
+    for merge in merge_clauses:
+        if merge.oC_PatternPart().oC_Variable() is not None:
+            raise CoreError(
+                f"MERGE of a named path ({merge.oC_PatternPart().oC_Variable().getText()} = …) is not supported",
+                code="UNSUPPORTED",
+            )
 
 
 def _compile_merge_reading_clauses(
@@ -1547,8 +1543,13 @@ def _declared_names(ctx: Any) -> set[str]:
 def _extract_merge_actions(
     merge_ctx: CypherParser.OC_MergeContext,
     bind_vars: dict[str, Any],
+    trailing_sets: list[CypherParser.OC_SetContext] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Extract ON CREATE SET / ON MATCH SET fields from a MERGE clause."""
+    """Extract ON CREATE SET / ON MATCH SET fields from a MERGE clause.
+
+    *trailing_sets* (``MERGE (n …) SET n.p = v``) add to both lists, after the
+    actions, as they run after them (:func:`write_guards.trailing_set_fields`).
+    """
     on_create_fields: list[str] = []
     on_match_fields: list[str] = []
 
@@ -1564,6 +1565,16 @@ def _extract_merge_actions(
     # What an ON CREATE / ON MATCH item may write: the pattern's variables
     # and the query's.
     visible = outer_bound_names(merge_ctx) | _declared_names(merge_ctx.oC_PatternPart())
+    # The variable whose document the UPSERT writes: the node of a node MERGE,
+    # the relationship of a single-hop one (None: not checked, multi-hop).
+    chains = elem.oC_PatternElementChain() or []
+    writable: set[str] | None = None
+    if not chains:
+        writable = {merged_var}
+    elif len(chains) == 1:
+        rel_detail = chains[0].oC_RelationshipPattern().oC_RelationshipDetail()
+        rel_name = rel_detail.oC_Variable() if rel_detail is not None else None
+        writable = {_strip_label_backticks(rel_name.getText().strip())} if rel_name is not None else set()
 
     merge_actions = merge_ctx.oC_MergeAction() or []
     for action in merge_actions:
@@ -1607,6 +1618,15 @@ def _extract_merge_actions(
                 raise CoreError(
                     f"MERGE ... SET refers to undefined variable {prop_target!r}", code="UNSUPPORTED"
                 )
+            if prop_target is not None and writable is not None and prop_target not in writable:
+                # The action's value goes into the UPSERT's own document: a
+                # property of another variable was written onto the merged
+                # node or relationship instead.
+                raise CoreError(
+                    f"MERGE ... SET of {prop_target!r}, which the MERGE does not write "
+                    f"({si.getText()}), is not supported",
+                    code="UNSUPPORTED",
+                )
             if si.oC_PropertyExpression() is None:
                 # ``SET r = map`` / ``SET r += map`` would otherwise be dropped.
                 raise CoreError(
@@ -1624,6 +1644,11 @@ def _extract_merge_actions(
                 else:
                     on_match_fields.append(f"{prop_name}: {val}")
 
+    for prop_name, val in trailing_set_fields(trailing_sets or [], merged_var, bind_vars):
+        # The SET runs after ON CREATE / ON MATCH: its value wins.
+        for fields in (on_create_fields, on_match_fields):
+            fields[:] = [f for f in fields if not f.startswith(f"{prop_name}: ")]
+            fields.append(f"{prop_name}: {val}")
     return on_create_fields, on_match_fields
 
 
@@ -1848,6 +1873,7 @@ def _build_merge_node_docs(
     *,
     resolver: MappingResolver,
     bind_vars: dict[str, Any],
+    trailing_sets: list[CypherParser.OC_SetContext] | None = None,
 ) -> tuple[str, str, str, str, str, str]:
     """Build the UPSERT docs for a node MERGE.
 
@@ -1870,7 +1896,7 @@ def _build_merge_node_docs(
         )
         props = _compile_create_props(node.oC_Properties(), bind_vars)
         search_doc = _build_insert_doc(props, [])
-        on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+        on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars, trailing_sets)
         insert_fields = [*(f"{k}: {v}" for k, v in props), *on_create_fields]
         insert_doc = "{" + ", ".join(insert_fields) + "}" if on_create_fields else search_doc
         update_doc = "{" + ", ".join(on_match_fields) + "}" if on_match_fields else "{}"
@@ -1911,7 +1937,7 @@ def _build_merge_node_docs(
     search_doc = _build_insert_doc(props, extra_fields)
     insert_doc = search_doc
 
-    on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars)
+    on_create_fields, on_match_fields = _extract_merge_actions(merge_ctx, bind_vars, trailing_sets)
     if on_create_fields:
         all_insert_fields = list(extra_fields)
         all_insert_fields.extend(f"{k}: {v}" for k, v in props)

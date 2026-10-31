@@ -8,7 +8,10 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (n.name != null AND REGEX_TEST(n.name, '.*Alice.*'))\n  RETURN n.name\n"
+    aql: |-
+      FOR n IN @@collection
+        FILTER (IS_STRING(n.name) AND REGEX_TEST(n.name, '.*Alice.*'))
+        RETURN n.name
     bind_vars:
       "@collection": persons
 - id: C301
@@ -19,7 +22,10 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER (n.name != null AND NOT REGEX_TEST(n.name, '.*Bob.*'))\n  RETURN n.name\n"
+    aql: |-
+      FOR n IN @@collection
+        FILTER (IS_STRING(n.name) AND NOT (REGEX_TEST(n.name, '.*Bob.*')))
+        RETURN n.name
     bind_vars:
       "@collection": persons
 - id: C302
@@ -30,7 +36,10 @@ cases:
 
     '
   expected:
-    aql: "FOR n IN @@collection\n  FILTER ((n.name != null AND REGEX_TEST(n.name, '^A')) AND (n.age != null AND n.age > 20))\n  RETURN n\n"
+    aql: |-
+      FOR n IN @@collection
+        FILTER ((IS_STRING(n.name) AND REGEX_TEST(n.name, '^A')) AND (n.age != null AND n.age > 20))
+        RETURN n
     bind_vars:
       "@collection": persons
 - id: C303
@@ -41,7 +50,11 @@ cases:
 
     '
   expected:
-    aql: "FOR p IN @@collection\n  FILTER p[@typeField] == @typeValue\n  FILTER (p.name != null AND REGEX_TEST(p.name, '.*Tom.*'))\n  RETURN p.name\n"
+    aql: |-
+      FOR p IN @@collection
+        FILTER p[@typeField] == @typeValue
+        FILTER (IS_STRING(p.name) AND REGEX_TEST(p.name, '.*Tom.*'))
+        RETURN p.name
     bind_vars:
       "@collection": nodes
       typeField: type

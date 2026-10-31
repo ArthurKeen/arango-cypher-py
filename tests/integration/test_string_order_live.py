@@ -71,13 +71,15 @@ def test_descending_puts_null_first(db: Any) -> None:
     assert rows == [None, *sorted(_NAMES, reverse=True)]
 
 
-def test_values_of_unknown_type_keep_the_aql_order(db: Any) -> None:
-    # Booleans, then numbers, then strings. Strings of unknown type keep AQL's
-    # collation, as their ``<`` does, so sorting and comparing agree.
+def test_values_of_mixed_type_sort_in_cypher_order(db: Any) -> None:
+    # Cypher's global order: strings, then booleans, then numbers (Neo4j 5.26
+    # returns "B", "b", true, 1, 2). Strings of unknown type keep AQL's
+    # collation among themselves, as their ``<`` does, so sorting and
+    # comparing agree; AQL's own type order (booleans, numbers, strings) is not used.
     q = translate("UNWIND [2, 'b', 1, 'B', true] AS x RETURN x ORDER BY x", mapping=_mapping())
     rows = list(db.aql.execute(q.aql, bind_vars=q.bind_vars))
-    assert rows[:3] == [True, 1, 2]
-    assert sorted(rows[3:]) == ["B", "b"]
+    assert sorted(rows[:2]) == ["B", "b"]
+    assert rows[2:] == [True, 1, 2]
 
 
 def test_a_range_filter_compares_code_points(db: Any) -> None:

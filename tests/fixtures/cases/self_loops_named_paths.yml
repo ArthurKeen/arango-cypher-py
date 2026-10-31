@@ -1,0 +1,61 @@
+version: 1
+cases:
+- id: C1121
+  name: an undirected hop back to its start matches each self-loop once
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: MATCH (n:User)-[r:FOLLOWS]-(n) RETURN n, r
+  expected:
+    aql: "WITH @@uCollection\nFOR n IN @@uCollection\n  FILTER n[@uTypeField] == @uTypeValue\n  FOR n_m, r IN 1..1 OUTBOUND n @@edgeCollection\n    FILTER n_m._id == n._id\n    FILTER r[@relTypeField] == @relTypeValue\n    RETURN {n: n, r: r}"
+    bind_vars:
+      '@uCollection': vertices
+      uTypeField: type
+      uTypeValue: User
+      '@edgeCollection': edges
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C1122
+  name: an undirected edge-only scan yields each edge once per orientation
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: MATCH ()-[r:FOLLOWS]-() RETURN count(*) AS c
+  expected:
+    aql: "FOR r IN @@edgeCollection\n  FILTER r[@relTypeField] == @relTypeValue\n  FOR _side IN (r._from == r._to ? [0] : [0, 1])\n    COLLECT AGGREGATE _c_rows = SUM(1)\n    LET c = NOT_NULL(_c_rows, 0)\n    RETURN c"
+    bind_vars:
+      '@edgeCollection': edges
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C1123
+  name: OPTIONAL MATCH binds a named path
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: MATCH (a:User) OPTIONAL MATCH p = (a)-[:FOLLOWS]->(b:User) RETURN p
+  expected:
+    aql: "WITH @@collection\nFOR a IN @@collection\n  FILTER a[@typeField] == @typeValue\n  LET _opt_rows = (\n  FOR b, r IN 1..1 OUTBOUND a @@edgeCollection\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    LET p = {nodes: FLATTEN([[a], [b]]), edges: FLATTEN([[r]])}\n    RETURN {b: b, p: p}\n    )\n    FOR _opt_row IN (LENGTH(_opt_rows) > 0 ? _opt_rows : [{}])\n      LET b = _opt_row.b\n      LET p = _opt_row.p\n      RETURN p"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+      '@edgeCollection': edges
+      vCollection: vertices
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS
+- id: C1124
+  name: a named variable-length relationship after WITH is the list of its edges
+  mapping_fixture: lpg
+  extensions_enabled: false
+  cypher: MATCH (a:User) WITH a MATCH p = (a)-[r:FOLLOWS*1..2]->(b:User) RETURN r, p
+  expected:
+    aql: "WITH @@collection\nFOR a IN @@collection\n  FILTER a[@typeField] == @typeValue\n  FOR b, r, _hop_path IN 1..2 OUTBOUND a @@edgeCollection PRUNE r != null AND r[@relTypeField] != @relTypeValue\n    LET r_list = _hop_path.edges\n    FILTER IS_SAME_COLLECTION(@vCollection, b)\n    FILTER b[@vTypeField] == @vTypeValue\n    FILTER r[@relTypeField] == @relTypeValue\n    LET p = {nodes: FLATTEN([[a], SLICE(_hop_path.vertices, 1)]), edges: FLATTEN([_hop_path.edges])}\n    RETURN {r: r_list, p: p}"
+    bind_vars:
+      '@collection': vertices
+      typeField: type
+      typeValue: User
+      '@edgeCollection': edges
+      vCollection: vertices
+      vTypeField: type
+      vTypeValue: User
+      relTypeField: type
+      relTypeValue: FOLLOWS

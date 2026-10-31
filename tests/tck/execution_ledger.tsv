@@ -101,7 +101,7 @@ passed	clauses/create/Create2/[9] Create a single node and a single self loop in
 passed	clauses/create/Create3/[10] WITH-UNWIND-CREATE: A bound node should be recognized after projection with WITH + UNWIND
 translation_failure	clauses/create/Create3/[11] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE node
 translation_failure	clauses/create/Create3/[12] WITH-MERGE-CREATE: A bound node should be recognized after projection with WITH + MERGE pattern
-passed	clauses/create/Create3/[13] Merge followed by multiple creates
+translation_failure	clauses/create/Create3/[13] Merge followed by multiple creates
 passed	clauses/create/Create3/[1] MATCH-CREATE
 passed	clauses/create/Create3/[2] WITH-CREATE
 passed	clauses/create/Create3/[3] MATCH-CREATE-WITH-CREATE
@@ -145,8 +145,8 @@ passed	clauses/delete/Delete2/[2] Delete optionally matched relationship
 passed	clauses/delete/Delete2/[3] Delete relationship with bidirectional matching
 passed	clauses/delete/Delete2/[4] Ignore null when deleting relationship
 correct_rejection	clauses/delete/Delete2/[5] Failing when deleting a relationship type
-translation_failure	clauses/delete/Delete3/[1] Detach deleting paths
-translation_failure	clauses/delete/Delete3/[2] Delete on null path
+passed	clauses/delete/Delete3/[1] Detach deleting paths
+passed	clauses/delete/Delete3/[2] Delete on null path
 passed	clauses/delete/Delete4/[1] Undirected expand followed by delete and count
 passed	clauses/delete/Delete4/[2] Undirected variable length expand followed by delete and count
 translation_failure	clauses/delete/Delete4/[3] Create and delete in same query
@@ -161,16 +161,16 @@ correct_rejection	clauses/delete/Delete5/[8] Failing when using undefined variab
 correct_rejection	clauses/delete/Delete5/[9] Failing when deleting an integer expression
 passed	clauses/delete/Delete6/[10] Skipping and limiting to a few results after deleting relationships affects the result set but not the side effects
 passed	clauses/delete/Delete6/[11] Skipping zero result and limiting to all results after deleting relationships does not affect the result set nor the side effects
-translation_failure	clauses/delete/Delete6/[12] Filtering after deleting relationships affects the result set but not the side effects
+passed	clauses/delete/Delete6/[12] Filtering after deleting relationships affects the result set but not the side effects
 passed	clauses/delete/Delete6/[13] Aggregating in `RETURN` after deleting relationships affects the result set but not the side effects
-translation_failure	clauses/delete/Delete6/[14] Aggregating in `WITH` after deleting relationships affects the result set but not the side effects
+passed	clauses/delete/Delete6/[14] Aggregating in `WITH` after deleting relationships affects the result set but not the side effects
 passed	clauses/delete/Delete6/[1] Limiting to zero results after deleting nodes affects the result set but not the side effects
 passed	clauses/delete/Delete6/[2] Skipping all results after deleting nodes affects the result set but not the side effects
 passed	clauses/delete/Delete6/[3] Skipping and limiting to a few results after deleting nodes affects the result set but not the side effects
 passed	clauses/delete/Delete6/[4] Skipping zero results and limiting to all results after deleting nodes does not affect the result set nor the side effects
-translation_failure	clauses/delete/Delete6/[5] Filtering after deleting nodes affects the result set but not the side effects
+passed	clauses/delete/Delete6/[5] Filtering after deleting nodes affects the result set but not the side effects
 passed	clauses/delete/Delete6/[6] Aggregating in `RETURN` after deleting nodes affects the result set but not the side effects
-translation_failure	clauses/delete/Delete6/[7] Aggregating in `WITH` after deleting nodes affects the result set but not the side effects
+passed	clauses/delete/Delete6/[7] Aggregating in `WITH` after deleting nodes affects the result set but not the side effects
 passed	clauses/delete/Delete6/[8] Limiting to zero results after deleting relationships affects the result set but not the side effects
 passed	clauses/delete/Delete6/[9] Skipping all results after deleting relationships affects the result set but not the side effects
 passed	clauses/match-where/MatchWhere1/[10] Filter node with disjunctive property predicate on single variables with multiple bindings
@@ -381,7 +381,7 @@ correct_rejection	clauses/match/Match2/[9] Fail when a node has the same variabl
 correct_rejection	clauses/match/Match2/[9] Fail when a node has the same variable in a preceding MATCH [pattern=(s)-[]-(t), (s)-[]-(r)]
 passed	clauses/match/Match3/[10] Matching using self-referencing pattern returns no result
 execution_failure	clauses/match/Match3/[11] Undirected match in self-relationship graph
-execution_failure	clauses/match/Match3/[12] Undirected match of self-relationship in self-relationship graph
+passed	clauses/match/Match3/[12] Undirected match of self-relationship in self-relationship graph
 passed	clauses/match/Match3/[13] Directed match on self-relationship graph
 passed	clauses/match/Match3/[14] Directed match of self-relationship on self-relationship graph
 execution_failure	clauses/match/Match3/[15] Mixing directed and undirected pattern parts with self-relationship, simple
@@ -551,12 +551,12 @@ passed	clauses/match/Match7/[12] Variable length optional relationships
 passed	clauses/match/Match7/[13] Variable length optional relationships with bound nodes
 passed	clauses/match/Match7/[14] Variable length optional relationships with length predicates
 passed	clauses/match/Match7/[15] Variable length patterns and nulls
-execution_failure	clauses/match/Match7/[16] Optionally matching named paths - null result
-execution_failure	clauses/match/Match7/[17] Optionally matching named paths - existing result
-execution_failure	clauses/match/Match7/[18] Named paths inside optional matches with node predicates
-execution_failure	clauses/match/Match7/[19] Optionally matching named paths with single and variable length patterns
+passed	clauses/match/Match7/[16] Optionally matching named paths - null result
+passed	clauses/match/Match7/[17] Optionally matching named paths - existing result
+passed	clauses/match/Match7/[18] Named paths inside optional matches with node predicates
+passed	clauses/match/Match7/[19] Optionally matching named paths with single and variable length patterns
 passed	clauses/match/Match7/[1] Simple OPTIONAL MATCH on empty graph
-execution_failure	clauses/match/Match7/[20] Variable length optional relationships with bound nodes, no matches
+passed	clauses/match/Match7/[20] Variable length optional relationships with bound nodes, no matches
 passed	clauses/match/Match7/[21] Handling optional matches between nulls
 passed	clauses/match/Match7/[22] MATCH after OPTIONAL MATCH
 passed	clauses/match/Match7/[23] OPTIONAL MATCH with labels on the optional end node
@@ -587,12 +587,12 @@ passed	clauses/match/Match9/[5] Variable length pattern with label predicate on 
 execution_failure	clauses/match/Match9/[6] Matching relationships into a list and matching variable length using the list, with bound nodes
 passed	clauses/match/Match9/[7] Matching relationships into a list and matching variable length using the list, with bound nodes, wrong direction
 passed	clauses/match/Match9/[8] Variable length relationship in OPTIONAL MATCH
-execution_failure	clauses/match/Match9/[9] Optionally matching named paths with variable length patterns
+passed	clauses/match/Match9/[9] Optionally matching named paths with variable length patterns
 execution_failure	clauses/merge/Merge1/[10] Merge must properly handle multiple labels
 passed	clauses/merge/Merge1/[11] Merge should be able to merge using property of bound node
-execution_failure	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
-execution_failure	clauses/merge/Merge1/[13] Merge should bind a path
-execution_failure	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
+translation_failure	clauses/merge/Merge1/[12] Merge should be able to merge using property of freshly created node
+translation_failure	clauses/merge/Merge1/[13] Merge should bind a path
+translation_failure	clauses/merge/Merge1/[14] Merges should not be able to match on deleted nodes
 correct_rejection	clauses/merge/Merge1/[15] Fail when merge a node that is already bound
 correct_rejection	clauses/merge/Merge1/[16] Fail when using parameter as node predicate in MERGE
 correct_rejection	clauses/merge/Merge1/[17] Fail on merging node with null property
@@ -602,7 +602,7 @@ passed	clauses/merge/Merge1/[3] Merge node with label when it exists
 passed	clauses/merge/Merge1/[4] Merge node should create when it doesn't match, properties
 passed	clauses/merge/Merge1/[5] Merge node should create when it doesn't match, properties and label
 passed	clauses/merge/Merge1/[6] Merge node with prop and label
-passed	clauses/merge/Merge1/[7] Merge should work when finding multiple elements
+translation_failure	clauses/merge/Merge1/[7] Merge should work when finding multiple elements
 translation_failure	clauses/merge/Merge1/[8] Merge should handle argument properly
 translation_failure	clauses/merge/Merge1/[9] Merge should support updates while merging
 passed	clauses/merge/Merge2/[1] Merge node with label add label on create
@@ -630,7 +630,7 @@ translation_failure	clauses/merge/Merge5/[18] Double aliasing of existing nodes 
 translation_failure	clauses/merge/Merge5/[19] Double aliasing of existing nodes 2
 passed	clauses/merge/Merge5/[1] Creating a relationship
 translation_failure	clauses/merge/Merge5/[20] Do not match on deleted entities
-execution_failure	clauses/merge/Merge5/[21] Do not match on deleted relationships
+translation_failure	clauses/merge/Merge5/[21] Do not match on deleted relationships
 correct_rejection	clauses/merge/Merge5/[22] Fail when imposing new predicates on a variable that is already bound
 correct_rejection	clauses/merge/Merge5/[23] Fail when merging relationship without type
 correct_rejection	clauses/merge/Merge5/[24] Fail when merging relationship without type, no colon
@@ -638,22 +638,22 @@ correct_rejection	clauses/merge/Merge5/[25] Fail when merging relationship with 
 correct_rejection	clauses/merge/Merge5/[26] Fail when merging relationship that is already bound
 correct_rejection	clauses/merge/Merge5/[27] Fail when using parameter as relationship predicate in MERGE
 correct_rejection	clauses/merge/Merge5/[28] Fail when using variable length relationship in MERGE
-passed	clauses/merge/Merge5/[29] Fail on merging relationship with null property
+correct_rejection	clauses/merge/Merge5/[29] Fail on merging relationship with null property
 passed	clauses/merge/Merge5/[2] Matching a relationship
 execution_failure	clauses/merge/Merge5/[3] Matching two relationships
-execution_failure	clauses/merge/Merge5/[4] Using bound variables from other updating clause
+translation_failure	clauses/merge/Merge5/[4] Using bound variables from other updating clause
 passed	clauses/merge/Merge5/[5] Filtering relationships
 passed	clauses/merge/Merge5/[6] Creating relationship when all matches filtered out
 passed	clauses/merge/Merge5/[7] Matching incoming relationship
 passed	clauses/merge/Merge5/[8] Creating relationship with property
 translation_failure	clauses/merge/Merge5/[9] Creating relationship using merged nodes
-passed	clauses/merge/Merge6/[1] Using ON CREATE on a node
+translation_failure	clauses/merge/Merge6/[1] Using ON CREATE on a node
 passed	clauses/merge/Merge6/[2] Using ON CREATE on a relationship
 passed	clauses/merge/Merge6/[3] Updating one property with ON CREATE
 execution_failure	clauses/merge/Merge6/[4] Null-setting one property with ON CREATE
 translation_failure	clauses/merge/Merge6/[6] Copying properties from node with ON CREATE
 translation_failure	clauses/merge/Merge6/[7] Copying properties from literal map with ON CREATE
-passed	clauses/merge/Merge7/[1] Using ON MATCH on created node
+translation_failure	clauses/merge/Merge7/[1] Using ON MATCH on created node
 passed	clauses/merge/Merge7/[2] Using ON MATCH on created relationship
 passed	clauses/merge/Merge7/[3] Using ON MATCH on a relationship
 translation_failure	clauses/merge/Merge7/[4] Copying properties from node with ON MATCH
@@ -661,7 +661,7 @@ translation_failure	clauses/merge/Merge7/[5] Copying properties from literal map
 passed	clauses/merge/Merge8/[1] Using ON CREATE and ON MATCH
 passed	clauses/merge/Merge9/[1] UNWIND with one MERGE
 translation_failure	clauses/merge/Merge9/[2] UNWIND with multiple MERGE
-execution_failure	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
+translation_failure	clauses/merge/Merge9/[3] Mixing MERGE with CREATE
 translation_failure	clauses/merge/Merge9/[4] MERGE after WITH with predicate and WITH with aggregation
 passed	clauses/remove/Remove1/[1] Remove a single node property
 passed	clauses/remove/Remove1/[2] Remove multiple node properties
@@ -677,26 +677,26 @@ passed	clauses/remove/Remove2/[4] Remove a non-existent node label
 passed	clauses/remove/Remove2/[5] Ignore null when removing a node label
 passed	clauses/remove/Remove3/[10] Skipping and limiting to a few results after removing a label from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[11] Skipping zero result and limiting to all results after removing a label from nodes does not affect the result set nor the side effects
-translation_failure	clauses/remove/Remove3/[12] Filtering after removing a label from nodes affects the result set but not the side effects
+passed	clauses/remove/Remove3/[12] Filtering after removing a label from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[13] Aggregating in `RETURN` after removing a label from nodes affects the result set but not the side effects
-translation_failure	clauses/remove/Remove3/[14] Aggregating in `WITH` after removing a label from nodes affects the result set but not the side effects
+passed	clauses/remove/Remove3/[14] Aggregating in `WITH` after removing a label from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[15] Limiting to zero results after removing a property from relationships affects the result set but not the side effects
 passed	clauses/remove/Remove3/[16] Skipping all results after removing a property from relationships affects the result set but not the side effects
 passed	clauses/remove/Remove3/[17] Skipping and limiting to a few results after removing a property from relationships affects the result set but not the side effects
 passed	clauses/remove/Remove3/[18] Skipping zero result and limiting to all results after removing a property from relationships does not affect the result set nor the side effects
-translation_failure	clauses/remove/Remove3/[19] Filtering after removing a property from relationships affects the result set but not the side effects
+passed	clauses/remove/Remove3/[19] Filtering after removing a property from relationships affects the result set but not the side effects
 passed	clauses/remove/Remove3/[1] Limiting to zero results after removing a property from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[20] Aggregating in `RETURN` after removing a property from relationships affects the result set but not the side effects
-translation_failure	clauses/remove/Remove3/[21] Aggregating in `WITH` after removing a property from relationships affects the result set but not the side effects
+passed	clauses/remove/Remove3/[21] Aggregating in `WITH` after removing a property from relationships affects the result set but not the side effects
 passed	clauses/remove/Remove3/[2] Skipping all results after removing a property from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[3] Skipping and limiting to a few results after removing a property from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[4] Skipping zero results and limiting to all results after removing a property from nodes does not affect the result set nor the side effects
-translation_failure	clauses/remove/Remove3/[5] Filtering after removing a property from nodes affects the result set but not the side effects
+passed	clauses/remove/Remove3/[5] Filtering after removing a property from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[6] Aggregating in `RETURN` after removing a property from nodes affects the result set but not the side effects
-translation_failure	clauses/remove/Remove3/[7] Aggregating in `WITH` after removing a property from nodes affects the result set but not the side effects
+passed	clauses/remove/Remove3/[7] Aggregating in `WITH` after removing a property from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[8] Limiting to zero results after removing a label from nodes affects the result set but not the side effects
 passed	clauses/remove/Remove3/[9] Skipping all results after removing a label from nodes affects the result set but not the side effects
-execution_failure	clauses/return-orderby/ReturnOrderBy1/[10] ORDER BY DESC should order lists in the expected order
+passed	clauses/return-orderby/ReturnOrderBy1/[10] ORDER BY DESC should order lists in the expected order
 execution_failure	clauses/return-orderby/ReturnOrderBy1/[11] ORDER BY should order distinct types in the expected order
 execution_failure	clauses/return-orderby/ReturnOrderBy1/[12] ORDER BY DESC should order distinct types in the expected order
 passed	clauses/return-orderby/ReturnOrderBy1/[1] ORDER BY should order booleans in the expected order
@@ -707,7 +707,7 @@ passed	clauses/return-orderby/ReturnOrderBy1/[5] ORDER BY should order ints in t
 passed	clauses/return-orderby/ReturnOrderBy1/[6] ORDER BY DESC should order ints in the expected order
 passed	clauses/return-orderby/ReturnOrderBy1/[7] ORDER BY should order floats in the expected order
 passed	clauses/return-orderby/ReturnOrderBy1/[8] ORDER BY DESC should order floats in the expected order
-execution_failure	clauses/return-orderby/ReturnOrderBy1/[9] ORDER BY should order lists in the expected order
+passed	clauses/return-orderby/ReturnOrderBy1/[9] ORDER BY should order lists in the expected order
 passed	clauses/return-orderby/ReturnOrderBy2/[10] Returned columns do not change from using ORDER BY
 passed	clauses/return-orderby/ReturnOrderBy2/[11] Aggregates ordered by arithmetics
 execution_failure	clauses/return-orderby/ReturnOrderBy2/[12] Aggregation of named paths
@@ -715,20 +715,20 @@ passed	clauses/return-orderby/ReturnOrderBy2/[13] Fail when sorting on variable 
 correct_rejection	clauses/return-orderby/ReturnOrderBy2/[14] Fail on aggregation in ORDER BY after RETURN
 passed	clauses/return-orderby/ReturnOrderBy2/[1] ORDER BY should return results in ascending order
 passed	clauses/return-orderby/ReturnOrderBy2/[2] ORDER BY DESC should return results in descending order
-translation_failure	clauses/return-orderby/ReturnOrderBy2/[3] Sort on aggregated function
+passed	clauses/return-orderby/ReturnOrderBy2/[3] Sort on aggregated function
 passed	clauses/return-orderby/ReturnOrderBy2/[4] Support sort and distinct
 passed	clauses/return-orderby/ReturnOrderBy2/[5] Support ordering by a property after being distinct-ified
-translation_failure	clauses/return-orderby/ReturnOrderBy2/[6] Count star should count everything in scope
+passed	clauses/return-orderby/ReturnOrderBy2/[6] Count star should count everything in scope
 passed	clauses/return-orderby/ReturnOrderBy2/[7] Ordering with aggregation
 passed	clauses/return-orderby/ReturnOrderBy2/[8] Returning all variables with ordering
 passed	clauses/return-orderby/ReturnOrderBy2/[9] Using aliased DISTINCT expression in ORDER BY
-translation_failure	clauses/return-orderby/ReturnOrderBy3/[1] Sort on aggregate function and normal property
+passed	clauses/return-orderby/ReturnOrderBy3/[1] Sort on aggregate function and normal property
 passed	clauses/return-orderby/ReturnOrderBy4/[1] ORDER BY of a column introduced in RETURN should return salient results in ascending order
 passed	clauses/return-orderby/ReturnOrderBy4/[2] Handle projections with ORDER BY
 passed	clauses/return-orderby/ReturnOrderBy5/[1] Renaming columns before ORDER BY should return results in ascending order
-translation_failure	clauses/return-orderby/ReturnOrderBy6/[1] Handle constants and parameters inside an order by item which contains an aggregation expression
-translation_failure	clauses/return-orderby/ReturnOrderBy6/[2] Handle returned aliases inside an order by item which contains an aggregation expression
-translation_failure	clauses/return-orderby/ReturnOrderBy6/[3] Handle returned property accesses inside an order by item which contains an aggregation expression
+passed	clauses/return-orderby/ReturnOrderBy6/[1] Handle constants and parameters inside an order by item which contains an aggregation expression
+passed	clauses/return-orderby/ReturnOrderBy6/[2] Handle returned aliases inside an order by item which contains an aggregation expression
+passed	clauses/return-orderby/ReturnOrderBy6/[3] Handle returned property accesses inside an order by item which contains an aggregation expression
 correct_rejection	clauses/return-orderby/ReturnOrderBy6/[4] Fail if not returned variables are used inside an order by item which contains an aggregation expression
 correct_rejection	clauses/return-orderby/ReturnOrderBy6/[5] Fail if more complex expressions, even if returned, are used inside an order by item which contains an aggregation expression
 passed	clauses/return-skip-limit/ReturnSkipLimit1/[10] Fail when using non-constants in SKIP
@@ -859,23 +859,23 @@ passed	clauses/set/Set5/[4] Explicit null values in a map remove old values
 passed	clauses/set/Set5/[5] Set an empty map when using += has no effect
 passed	clauses/set/Set6/[10] Skipping and limiting to a few results after adding a label on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[11] Skipping zero result and limiting to all results after adding a label on nodes does not affect the result set nor the side effects
-translation_failure	clauses/set/Set6/[12] Filtering after adding a label on nodes affects the result set but not the side effects
+passed	clauses/set/Set6/[12] Filtering after adding a label on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[13] Aggregating in `RETURN` after adding a label on nodes affects the result set but not the side effects
-translation_failure	clauses/set/Set6/[14] Aggregating in `WITH` after adding a label on nodes affects the result set but not the side effects
+passed	clauses/set/Set6/[14] Aggregating in `WITH` after adding a label on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[15] Limiting to zero results after setting a property on relationships affects the result set but not the side effects
 passed	clauses/set/Set6/[16] Skipping all results after setting a property on relationships affects the result set but not the side effects
 passed	clauses/set/Set6/[17] Skipping and limiting to a few results after setting a property on relationships affects the result set but not the side effects
 passed	clauses/set/Set6/[18] Skipping zero result and limiting to all results after setting a property on relationships does not affect the result set nor the side effects
-translation_failure	clauses/set/Set6/[19] Filtering after setting a property on relationships affects the result set but not the side effects
+passed	clauses/set/Set6/[19] Filtering after setting a property on relationships affects the result set but not the side effects
 passed	clauses/set/Set6/[1] Limiting to zero results after setting a property on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[20] Aggregating in `RETURN` after setting a property on relationships affects the result set but not the side effects
-translation_failure	clauses/set/Set6/[21] Aggregating in `WITH` after setting a property on relationships affects the result set but not the side effects
+passed	clauses/set/Set6/[21] Aggregating in `WITH` after setting a property on relationships affects the result set but not the side effects
 passed	clauses/set/Set6/[2] Skipping all results after setting a property on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[3] Skipping and limiting to a few results after setting a property on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[4] Skipping zero results and limiting to all results after setting a property on nodes does not affect the result set nor the side effects
-translation_failure	clauses/set/Set6/[5] Filtering after setting a property on nodes affects the result set but not the side effects
+passed	clauses/set/Set6/[5] Filtering after setting a property on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[6] Aggregating in `RETURN` after setting a property on nodes affects the result set but not the side effects
-translation_failure	clauses/set/Set6/[7] Aggregating in `WITH` after setting a property on nodes affects the result set but not the side effects
+passed	clauses/set/Set6/[7] Aggregating in `WITH` after setting a property on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[8] Limiting to zero results after adding a label on nodes affects the result set but not the side effects
 passed	clauses/set/Set6/[9] Skipping all results after adding a label on nodes affects the result set but not the side effects
 passed	clauses/union/Union1/[1] Two elements, both unique, distinct
@@ -894,7 +894,7 @@ passed	clauses/unwind/Unwind1/[10] Unwinding list with duplicates
 execution_failure	clauses/unwind/Unwind1/[11] Unwind does not prune context
 passed	clauses/unwind/Unwind1/[12] Unwind does not remove variables from scope
 execution_failure	clauses/unwind/Unwind1/[13] Multiple unwinds after each other
-execution_failure	clauses/unwind/Unwind1/[14] Unwind with merge
+passed	clauses/unwind/Unwind1/[14] Unwind with merge
 passed	clauses/unwind/Unwind1/[1] Unwinding a list
 passed	clauses/unwind/Unwind1/[2] Unwinding a range
 passed	clauses/unwind/Unwind1/[3] Unwinding a concatenation of lists
@@ -904,7 +904,7 @@ translation_failure	clauses/unwind/Unwind1/[6] Creating nodes from an unwound pa
 passed	clauses/unwind/Unwind1/[7] Double unwinding a list of lists
 passed	clauses/unwind/Unwind1/[8] Unwinding the empty list
 execution_failure	clauses/unwind/Unwind1/[9] Unwinding null
-execution_failure	clauses/with-orderBy/WithOrderBy1/[10] Sort lists in descending order
+passed	clauses/with-orderBy/WithOrderBy1/[10] Sort lists in descending order
 passed	clauses/with-orderBy/WithOrderBy1/[11] Sort dates in ascending order
 passed	clauses/with-orderBy/WithOrderBy1/[12] Sort dates in descending order
 passed	clauses/with-orderBy/WithOrderBy1/[13] Sort local times in ascending order
@@ -999,7 +999,7 @@ passed	clauses/with-orderBy/WithOrderBy1/[5] Sort floats in ascending order
 passed	clauses/with-orderBy/WithOrderBy1/[6] Sort floats in descending order
 passed	clauses/with-orderBy/WithOrderBy1/[7] Sort strings in ascending order
 passed	clauses/with-orderBy/WithOrderBy1/[8] Sort strings in descending order
-execution_failure	clauses/with-orderBy/WithOrderBy1/[9] Sort lists in ascending order
+passed	clauses/with-orderBy/WithOrderBy1/[9] Sort lists in ascending order
 passed	clauses/with-orderBy/WithOrderBy2/[10] Sort by a list expression in descending order [sort=[a.list2[1], a.list2[0], a.list[1]] + a.list + a.list2 DESCENDING]
 passed	clauses/with-orderBy/WithOrderBy2/[10] Sort by a list expression in descending order [sort=[a.list2[1], a.list2[0], a.list[1]] + a.list + a.list2 DESC]
 passed	clauses/with-orderBy/WithOrderBy2/[11] Sort by a date expression in ascending order [sort=a.date + duration({months: 1, days: 2}) ASCENDING]
@@ -1032,12 +1032,12 @@ passed	clauses/with-orderBy/WithOrderBy2/[20] Sort by a date time expression in 
 passed	clauses/with-orderBy/WithOrderBy2/[20] Sort by a date time expression in descending order [sort=a.datetime + duration({days: 4, minutes: 6}) DESC]
 passed	clauses/with-orderBy/WithOrderBy2/[21] Sort by an expression that is only partially orderable on a non-distinct binding table [dir=ASC, x='A']
 passed	clauses/with-orderBy/WithOrderBy2/[21] Sort by an expression that is only partially orderable on a non-distinct binding table [dir=DESC, x='C']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[22] Sort by an expression that is only partially orderable on a non-distinct binding table, but used as a grouping key [dir=ASC, x='A']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[22] Sort by an expression that is only partially orderable on a non-distinct binding table, but used as a grouping key [dir=DESC, x='C']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[23] Sort by an expression that is only partially orderable on a non-distinct binding table, but used in parts as a grouping key [dir=ASC, x='A']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[23] Sort by an expression that is only partially orderable on a non-distinct binding table, but used in parts as a grouping key [dir=DESC, x='C']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct [dir=ASC, x='A']
-execution_failure	clauses/with-orderBy/WithOrderBy2/[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct [dir=DESC, x='C']
+passed	clauses/with-orderBy/WithOrderBy2/[22] Sort by an expression that is only partially orderable on a non-distinct binding table, but used as a grouping key [dir=ASC, x='A']
+passed	clauses/with-orderBy/WithOrderBy2/[22] Sort by an expression that is only partially orderable on a non-distinct binding table, but used as a grouping key [dir=DESC, x='C']
+passed	clauses/with-orderBy/WithOrderBy2/[23] Sort by an expression that is only partially orderable on a non-distinct binding table, but used in parts as a grouping key [dir=ASC, x='A']
+passed	clauses/with-orderBy/WithOrderBy2/[23] Sort by an expression that is only partially orderable on a non-distinct binding table, but used in parts as a grouping key [dir=DESC, x='C']
+passed	clauses/with-orderBy/WithOrderBy2/[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct [dir=ASC, x='A']
+passed	clauses/with-orderBy/WithOrderBy2/[24] Sort by an expression that is only partially orderable on a non-distinct binding table, but made distinct [dir=DESC, x='C']
 correct_rejection	clauses/with-orderBy/WithOrderBy2/[25] Fail on sorting by an aggregation [sort=count(1 + n.num1)]
 correct_rejection	clauses/with-orderBy/WithOrderBy2/[25] Fail on sorting by an aggregation [sort=count(1)]
 correct_rejection	clauses/with-orderBy/WithOrderBy2/[25] Fail on sorting by an aggregation [sort=count(n)]
@@ -1177,14 +1177,14 @@ correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any n
 correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, a, exampleName=never defined]
 correct_rejection	clauses/with-orderBy/WithOrderBy3/[8] Fail on sorting by any number of undefined variables in any position #Example: <exampleName> [sort=e, f, b, b, f, e, a, exampleName=never defined]
 passed	clauses/with-orderBy/WithOrderBy4/[10] Sort by a non-projected expression containing an alias of a projected expression containing the variable shadowed by the alias
-translation_failure	clauses/with-orderBy/WithOrderBy4/[11] Sort by an aggregate projection
+passed	clauses/with-orderBy/WithOrderBy4/[11] Sort by an aggregate projection
 passed	clauses/with-orderBy/WithOrderBy4/[12] Sort by an aliased aggregate projection
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[13] Fail on sorting by a non-projected aggregation on a variable
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[14] Fail on sorting by a non-projected aggregation on an expression
 passed	clauses/with-orderBy/WithOrderBy4/[15] Sort by an aliased aggregate projection does allow subsequent matching
-translation_failure	clauses/with-orderBy/WithOrderBy4/[16] Handle constants and parameters inside an order by item which contains an aggregation expression
-translation_failure	clauses/with-orderBy/WithOrderBy4/[17] Handle projected variables inside an order by item which contains an aggregation expression
-translation_failure	clauses/with-orderBy/WithOrderBy4/[18]  Handle projected property accesses inside an order by item which contains an aggregation expression
+passed	clauses/with-orderBy/WithOrderBy4/[16] Handle constants and parameters inside an order by item which contains an aggregation expression
+passed	clauses/with-orderBy/WithOrderBy4/[17] Handle projected variables inside an order by item which contains an aggregation expression
+passed	clauses/with-orderBy/WithOrderBy4/[18]  Handle projected property accesses inside an order by item which contains an aggregation expression
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[19] Fail if not projected variables are used inside an order by item which contains an aggregation expression
 passed	clauses/with-orderBy/WithOrderBy4/[1] Sort by a projected expression
 correct_rejection	clauses/with-orderBy/WithOrderBy4/[20] Fail if more complex expressions, even if projected, are used inside an order by item which contains an aggregation expression
@@ -1256,8 +1256,8 @@ passed	clauses/with/With7/[2] Multiple WITHs using a predicate and aggregation
 passed	expressions/aggregation/Aggregation1/[1] Count only non-null values
 passed	expressions/aggregation/Aggregation1/[2] Counting loop relationships
 passed	expressions/aggregation/Aggregation2/[10] `min()` over list values
-execution_failure	expressions/aggregation/Aggregation2/[11] `max()` over mixed values
-execution_failure	expressions/aggregation/Aggregation2/[12] `min()` over mixed values
+passed	expressions/aggregation/Aggregation2/[11] `max()` over mixed values
+passed	expressions/aggregation/Aggregation2/[12] `min()` over mixed values
 passed	expressions/aggregation/Aggregation2/[1] `max()` over integers
 passed	expressions/aggregation/Aggregation2/[2] `min()` over integers
 passed	expressions/aggregation/Aggregation2/[3] `max()` over floats
@@ -1265,25 +1265,25 @@ passed	expressions/aggregation/Aggregation2/[4] `min()` over floats
 passed	expressions/aggregation/Aggregation2/[5] `max()` over mixed numeric values
 passed	expressions/aggregation/Aggregation2/[6] `min()` over mixed numeric values
 passed	expressions/aggregation/Aggregation2/[7] `max()` over strings
-execution_failure	expressions/aggregation/Aggregation2/[8] `min()` over strings
+passed	expressions/aggregation/Aggregation2/[8] `min()` over strings
 passed	expressions/aggregation/Aggregation2/[9] `max()` over list values
 passed	expressions/aggregation/Aggregation3/[1] Sum only non-null values
 passed	expressions/aggregation/Aggregation3/[2] No overflow during summation
 passed	expressions/aggregation/Aggregation5/[1] `collect()` filtering nulls
 passed	expressions/aggregation/Aggregation5/[2] OPTIONAL MATCH and `collect()` on node property
-translation_failure	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.0, result=10.0]
-translation_failure	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.5, result=20.0]
-translation_failure	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=1.0, result=30.0]
-translation_failure	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.0, result=10.0]
-translation_failure	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.5, result=20.0]
-translation_failure	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=1.0, result=30.0]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=-1]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1.1]
-correct_rejection	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1000]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=-1]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1.1]
-correct_rejection	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1000]
-correct_rejection	expressions/aggregation/Aggregation6/[5] `percentileDisc()` failing in more involved query
+passed	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.0, result=10.0]
+passed	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=0.5, result=20.0]
+passed	expressions/aggregation/Aggregation6/[1] `percentileDisc()` [p=1.0, result=30.0]
+passed	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.0, result=10.0]
+passed	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=0.5, result=20.0]
+passed	expressions/aggregation/Aggregation6/[2] `percentileCont()` [p=1.0, result=30.0]
+passed	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=-1]
+passed	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1.1]
+passed	expressions/aggregation/Aggregation6/[3] `percentileCont()` failing on bad arguments [percentile=1000]
+passed	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=-1]
+passed	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1.1]
+passed	expressions/aggregation/Aggregation6/[4] `percentileDisc()` failing on bad arguments [percentile=1000]
+passed	expressions/aggregation/Aggregation6/[5] `percentileDisc()` failing in more involved query
 passed	expressions/aggregation/Aggregation8/[1] Distinct on unbound node
 passed	expressions/aggregation/Aggregation8/[2] Distinct on null
 passed	expressions/aggregation/Aggregation8/[3] Collect distinct nulls
@@ -2772,12 +2772,12 @@ passed	expressions/quantifier/Quantifier9/[5] None quantifier is always equal wh
 passed	expressions/string/String1/[1] `substring()` with default second argument
 passed	expressions/string/String10/[1] Finding exact matches with non-proper substring
 passed	expressions/string/String10/[2] Finding substring of string
-execution_failure	expressions/string/String10/[3] Finding the empty substring
+passed	expressions/string/String10/[3] Finding the empty substring
 passed	expressions/string/String10/[4] Finding strings containing whitespace
 passed	expressions/string/String10/[5] Finding strings containing newline
 passed	expressions/string/String10/[6] No string contains null
 passed	expressions/string/String10/[7] No string does not contain null
-execution_failure	expressions/string/String10/[8] Handling non-string operands for CONTAINS
+passed	expressions/string/String10/[8] Handling non-string operands for CONTAINS
 passed	expressions/string/String10/[9] NOT with CONTAINS
 passed	expressions/string/String11/[1] Combining prefix and suffix search
 passed	expressions/string/String11/[2] Combining prefix, suffix, and substring search
@@ -2799,8 +2799,8 @@ passed	expressions/string/String9/[4] Finding strings ending with whitespace
 passed	expressions/string/String9/[5] Finding strings ending with newline
 passed	expressions/string/String9/[6] No string ends with null
 passed	expressions/string/String9/[7] No string does not end with null
-execution_failure	expressions/string/String9/[8] Handling non-string operands for ENDS WITH
-execution_failure	expressions/string/String9/[9] NOT with ENDS WITH
+passed	expressions/string/String9/[8] Handling non-string operands for ENDS WITH
+passed	expressions/string/String9/[9] NOT with ENDS WITH
 passed	expressions/temporal/Temporal1/[10] Should construct date time with named time zone [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, microsecond: 645876, timezone: 'Europe/Stockholm'}, result='1984-10-11T12:31:14.645876+01:00[Europe/Stockholm]']
 passed	expressions/temporal/Temporal1/[10] Should construct date time with named time zone [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, millisecond: 645, timezone: 'Europe/Stockholm'}, result='1984-10-11T12:31:14.645+01:00[Europe/Stockholm]']
 passed	expressions/temporal/Temporal1/[10] Should construct date time with named time zone [map={year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, nanosecond: 645876123, timezone: 'Europe/Stockholm'}, result='1984-10-11T12:31:14.645876123+01:00[Europe/Stockholm]']
@@ -3855,11 +3855,11 @@ passed	expressions/typeConversion/TypeConversion4/[9] `toString()` should accept
 execution_failure	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[10] Mixing directed and undirected pattern parts with self-relationship, count
 execution_failure	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[11] Mixing directed and undirected pattern parts with self-relationship, undirected count
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[1] Undirected match in self-relationship graph, count
-execution_failure	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[2] Undirected match of self-relationship in self-relationship graph, count
-execution_failure	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[3] Undirected match on simple relationship graph, count
+passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[2] Undirected match of self-relationship in self-relationship graph, count
+passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[3] Undirected match on simple relationship graph, count
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[4] Directed match on self-relationship graph, count
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[5] Directed match of self-relationship on self-relationship graph, count
-execution_failure	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[6] Counting undirected self-relationships in self-relationship graph
+passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[6] Counting undirected self-relationships in self-relationship graph
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[7] Counting distinct undirected self-relationships in self-relationship graph
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[8] Directed match of a simple relationship, count
 passed	useCases/countingSubgraphMatches/CountingSubgraphMatches1/[9] Counting directed self-relationships

@@ -1,0 +1,28 @@
+version: 1
+cases:
+- id: C1114
+  name: ORDER BY a list sorts in Cypher's cross-type order
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: UNWIND [[], ['a'], [1, null]] AS l RETURN l ORDER BY l DESC
+  expected:
+    aql: "FOR l IN [[],['a'],[1,null]]\n  SORT [(IS_OBJECT((l)) ? (HAS((l), '_from') ? 2 : HAS((l), '_id') ? 1 : (HAS((l), 'nodes') AND HAS((l), 'edges')) ? 4 : 0) : TRANSLATE(TYPENAME((l)), {\"null\": 8, \"bool\": 6, \"number\": 7, \"string\": 5, \"array\": 3}, 0)), (IS_ARRAY((l)) ? (l)[* RETURN [(IS_OBJECT(CURRENT) ? (HAS(CURRENT, '_from') ? 2 : HAS(CURRENT, '_id') ? 1 : (HAS(CURRENT, 'nodes') AND HAS(CURRENT, 'edges')) ? 4 : 0) : TRANSLATE(TYPENAME(CURRENT), {\"null\": 8, \"bool\": 6, \"number\": 7, \"string\": 5, \"array\": 3}, 0)), ((IS_OBJECT(CURRENT) AND HAS(CURRENT, '_id')) ? CURRENT._id : CURRENT)]] : ((IS_OBJECT((l)) AND HAS((l), '_id')) ? (l)._id : (l)))] DESC\n  RETURN l"
+    bind_vars: {}
+- id: C1115
+  name: ORDER BY a property keeps the plain key
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) RETURN n.name AS name ORDER BY n.name
+  expected:
+    aql: "FOR n IN @@collection\n  SORT (n.name == null), n.name\n  RETURN {name: n.name}"
+    bind_vars:
+      '@collection': users
+- id: C1116
+  name: ORDER BY a grouping key's source reads the key after COLLECT
+  mapping_fixture: pg
+  extensions_enabled: false
+  cypher: MATCH (n:User) WITH n.city AS city, count(*) AS c ORDER BY n.city LIMIT 2 RETURN city, c
+  expected:
+    aql: "FOR n IN @@collection\n  COLLECT city = n.city AGGREGATE _c_rows = SUM(1)\n  LET c = NOT_NULL(_c_rows, 0)\n  SORT (city == null), city\n  LIMIT 2\n  RETURN {city: city, c: c}"
+    bind_vars:
+      '@collection': users
