@@ -61,3 +61,13 @@ def test_ignoring_list_order_applies_to_cells() -> None:
     table = [{"l": "[1, 2]"}]
     assert not results_match([{"l": [2, 1]}], table)[0]
     assert results_match([{"l": [2, 1]}], table, ignore_list_order=True)[0]
+
+
+def test_string_cells_are_cypher_literals() -> None:
+    from tests.tck.normalize import normalize_expected_value
+
+    assert normalize_expected_value("'\\''") == "'"
+    assert normalize_expected_value("'a\\\\b'") == "a\\b"
+    assert normalize_expected_value("'a\\nb'") == "a\nb"
+    assert normalize_expected_value("'\\u0041'") == "A"
+    assert normalize_expected_value("'plain'") == "plain"
